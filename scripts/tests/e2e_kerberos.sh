@@ -9,7 +9,9 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CF="$ROOT/deploy/e2e/docker-compose.yml"
-DC="docker compose -f $CF"
+# Docker direkt oder via sudo (crabbox-User ist evtl. nicht in der docker-Gruppe)
+DOCKER="docker"; docker info >/dev/null 2>&1 || DOCKER="sudo docker"
+DC="$DOCKER compose -f $CF"
 DLC="example.internal"
 PW="Passw0rd!"
 SQUID_IP="172.28.0.10"
@@ -57,7 +59,7 @@ log "wait for squid healthy"
 ready=0; st=none
 for _ in $(seq 1 40); do
   cid=$($DC ps -q squid 2>/dev/null)
-  st=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo none)
+  st=$($DOCKER inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo none)
   if [ "$st" = healthy ]; then ready=1; break; fi
   sleep 3
 done
