@@ -47,7 +47,10 @@ dcx samba-tool user  create squidsvc "$PW"          >/dev/null 2>&1 || true
 dcx samba-tool group add teachers                   >/dev/null 2>&1 || true
 dcx samba-tool group addmembers teachers teacher1   >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid.$DLC" squidsvc >/dev/null 2>&1 || true
-dcx samba-tool domain exportkeytab /shared/squid.keytab --principal="HTTP/squid.$DLC" || { echo "keytab-Export fehlgeschlagen"; exit 1; }
+# Keytab für den KINIT-fähigen Account-Principal (squidsvc), nicht nur den HTTP-SPN:
+# der Gruppen-Helper meldet sich damit am LDAP an. Der HTTP/squid-SPN nutzt denselben
+# Account-Schlüssel, daher entschlüsselt Negotiate (-s GSS_C_NO_NAME) die Client-Tickets.
+dcx samba-tool domain exportkeytab /shared/squid.keytab --principal=squidsvc || { echo "keytab-Export fehlgeschlagen"; exit 1; }
 dcx chmod 0644 /shared/squid.keytab
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid  A "$SQUID_IP"  -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" origin A "$ORIGIN_IP" -U "Administrator%$PW" >/dev/null 2>&1 || true
@@ -72,5 +75,8 @@ rc=$?
 log "squid access.log (Auszug)"
 $DC exec -T squid sh -c 'tail -20 /var/log/squid/access.log' 2>/dev/null \
   || $DC logs squid 2>/dev/null | tail -20 || true
+
+log "squid cache.log (letzte Zeilen, bei Fehler nützlich)"
+$DC exec -T squid sh -c 'tail -25 /var/log/squid/cache.log' 2>/dev/null || true
 
 exit "$rc"

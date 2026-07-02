@@ -26,6 +26,25 @@ export KRB5CCNAME="FILE:/tmp/krb5cc_${INSTANCE}"
 # Template-Variablen explizit exportieren.
 export INSTANCE HTTP_PORT CACHE_SIZE_MB KEYTAB REALM AD_GROUP VISIBLE_HOSTNAME SCHOOL_SUBNETS
 
+# /etc/krb5.conf für den LDAP-Gruppen-Helper (GSSAPI-Bind): rdns/canonicalize=false,
+# damit der ldap/-SPN aus dem literalen DC-Namen (via SRV) gebildet wird und NICHT
+# per Reverse-DNS (das im Container-Netz auf falsche Namen zeigt -> SASL "Local error").
+cat > /etc/krb5.conf <<EOF
+[libdefaults]
+    default_realm = ${REALM}
+    dns_lookup_realm = false
+    dns_lookup_kdc = true
+    rdns = false
+    dns_canonicalize_hostname = false
+    forwardable = true
+EOF
+
+# OpenLDAP-Client: den SASL-Host NICHT per Reverse-DNS kanonikalisieren. Sonst bildet
+# libldap den ldap/-SPN aus dem (falschen) PTR-Namen des DC und der GSSAPI-Bind
+# scheitert mit "Local error" — unabhängig von der krb5-rdns-Einstellung.
+mkdir -p /etc/ldap
+printf 'SASL_NOCANON on\n' > /etc/ldap/ldap.conf
+
 if [ ! -r "${KEYTAB}" ]; then
     echo "FATAL: keytab '${KEYTAB}' is missing or not readable (mount it as a secret)." >&2
     exit 1

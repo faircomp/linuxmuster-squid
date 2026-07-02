@@ -18,6 +18,7 @@ RUN apt-get update \
       krb5-user \
       gettext-base \
       ca-certificates \
+      libsasl2-modules-gssapi-mit \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /etc/squid/lists /etc/squid/templates /var/log/squid /var/spool/squid \
  && chown -R proxy:proxy /var/log/squid /var/spool/squid \
