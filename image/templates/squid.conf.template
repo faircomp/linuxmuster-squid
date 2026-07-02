@@ -1,0 +1,59 @@
+# ============================================================
+# linuxmuster-squid — Data-Plane-Instanz-Template
+# Wird pro Instanz vom entrypoint.sh via envsubst gerendert.
+# Instanz: ${INSTANCE}
+# (P1: Kerberos-SSO + Gruppen-ACL + CONNECT/dstdomain-Filter.
+#  P2 ergänzt SNI peek+splice — dann squid-openssl-Pflicht.)
+# ============================================================
+
+# --- Expliziter Forward-Proxy (NIEMALS intercept: Kerberos-407 braucht explizit) ---
+http_port ${HTTP_PORT}
+visible_hostname ${VISIBLE_HOSTNAME}
+cache_effective_user proxy
+
+# --- Kerberos-SSO (Negotiate). SPN ist portunabhängig: HTTP/<fqdn>@REALM ---
+# Realm UPPERCASE. Keytab kommt über KRB5_KTNAME=${KEYTAB} (im entrypoint gesetzt).
+auth_param negotiate program /usr/lib/squid/negotiate_kerberos_auth -k ${KEYTAB} -s HTTP/${VISIBLE_HOSTNAME}@${REALM}
+auth_param negotiate children 20 startup=0 idle=1
+auth_param negotiate keep_alive on
+acl authenticated proxy_auth REQUIRED
+
+# --- Autorisierung: diese Instanz nur für EINE AD-Gruppe ---
+# default-school = "teachers"; andere Schulen = "<schule>-teachers".
+# ext_kerberos_ldap_group_acl nutzt das Kerberos-Ticket (kein Bind-PW),
+# findet den DC via _ldap._tcp-SRV und löst geschachtelte Gruppen bis Tiefe -m.
+external_acl_type ad_group ttl=300 negative_ttl=60 grace=30 %LOGIN \
+    /usr/lib/squid/ext_kerberos_ldap_group_acl -m 5 -g ${AD_GROUP}@${REALM}
+acl role_group external ad_group
+
+# --- Schul-Scope über Quell-Subnetz (Schule hat kein Kennzeichen "auf dem Draht") ---
+acl school_net src ${SCHOOL_SUBNETS}
+
+# --- Domainfilter OHNE Entschlüsselung ---
+# dstdomain matcht den Plain-HTTP-Host UND den CONNECT-Ziel-Host (HTTPS),
+# also kein SSL-Bump / kein Client-CA nötig.
+acl blocked_domains dstdomain "/etc/squid/lists/blocked.domains"
+
+# --- Sichere Ports & Methoden ---
+acl SSL_ports port 443
+acl Safe_ports port 80 21 443 70 210 1025-65535 280 488 591 777
+acl CONNECT method CONNECT
+acl localhost src 127.0.0.1/32 ::1
+
+# --- Zugriffskette (Reihenfolge zählt) ---
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost manager        # nur Healthcheck (squidclient mgr:info)
+http_access deny manager
+http_access deny !authenticated            # kein Ticket -> 407 (Negotiate-Challenge)
+http_access deny blocked_domains           # gesperrte Domain -> 403 (auch für Lehrer)
+http_access allow authenticated role_group school_net   # in Gruppe + Subnetz -> 200
+http_access deny all                       # authentifiziert, aber nicht in Gruppe -> 403
+
+# --- Cache & Logs ---
+cache_dir ufs /var/spool/squid ${CACHE_SIZE_MB} 16 256
+access_log stdio:/dev/stdout squid
+cache_log stdio:/dev/stderr
+
+# WICHTIG: der Container-hostname MUSS ${VISIBLE_HOSTNAME} sein (SPN-Kanonikalisierung),
+# und fwd-DNS des FQDN muss aus dem Container auflösbar sein.
