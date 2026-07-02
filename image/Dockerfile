@@ -19,7 +19,8 @@ RUN apt-get update \
       gettext-base \
       ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
- && mkdir -p /etc/squid/lists /etc/squid/templates \
+ && mkdir -p /etc/squid/lists /etc/squid/templates /var/log/squid /var/spool/squid \
+ && chown -R proxy:proxy /var/log/squid /var/spool/squid \
  && : > /etc/squid/lists/blocked.domains
 
 # Fail the build early if a helper we rely on is missing (all verified present in

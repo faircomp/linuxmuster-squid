@@ -70,6 +70,7 @@ $DC run --rm test-client
 rc=$?
 
 log "squid access.log (Auszug)"
-$DC logs squid 2>/dev/null | grep -Ei 'teacher1|student1|DENIED|407|403|200' | tail -20 || true
+$DC exec -T squid sh -c 'tail -20 /var/log/squid/access.log' 2>/dev/null \
+  || $DC logs squid 2>/dev/null | tail -20 || true
 
 exit "$rc"
