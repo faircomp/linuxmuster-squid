@@ -1,0 +1,72 @@
+# Kerberos-E2E-Stack für linuxmuster-squid (heavy tier / crabbox).
+# Beweist: Lehrer->200, Schueler->403, gesperrte Domain->403, kein Ticket->407.
+# Orchestriert von scripts/tests/e2e_kerberos.sh (bringt Dienste geordnet hoch,
+# legt Fixtures an und fährt die Assertions). Realm/Domain: EXAMPLE.INTERNAL.
+name: lmnsquid-e2e
+
+networks:
+  e2e:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  shared: {}          # DC exportiert hier den Keytab, Squid liest ihn (ro)
+
+services:
+  # KDC + AD-LDAP + interner DNS. Legt die Domain beim ersten Start an.
+  samba-dc:
+    image: nowsci/samba-domain
+    hostname: dc
+    privileged: true
+    environment:
+      DOMAIN: "EXAMPLE.INTERNAL"
+      DOMAINPASS: "Passw0rd!"
+      NOCOMPLEXITY: "true"
+      HOSTIP: "172.28.0.2"
+      INSECURELDAP: "true"
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.2
+    volumes:
+      - shared:/shared
+
+  # Das Image unter Test.
+  squid:
+    build: ../../image
+    image: linuxmuster-squid:dev
+    hostname: squid.example.internal
+    depends_on: [samba-dc]
+    environment:
+      INSTANCE: "e2e-teachers"
+      VISIBLE_HOSTNAME: "squid.example.internal"
+      REALM: "EXAMPLE.INTERNAL"
+      AD_GROUP: "teachers"
+      SCHOOL_SUBNETS: "0.0.0.0/0"      # Subnetz-Scope wird in P3 getestet
+      KEYTAB: "/shared/squid.keytab"
+      CACHE_SIZE_MB: "200"
+    dns: ["172.28.0.2"]               # AD-DNS: löst SRV/_ldap._tcp + origin-A auf
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.10
+    volumes:
+      - shared:/shared:ro
+      - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
+
+  # Erlaubtes Ziel (liefert 200).
+  origin:
+    image: nginx:alpine
+    hostname: origin.example.internal
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.20
+
+  # Kerberos-Client, der die vier Assertions fährt (ENTRYPOINT = /assert.sh).
+  test-client:
+    build: ./client
+    depends_on: [squid]
+    dns: ["172.28.0.2"]
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.30

@@ -1,0 +1,3 @@
+# Gesperrte Domains für den E2E (dstdomain — matcht Host bzw. CONNECT-Ziel).
+# Eine Domain pro Zeile.
+blocked.example.com
