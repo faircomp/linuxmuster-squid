@@ -13,9 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P0 – Fundament erledigt (git-Repo + Branch build/roadmap,
-> LICENSE, Test-Aggregator, references.md); DC-Verifikation verschoben (braucht
-> Site-Zugang, blockiert P1 nicht) → weiter mit P1`. (Fortschritts-Zeiger: bei
+> **Aktueller Stand:** `P1 – Bau-Dateien fertig & committet (Dockerfile→squid-openssl,
+> squid.conf.template, Kerberos-E2E-Stack samba-dc+squid+client). NÄCHSTES GATE:
+> crabbox-E2E ausführen (Lehrer→200 / Schüler→403 / gesperrt→403 / kein-Ticket→407)
+> — erst bei Grün gelten die P1-Aufgaben als erledigt.` (Fortschritts-Zeiger: bei
 > jeder Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·

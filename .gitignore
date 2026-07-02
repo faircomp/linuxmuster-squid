@@ -4,6 +4,7 @@ deploy/secrets/krb5.conf
 deploy/**/ssl_db/
 **/*.keytab
 .claude/settings.local.json
+.claude/*.lock
 
 # --- Python ---
 __pycache__/
