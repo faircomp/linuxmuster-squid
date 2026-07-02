@@ -13,8 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P0 – noch nicht begonnen`. (Diese Zeile ist der
-> Fortschritts-Zeiger: bei jeder Iteration aktualisieren.)
+> **Aktueller Stand:** `P0 – Fundament erledigt (git-Repo + Branch build/roadmap,
+> LICENSE, Test-Aggregator, references.md); DC-Verifikation verschoben (braucht
+> Site-Zugang, blockiert P1 nicht) → weiter mit P1`. (Fortschritts-Zeiger: bei
+> jeder Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -109,16 +111,17 @@ linuxmuster-7.3-Test-Umgebung verifiziert**, bevor Code darauf aufbaut.
 **Deliverables:** `README.md`, `CLAUDE.md`, `docs/{architecture,decisions,threat-model,test-strategy}.md`, `.gitignore`, `LICENSE`; `scripts/tests/run.sh` (Aggregator-Skelett) + `scripts/tests/crabbox_bootstrap.sh`; angepasste `/test`-Skill.
 
 **Aufgaben:**
-- [ ] `LICENSE` (GPL-3.0-or-later) + REUSE/SPDX-Header-Konvention festlegen (ADR-000).
-- [ ] `scripts/tests/run.sh` mit Modi `lint|unit|quick|e2e|all`; `e2e`/`all`
-      verweigern ohne `LMNSQUID_ALLOW_REAL=1`; Summary-Zeile `N passed, M failed, K skipped`, Exit ≠ 0 bei Fail; jeder Schritt dep-gated (skippt sauber ohne Toolchain).
-- [ ] `scripts/tests/crabbox_bootstrap.sh` (hydriert Docker + baut das Squid-Image + zieht das Samba-AD-DC-Image + Client-Tooling).
-- [ ] `/test`-Skill final auf dieses Projekt zugeschnitten (heavy tier = Kerberos-E2E).
-- [ ] **Verifikation gegen echtes 7.3-Test-AD** (dokumentiert in `docs/decisions.md`):
-      reales `REALM`, Base DN/DC-Suffix; **exakter Gruppen-DN** via
-      `ldbsearch '(sAMAccountName=teachers)' dn` auf dem DC; Präfix-Regel
-      (default-school unpräfixiert) bestätigt; `%u` vs. `%v`-Platzhalter des
-      LDAP-Helpers empirisch geklärt; Subnetz→Schule-Zuordnung notiert.
+- [x] `LICENSE` (GPL-3.0-or-later, Volltext) + REUSE/SPDX-Header-Konvention (ADR-000, in `CLAUDE.md`).
+- [x] `scripts/tests/run.sh` mit Modi `lint|unit|quick|e2e|all`; `e2e`/`all`
+      verweigern ohne `LMNSQUID_ALLOW_REAL=1`; Summary `N passed, M failed, K skipped`, Exit ≠ 0 bei Fail; dep-gated. *(Selbsttest: `run.sh quick` → Exit 0, alles sauber geskippt.)*
+- [x] `scripts/tests/crabbox_bootstrap.sh` (Docker + E2E-Images vorziehen + Image-Build, sobald das P1-Template existiert).
+- [x] `/test`-Skill final auf dieses Projekt zugeschnitten (heavy tier = Kerberos-E2E).
+- [x] `docs/references.md` mit verifizierten Quellen (nicht in der ursprünglichen Liste, aber Teil des Fundaments).
+- [ ] ⏸ **VERSCHOBEN (braucht Site-Zugang; blockiert P1 NICHT — P1 baut gegen ein Test-AD):**
+      Verifikation gegen echtes 7.3-Test-AD (in `docs/decisions.md`): reales `REALM`,
+      Base DN/DC-Suffix; **exakter Gruppen-DN** via `ldbsearch '(sAMAccountName=teachers)' dn`;
+      Präfix-Regel bestätigt; `%u` vs. `%v` (wird zusätzlich im P1-E2E empirisch geklärt);
+      Subnetz→Schule-Zuordnung. → *Nutzer liefert diese Fakten, wenn Site-Zugang besteht.*
 
 **Definition of Done:** `bash scripts/tests/run.sh quick` läuft (grün oder sauber
 geskippt); alle Planungsdocs vorhanden und konsistent; die verifizierten
