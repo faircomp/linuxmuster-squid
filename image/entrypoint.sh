@@ -21,6 +21,11 @@ set -eu
 export KRB5_KTNAME="${KEYTAB}"
 export KRB5CCNAME="FILE:/tmp/krb5cc_${INSTANCE}"
 
+# envsubst ersetzt nur EXPORTIERTE Variablen. Defaults wie HTTP_PORT stehen sonst
+# nicht in der Umgebung → leere Substitution ("http_port " => FATAL). Daher alle
+# Template-Variablen explizit exportieren.
+export INSTANCE HTTP_PORT CACHE_SIZE_MB KEYTAB REALM AD_GROUP VISIBLE_HOSTNAME SCHOOL_SUBNETS
+
 if [ ! -r "${KEYTAB}" ]; then
     echo "FATAL: keytab '${KEYTAB}' is missing or not readable (mount it as a secret)." >&2
     exit 1
