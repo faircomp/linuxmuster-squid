@@ -13,11 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P1 – Bau-Dateien fertig & committet (Dockerfile→squid-openssl,
-> squid.conf.template, Kerberos-E2E-Stack samba-dc+squid+client). NÄCHSTES GATE:
-> crabbox-E2E ausführen (Lehrer→200 / Schüler→403 / gesperrt→403 / kein-Ticket→407)
-> — erst bei Grün gelten die P1-Aufgaben als erledigt.` (Fortschritts-Zeiger: bei
-> jeder Iteration aktualisieren.)
+> **Aktueller Stand:** `P1 ✅ ABGESCHLOSSEN & crabbox-verifiziert (E2E 4/4: Lehrer 200 /
+> Schüler 403 / gesperrt 403 / kein-Ticket 407). → weiter mit P2 (HTTPS-SNI-Filter
+> peek/splice + UT-Capitole-Blocklisten).` (Fortschritts-Zeiger: bei jeder Iteration
+> aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -145,24 +144,29 @@ Ticket→407.
 `deploy/e2e/` (compose-Stack: samba-dc + squid + origin + test-client) +
 `scripts/tests/e2e_kerberos.sh`.
 
-**Aufgaben:**
-- [ ] **Dockerfile korrigieren (verifiziert):** Paket `squid` → **`squid-openssl`**
+**Aufgaben:** ✅ **ABGESCHLOSSEN & crabbox-verifiziert (E2E 4/4; Commits bis `34237de`).**
+Der finale Auth-Weg wich vom Entwurf ab (in den Commit-Messages dokumentiert):
+`-s GSS_C_NO_NAME` statt fixem SPN; Image braucht `libsasl2-modules-gssapi-mit`;
+Entrypoint generiert `/etc/krb5.conf` (`rdns=false`) **und** `/etc/ldap/ldap.conf`
+(`SASL_NOCANON on`); der Keytab enthält den **kinit-fähigen** `squidsvc`-Account
+(der HTTP-SPN-Alias allein ist nicht kinit-fähig).
+- [x] **Dockerfile korrigieren (verifiziert):** Paket `squid` → **`squid-openssl`**
       (SSL-Features stecken nur dort) **und** Paket **`squidclient`** ergänzen
       (eigenständig, nicht in squid enthalten). Assertions: `negotiate_kerberos_auth`,
       `ext_kerberos_ldap_group_acl`, `ext_ldap_group_acl`, `security_file_certgen`,
       `/usr/bin/squidclient`. **Nicht** `/usr/lib/squid/ntlm_auth` asserten (existiert nicht).
-- [ ] `image/templates/squid.conf.template` erstellen: expliziter `http_port`
+- [x] `image/templates/squid.conf.template` erstellen: expliziter `http_port`
       (kein intercept), `negotiate_kerberos_auth -k ${KEYTAB} -s HTTP/${VISIBLE_HOSTNAME}@${REALM}`
       (Realm UPPERCASE), `external_acl_type ... %LOGIN ext_kerberos_ldap_group_acl -g ${AD_GROUP} -D ${REALM}`,
       `acl role_group external ...`, `acl school_net src ${SCHOOL_SUBNETS}`,
       `acl blocked dstdomain "/etc/squid/lists/blocked.domains"` + `http_access deny blocked`,
       Zugriffskette `deny !authenticated` → `allow authenticated role_group school_net` → `deny all`,
       Manager-ACL nur localhost, Logs nach stdout/stderr.
-- [ ] `entrypoint.sh`: `envsubst` nur mit Whitelist-Variablen; `KRB5_KTNAME`/`KRB5CCNAME=FILE:` exportieren; `squid -k parse`; Cache-Init; Foreground-Start.
-- [ ] **E2E-Stack** `deploy/e2e/docker-compose.yml`: `samba-dc` (z. B. `nowsci/samba-domain`, `NOCOMPLEXITY=true`), `squid` (DNS = samba-dc-IP), `origin` (nginx 200), `test-client` (krb5-user+curl); user-defined bridge, statische IPs.
-- [ ] **Fixtures:** `samba-tool user create teacher1/student1/squidsvc`, `group add teachers`, `group addmembers teachers teacher1`, `spn add HTTP/squid.<realm>`, `domain exportkeytab .../squid.keytab --principal=HTTP/squid.<realm>`, A-Record für den Squid-FQDN.
-- [ ] **Client-`krb5.conf`:** `dns_canonicalize_hostname=false`, `rdns=false`, `dns_lookup_kdc=false`, fixe `kdc=`; `KRB5CCNAME=FILE:/tmp/cc`.
-- [ ] `scripts/tests/e2e_kerberos.sh`: die **vier Assertions** über
+- [x] `entrypoint.sh`: `envsubst` nur mit Whitelist-Variablen; `KRB5_KTNAME`/`KRB5CCNAME=FILE:` exportieren; `squid -k parse`; Cache-Init; Foreground-Start.
+- [x] **E2E-Stack** `deploy/e2e/docker-compose.yml`: `samba-dc` (z. B. `nowsci/samba-domain`, `NOCOMPLEXITY=true`), `squid` (DNS = samba-dc-IP), `origin` (nginx 200), `test-client` (krb5-user+curl); user-defined bridge, statische IPs.
+- [x] **Fixtures:** `samba-tool user create teacher1/student1/squidsvc`, `group add teachers`, `group addmembers teachers teacher1`, `spn add HTTP/squid.<realm>`, `domain exportkeytab .../squid.keytab --principal=HTTP/squid.<realm>`, A-Record für den Squid-FQDN.
+- [x] **Client-`krb5.conf`:** `dns_canonicalize_hostname=false`, `rdns=false`, `dns_lookup_kdc=false`, fixe `kdc=`; `KRB5CCNAME=FILE:/tmp/cc`.
+- [x] `scripts/tests/e2e_kerberos.sh`: die **vier Assertions** über
       `curl -s -o /dev/null -w '%{http_code}' --proxy http://squid.<realm>:3128 --proxy-negotiate -U : <ziel>`
       (200/403/403/407), Exit ≠ 0 bei Abweichung; in `run.sh e2e` einhängen.
 

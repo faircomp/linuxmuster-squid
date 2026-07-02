@@ -61,6 +61,13 @@ filelists.
 Config, rekursive Gruppen, DC-Discovery via SRV); `ext_ldap_group_acl` als
 Alternative mit explizitem Bind/GC. **Offen (P0):** `%u` vs. `%v`-Platzhalter und
 exakter Gruppen-DN am realen DC verifizieren.
+**Verifiziert (P1, crabbox-E2E 4/4):** Der Helper funktioniert im Container nur mit
+(1) Paket `libsasl2-modules-gssapi-mit`; (2) `/etc/ldap/ldap.conf` mit
+`SASL_NOCANON on` — libldap kanonikalisiert den SASL-Host sonst per Reverse-DNS →
+falscher `ldap/`-SPN → „Local error"; (3) `/etc/krb5.conf` mit `rdns=false`;
+(4) einem **kinit-fähigen** Principal im Keytab (echter Account, nicht nur der
+HTTP-SPN-Alias); (5) Negotiate `-s GSS_C_NO_NAME`. In Produktion (domänengejointer
+Proxy mit Maschinenkonto-Keytab) sind (4)/(5) automatisch erfüllt.
 
 ### ADR-008 — Netzmodell: port-basiert, ein Host-Keytab (Default)
 **Status:** Accepted (Default 2026-07-02; jederzeit änderbar). **Entscheidung:** Instanzen unterscheiden sich über Port +

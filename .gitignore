@@ -27,8 +27,8 @@ debian/linuxmuster-squid/
 *.buildinfo
 *.changes
 
-# --- crabbox test captures ---
-.crabbox/captures/
+# --- crabbox test state/captures ---
+.crabbox/
 
 # --- Editor / OS ---
 .idea/
