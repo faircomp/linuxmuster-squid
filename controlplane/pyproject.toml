@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lmnsquid"
+version = "0.4.0"
+description = "Control plane for linuxmuster-squid Docker containers"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Kevin Stenzel", email = "kevin@ks98.de" }]
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "docker>=7",
+    "pydantic>=2",
+    "pydantic-settings",
+    "pyyaml",
+    "typer",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "mypy",
+    "types-PyYAML",
+]
+
+[project.scripts]
+lmnsquid-api = "lmnsquid.main:main"
+
+[tool.setuptools.packages.find]
+include = ["lmnsquid*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["docker", "docker.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

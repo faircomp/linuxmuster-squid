@@ -40,4 +40,14 @@ else
   echo "-- überspringe Image-Build: image/templates/squid.conf.template fehlt --"
 fi
 
+# 4. Python-Toolchain (venv) für die Control-Plane-Tests, falls Code vorhanden
+if [ -f controlplane/pyproject.toml ]; then
+  echo "-- Python-venv + Control-Plane-Deps --"
+  sudo apt-get install -y -q python3-venv python3-pip >/dev/null 2>&1 || true
+  python3 -m venv .venv
+  .venv/bin/pip install --quiet --upgrade pip
+  .venv/bin/pip install --quiet ruff mypy pytest pytest-asyncio httpx types-PyYAML
+  .venv/bin/pip install --quiet -e ./controlplane
+fi
+
 echo "== bootstrap fertig =="

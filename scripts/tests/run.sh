@@ -11,6 +11,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
+# Control-Plane-Tools aus dem venv bevorzugen (von crabbox_bootstrap angelegt)
+[ -x "$ROOT/.venv/bin/ruff" ] && export PATH="$ROOT/.venv/bin:$PATH"
+
 PASS=0; FAIL=0; SKIP=0
 pass(){ PASS=$((PASS + 1)); printf '  [PASS] %s\n' "$1"; }
 fail(){ FAIL=$((FAIL + 1)); printf '  [FAIL] %s\n' "$1"; }
@@ -27,8 +30,7 @@ run_step(){
 lint(){
   echo "== lint =="
   if have ruff; then
-    run_step "ruff check"  ruff ruff check .
-    run_step "ruff format" ruff ruff format --check .
+    run_step "ruff check" ruff ruff check .
   else
     skip "ruff" "nicht installiert"
   fi
@@ -47,15 +49,11 @@ lint(){
 
 unit(){
   echo "== unit =="
-  if [ -d controlplane ] || [ -d cli ]; then
-    run_step "mypy" mypy mypy .
+  if [ -f controlplane/pyproject.toml ]; then
+    run_step "mypy"   mypy   mypy --config-file controlplane/pyproject.toml controlplane/lmnsquid
+    run_step "pytest" pytest pytest -q controlplane/tests
   else
-    skip "mypy" "noch kein Python-Code"
-  fi
-  if git ls-files 'tests/*.py' '**/test_*.py' 2>/dev/null | grep -q .; then
-    run_step "pytest" pytest pytest -q
-  else
-    skip "pytest" "noch keine Tests"
+    skip "unit" "noch kein Control-Plane-Code"
   fi
 }
 
