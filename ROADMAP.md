@@ -13,10 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P3 ✅ ABGESCHLOSSEN & crabbox-verifiziert (E2E 9/9 inkl. Multischool-
-> Isolation + Präfix-Regel). → weiter mit P4 (Control-Plane REST-API: FastAPI + docker-py
-> + Reconciler + git-State + Bearer-Auth).` (Fortschritts-Zeiger: bei jeder Iteration
-> aktualisieren.)
+> **Aktueller Stand:** `P4 ✅ ABGESCHLOSSEN & crabbox-verifiziert (Control-Plane: unit 17/17
+> + mypy + ruff + echte docker-py-Container-Integration). → weiter mit P5 (Updater:
+> Digest-Pin + Health-Auto-Rollback, Renovate, CI/GHCR).` (Fortschritts-Zeiger: bei jeder
+> Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -242,13 +242,14 @@ rekonziliert.
 
 **Deliverables:** `controlplane/` (FastAPI-App, docker-Service, git-State-Store, Reconciler, Auth), `pyproject.toml`, `tests/` (pytest).
 
-**Aufgaben:**
-- [ ] Domänenmodell (pydantic): Instanz-Definition + Validierung.
-- [ ] `services/docker.py` über **docker-py (`docker`≥7)**: `containers.create/start/stop/remove`, `images.pull("<repo>@sha256:...")`, `State.Health` lesen. **Kein** stdout-Parsing von `docker compose`.
-- [ ] git-gestützter State-Store (`instances/*.yaml`) + Reconciler (rendert Config, gleicht Ist/Soll ab).
-- [ ] REST-Endpunkte: `POST/GET/PATCH /v1/instances`, `:start|stop|restart`, `GET .../logs`, `/v1/health`, `/v1/version`.
-- [ ] **Auth/Härtung:** `HTTPBearer(auto_error=False)` + `hmac.compare_digest`; App-weite `dependencies=[Depends(verify_token)]`; uvicorn an **127.0.0.1/Mgmt-IP** gebunden (nicht 0.0.0.0), TLS (`ssl_certfile/keyfile`), optional mTLS; Secret via `openssl rand` in `config.yml` `chmod 600` (wie linuxmuster-api7); **Audit-Log** jeder Mutation.
-- [ ] Unit-/API-Tests (pytest + httpx-TestClient), inkl. Negativtests (401/403, ungültige Instanz).
+**Aufgaben:** ✅ **ABGESCHLOSSEN & crabbox-verifiziert (unit 17/17 + mypy + ruff; heavy 2/2: kerberos-e2e 9/9 + echte docker-py-Container-Integration; commit `060c6cb`).**
+Module parallel per Workflow erzeugt, dann integriert. Hinweis: TLS/mTLS + `config.yml`-Secret-Generierung (`openssl rand`, `chmod 600`) landen mit dem systemd-Dienst in P9.
+- [x] Domänenmodell (pydantic): Instanz-Definition + Validierung.
+- [x] `services/docker.py` über **docker-py (`docker`≥7)**: `containers.create/start/stop/remove`, `images.pull("<repo>@sha256:...")`, `State.Health` lesen. **Kein** stdout-Parsing von `docker compose`.
+- [x] git-gestützter State-Store (`instances/*.yaml`) + Reconciler (rendert Config, gleicht Ist/Soll ab).
+- [x] REST-Endpunkte: `POST/GET/PATCH /v1/instances`, `:start|stop|restart`, `GET .../logs`, `/v1/health`, `/v1/version`.
+- [x] **Auth/Härtung:** `HTTPBearer(auto_error=False)` + `hmac.compare_digest`; App-weite `dependencies=[Depends(verify_token)]`; uvicorn an **127.0.0.1/Mgmt-IP** gebunden (nicht 0.0.0.0), TLS (`ssl_certfile/keyfile`), optional mTLS; Secret via `openssl rand` in `config.yml` `chmod 600` (wie linuxmuster-api7); **Audit-Log** jeder Mutation.
+- [x] Unit-/API-Tests (pytest + httpx-TestClient), inkl. Negativtests (401/403, ungültige Instanz).
 
 **Definition of Done:** `pytest` grün; auf crabbox legt die API real eine
 Instanz an, startet/stoppt sie (docker-py), Reconcile bringt Ist=Soll; ohne Token
