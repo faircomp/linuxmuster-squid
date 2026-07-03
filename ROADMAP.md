@@ -438,7 +438,7 @@ kein falsches Kinderschutz-Versprechen.
 - [x] **TLS:** Doku/ROADMAP/Threat-Model auf „API nur loopback; off-host nur via betreiber-eigenen TLS-Reverse-Proxy" korrigieren **und** `main.py`: laute Warnung/Abbruch bei non-loopback-Bind ohne TLS. *Verif:* Unit (bind_host≠loopback ohne TLS → Warnung/Exit) + Doku-Review.
 - [x] **Socket-Proxy ehrlich framen** (ADR-012/Threat-Model): reduziert Angriffsfläche, **kein** Downgrade unter Host-Root; rootless Docker = echte Antwort. *Verif:* Doku-Review.
 - [x] **Socket-Proxy vs. Access-Log-Historie:** `access_logs()` host-seitig aus dem Log-Volume lesen (kein `docker exec`) **oder** die Einschränkung (EXEC nötig) klar dokumentieren. *Verif:* falls Umbau: Smoke über den Socket-Proxy-Pfad; sonst Doku-Note.
-- [ ] **GPG/apt-Signierung:** gegen die echte `deb.linuxmuster.net`-Pipeline verifizieren (Repo-`Release`-Signatur, **nicht** per-`.deb`), Note in `build-deb.sh` korrigieren. *Verif:* WebFetch/Quelle + korrigierte Doku. ⏸ Human-Gate: echter Key.
+- [x] **GPG/apt-Signierung:** gegen die echte `deb.linuxmuster.net`-Pipeline verifizieren (Repo-`Release`-Signatur, **nicht** per-`.deb`), Note in `build-deb.sh` korrigieren. *Verif:* WebFetch/Quelle + korrigierte Doku. ⏸ Human-Gate: echter Key.
 
 **DoD:** kein Doku-vs-Code-Widerspruch mehr offen.
 
