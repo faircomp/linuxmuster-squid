@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any, Optional
 
 import httpx
 import typer
@@ -124,11 +125,48 @@ def status(name: str) -> None:
         _emit(c.get(f"/v1/instances/{name}/status"))
 
 
+def _log_params(
+    tail: int, since: Optional[int], until: Optional[int], grep: Optional[str]
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"tail": tail}
+    if since is not None:
+        params["since"] = since
+    if until is not None:
+        params["until"] = until
+    if grep is not None:
+        params["grep"] = grep
+    return params
+
+
 @app.command()
-def logs(name: str, tail: int = typer.Option(100)) -> None:
-    """Show the last container log lines for the instance."""
+def logs(
+    name: str,
+    tail: int = typer.Option(100),
+    since: Optional[int] = typer.Option(None, help="only lines after this Unix epoch second"),
+    until: Optional[int] = typer.Option(None, help="only lines before this Unix epoch second"),
+    grep: Optional[str] = typer.Option(None, help="substring filter"),
+) -> None:
+    """Show recent container log lines (access + squid), optional time/substring filter."""
     with _get_client() as c:
-        _emit(c.get(f"/v1/instances/{name}/logs", params={"tail": tail}))
+        _emit(c.get(f"/v1/instances/{name}/logs", params=_log_params(tail, since, until, grep)))
+
+
+@app.command("access-logs")
+def access_logs(
+    name: str,
+    tail: int = typer.Option(200),
+    since: Optional[int] = typer.Option(None, help="only lines after this Unix epoch second"),
+    until: Optional[int] = typer.Option(None, help="only lines before this Unix epoch second"),
+    grep: Optional[str] = typer.Option(None, help="substring filter (e.g. a user or domain)"),
+) -> None:
+    """Query the retained (gzip-rotated) access-log history."""
+    with _get_client() as c:
+        _emit(
+            c.get(
+                f"/v1/instances/{name}/logs/access",
+                params=_log_params(tail, since, until, grep),
+            )
+        )
 
 
 @app.command()

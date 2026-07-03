@@ -81,3 +81,25 @@ def test_patch_cannot_change_identity(
     )
     assert resp.status_code == 200
     assert resp.json()["instance"]["name"] == "default-school-teachers"
+
+
+def test_log_query_endpoints(
+    client: Any, auth_headers: dict[str, str], instance_data: dict[str, Any]
+) -> None:
+    client.post("/v1/instances", json=instance_data, headers=auth_headers)
+    name = "default-school-teachers"
+
+    live = client.get(f"/v1/instances/{name}/logs", params={"grep": "started"}, headers=auth_headers)
+    assert live.status_code == 200 and "started" in live.json()["logs"]
+
+    acc = client.get(
+        f"/v1/instances/{name}/logs/access", params={"grep": "teacher1"}, headers=auth_headers
+    )
+    assert acc.status_code == 200
+    assert "teacher1" in acc.json()["logs"] and "student1" not in acc.json()["logs"]
+
+    for bad_tail in (0, 20000):
+        r = client.get(
+            f"/v1/instances/{name}/logs", params={"tail": bad_tail}, headers=auth_headers
+        )
+        assert r.status_code == 422, bad_tail

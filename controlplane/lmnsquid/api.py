@@ -51,6 +51,18 @@ def create_app(
             )
         return inst
 
+    def _check_log_params(tail: int, grep: str | None) -> None:
+        if not 1 <= tail <= 10000:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="tail must be between 1 and 10000",
+            )
+        if grep is not None and len(grep) > 200:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="grep pattern too long (max 200 chars)",
+            )
+
     # ------------------------------------------------------------------ health
     @app.get("/v1/health")
     async def health() -> dict[str, str]:
@@ -131,9 +143,31 @@ def create_app(
         return docker.status(name)
 
     @app.get("/v1/instances/{name}/logs", dependencies=auth)
-    async def instance_logs(name: str, tail: int = 100) -> dict[str, str]:
+    async def instance_logs(
+        name: str,
+        tail: int = 100,
+        since: int | None = None,
+        until: int | None = None,
+        grep: str | None = None,
+    ) -> dict[str, str]:
         _require(name)
-        return {"logs": docker.logs(name, tail=tail)}
+        _check_log_params(tail, grep)
+        return {"logs": docker.logs(name, tail=tail, since=since, until=until, grep=grep)}
+
+    @app.get("/v1/instances/{name}/logs/access", dependencies=auth)
+    async def instance_access_logs(
+        name: str,
+        tail: int = 200,
+        since: int | None = None,
+        until: int | None = None,
+        grep: str | None = None,
+    ) -> dict[str, str]:
+        """Query the retained (gzip-rotated) access-log history in the log volume."""
+        _require(name)
+        _check_log_params(tail, grep)
+        return {
+            "logs": docker.access_logs(name, since=since, until=until, grep=grep, tail=tail)
+        }
 
     # ---------------------------------------------------- digest-pinned updates
     @app.post("/v1/instances/{name}/update", dependencies=auth)

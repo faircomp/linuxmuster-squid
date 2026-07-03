@@ -66,6 +66,10 @@ class FakeDockerService:
             "health": "unhealthy" if "bad" in inst.image else "healthy",
             "env": self.env_for(inst),
             "logs": f"started {inst.container_name}\n",
+            "access_logs": (
+                "1783000000.0 0 10.0.0.1 TCP_MISS/200 - teacher1 GET http://ok.example/\n"
+                "1783000001.0 0 10.0.0.2 TCP_DENIED/403 - student1 GET http://x.example/\n"
+            ),
         }
         return self.status(inst.name)
 
@@ -109,11 +113,36 @@ class FakeDockerService:
             "image": container["image"],
         }
 
-    def logs(self, name: str, tail: int = 100) -> str:
+    def logs(
+        self,
+        name: str,
+        tail: int = 100,
+        since: int | None = None,
+        until: int | None = None,
+        grep: str | None = None,
+    ) -> str:
         container = self.containers.get(name)
         if container is None:
             return ""
         lines = str(container["logs"]).splitlines()
+        if grep:
+            lines = [line for line in lines if grep in line]
+        return "\n".join(lines[-tail:])
+
+    def access_logs(
+        self,
+        name: str,
+        since: int | None = None,
+        until: int | None = None,
+        grep: str | None = None,
+        tail: int = 200,
+    ) -> str:
+        container = self.containers.get(name)
+        if container is None:
+            return ""
+        lines = str(container.get("access_logs", "")).splitlines()
+        if grep:
+            lines = [line for line in lines if grep in line]
         return "\n".join(lines[-tail:])
 
 

@@ -199,12 +199,59 @@ class DockerService:
             "image": image,
         }
 
-    def logs(self, name: str, tail: int = 100) -> str:
-        """Return the last ``tail`` log lines of the container as text."""
+    def logs(
+        self,
+        name: str,
+        tail: int = 100,
+        since: Optional[int] = None,
+        until: Optional[int] = None,
+        grep: Optional[str] = None,
+    ) -> str:
+        """Return the last ``tail`` lines of the live docker log (access + squid debug).
+
+        ``since``/``until`` are Unix epoch seconds; ``grep`` is a plain substring filter
+        applied in Python (no shell — injection-safe).
+        """
         container = self._get(name)
         if container is None:
             return ""
-        data = container.logs(tail=tail)
-        if isinstance(data, bytes):
-            return data.decode("utf-8", errors="replace")
-        return str(data)
+        kwargs: dict[str, Any] = {"tail": tail}
+        if since is not None:
+            kwargs["since"] = since
+        if until is not None:
+            kwargs["until"] = until
+        data = container.logs(**kwargs)
+        text = data.decode("utf-8", errors="replace") if isinstance(data, bytes) else str(data)
+        if grep:
+            text = "\n".join(line for line in text.splitlines() if grep in line)
+        return text
+
+    def access_logs(
+        self,
+        name: str,
+        since: Optional[int] = None,
+        until: Optional[int] = None,
+        grep: Optional[str] = None,
+        tail: int = 200,
+    ) -> str:
+        """Query the retained (gzip-rotated) access-log history in the log volume.
+
+        Reads every ``access.log*`` file (current + rotated ``.gz``) inside the container
+        and filters by epoch window + substring. User input is passed via the exec
+        environment, NEVER interpolated into the shell string (no command injection).
+        """
+        container = self._get(name)
+        if container is None:
+            return ""
+        env = {"SINCE": str(since or ""), "UNTIL": str(until or ""), "GREP": grep or ""}
+        script = (
+            "zcat -f /var/log/squid/access.log* 2>/dev/null"
+            ' | awk \'(!ENVIRON["SINCE"] || $1+0 >= ENVIRON["SINCE"]+0)'
+            ' && (!ENVIRON["UNTIL"] || $1+0 <= ENVIRON["UNTIL"]+0)\''
+            ' | { if [ -n "$GREP" ]; then grep -F -- "$GREP"; else cat; fi; }'
+            f" | tail -n {int(tail)}"
+        )
+        _exit_code, output = container.exec_run(["sh", "-c", script], environment=env)
+        if isinstance(output, bytes):
+            return output.decode("utf-8", errors="replace")
+        return str(output or "")

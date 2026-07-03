@@ -55,5 +55,12 @@ else
     echo "  [PASS] Retention: access.log.3* nicht vorhanden"
 fi
 
+echo "== historische Abfrage: zcat über current + rotiert + gz (wie access_logs()) =="
+if $D exec "$NAME" sh -c 'zcat -f /var/log/squid/access.log* 2>/dev/null | grep -Fq "GET"'; then
+    echo "  [PASS] Access-Historie über rotierte+gz-Dateien abfragbar"
+else
+    echo "  [FAIL] historische Abfrage findet nichts"; fail=1
+fi
+
 echo "== logrotate smoke: $fail Fehler =="
 exit "$fail"
