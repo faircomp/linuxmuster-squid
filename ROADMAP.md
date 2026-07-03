@@ -13,10 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P6 ✅ ABGESCHLOSSEN & crabbox-verifiziert (Typer-CLI, dünner Client
-> der REST-API; pytest 24/24). → weiter mit P7 (Keytab-/AD-Integration & DNS — v. a. Doku;
-> Keytab-Consumption ist bereits im P1-E2E bewiesen).` (Fortschritts-Zeiger: bei jeder
-> Iteration aktualisieren.)
+> **Aktueller Stand:** `P7 ✅ ABGESCHLOSSEN (Keytab-Lifecycle + DNS-Doku + Admin-Helfer;
+> Consumption im E2E bewiesen). → weiter mit P8 (Client-Steuerung GPO/WPAD-Vorlagen +
+> Produktiv-Abnahme — echte Windows-Abnahme ist ein Human-Gate).` (Fortschritts-Zeiger:
+> bei jeder Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -308,10 +308,10 @@ Keytab**), plus DNS-/krb5-Handling für stabile SPN-Kanonikalisierung.
 
 **Deliverables:** Keytab-Secret-Handling in der Control-Plane; DNS-A/PTR-Leitfaden; `krb5.conf`-Vorlage; optional `msktutil`-Provisionierung (zurückgestellt).
 
-**Aufgaben:**
-- [ ] Keytab als Secret (tmpfs, `:ro`), lesbar für `cache_effective_user proxy`; Rotation/Erneuerung dokumentiert.
-- [ ] DNS-Leitfaden: A-Record je Proxy-FQDN; **kein** wpad-PTR (bricht Linux-SSO); `rdns=false`-Alternative dokumentiert (Port-basiertes Modell mit einem Host-Keytab).
-- [ ] Optionale Auto-Provisionierung via `msktutil`/`samba-tool` als **abgeschaltetes** Feature (ADR: braucht delegiertes AD-Konto → mehr Angriffsfläche).
+**Aufgaben:** ✅ **ABGESCHLOSSEN (`docs/keytab-and-dns.md` + `scripts/provision-keytab.sh`; commit `44c1cd7`).** Keytab-Consumption real bewiesen im P1-E2E; Control-Plane mountet den Keytab als ro-Secret; Auto-Provisionierung bleibt abgeschaltet (ADR-009).
+- [x] Keytab als Secret (tmpfs, `:ro`), lesbar für `cache_effective_user proxy`; Rotation/Erneuerung dokumentiert.
+- [x] DNS-Leitfaden: A-Record je Proxy-FQDN; **kein** wpad-PTR (bricht Linux-SSO); `rdns=false`-Alternative dokumentiert (Port-basiertes Modell mit einem Host-Keytab).
+- [x] Optionale Auto-Provisionierung via `msktutil`/`samba-tool` als **abgeschaltetes** Feature (ADR: braucht delegiertes AD-Konto → mehr Angriffsfläche).
 
 **Definition of Done:** Eine Instanz kommt mit einem realen, extern gelieferten
 Keytab hoch und authentifiziert (im E2E bereits abgedeckt); Keytab-Handling +
