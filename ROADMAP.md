@@ -13,10 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P1 ✅ ABGESCHLOSSEN & crabbox-verifiziert (E2E 4/4: Lehrer 200 /
-> Schüler 403 / gesperrt 403 / kein-Ticket 407). → weiter mit P2 (HTTPS-SNI-Filter
-> peek/splice + UT-Capitole-Blocklisten).` (Fortschritts-Zeiger: bei jeder Iteration
-> aktualisieren.)
+> **Aktueller Stand:** `P2 ✅ ABGESCHLOSSEN & crabbox-verifiziert (E2E 6/6 inkl. HTTPS
+> splice→200 / block→403 ohne Entschlüsselung; Blocklist-Refresh-Smoke grün). → weiter
+> mit P3 (Multischool + deklaratives Instanz-Konfigmodell).` (Fortschritts-Zeiger: bei
+> jeder Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -191,12 +191,15 @@ CONNECT-`dstdomain` als Fallback ohne SSL.
 **Deliverables:** SNI-Splice-Block im Template + Cert-Init im Entrypoint;
 `image/lists/` + Refresh-Mechanismus (Sidecar/Cron); pro-Rolle Allow/Block-Listen.
 
-**Aufgaben:**
-- [ ] SNI peek/splice: `http_port ... ssl-bump generate-host-certificates=off tls-cert=<self-signed-ca>`, `sslcrtd_program security_file_certgen -s <ssl_db>`, `acl step1 at_step SslBump1`, `ssl_bump peek step1`, `acl allowed_sni ssl::server_name "..."`, `ssl_bump splice allowed_sni`, `ssl_bump terminate all`. **Self-signed CA nur für den Peek-Schritt, wird nie an Clients verteilt** (kein MITM).
-- [ ] Cert-DB einmalig im Entrypoint initialisieren (`security_file_certgen -c -s <ssl_db> -M 4MB`) + Wegwerf-CA erzeugen.
-- [ ] **UT-Capitole-(Toulouse-)Liste** ziehen + refreshen (Sidecar/Cron), Format/Kategorien dokumentiert; ohne Refresh „verrottet" die Liste.
-- [ ] Pro Rolle getrennte Listen (Lehrer offener, Schüler enger); Default-Verhalten bei fehlendem SNI (ECH/kein-SNI) bewusst festlegen.
-- [ ] Fallback-Pfad dokumentiert: reines CONNECT-`dstdomain` (Paket `squid`, kein SSL) für Umgebungen ohne peek/splice.
+**Aufgaben:** ✅ **ABGESCHLOSSEN & crabbox-verifiziert (E2E 6/6: HTTPS erlaubt→200 gespliced,
+gesperrt→403, ohne Entschlüsselung; commit `da1928d`).** Umgesetzt als Blocklist-Modell
+(`ssl_bump peek step1; terminate blocked_sni; splice all` statt Allowlist); Blocklist ist
+pro Instanz mountbar (pro-Rolle); ohne SNI → splice (CONNECT-`dstdomain` bleibt als Filter).
+- [x] SNI peek/splice: `http_port ... ssl-bump generate-host-certificates=off tls-cert=<self-signed-ca>`, `sslcrtd_program security_file_certgen -s <ssl_db>`, `acl step1 at_step SslBump1`, `ssl_bump peek step1`, `acl allowed_sni ssl::server_name "..."`, `ssl_bump splice allowed_sni`, `ssl_bump terminate all`. **Self-signed CA nur für den Peek-Schritt, wird nie an Clients verteilt** (kein MITM).
+- [x] Cert-DB einmalig im Entrypoint initialisieren (`security_file_certgen -c -s <ssl_db> -M 4MB`) + Wegwerf-CA erzeugen.
+- [x] **UT-Capitole-(Toulouse-)Liste** ziehen + refreshen (Sidecar/Cron), Format/Kategorien dokumentiert; ohne Refresh „verrottet" die Liste.
+- [x] Pro Rolle getrennte Listen (Lehrer offener, Schüler enger); Default-Verhalten bei fehlendem SNI (ECH/kein-SNI) bewusst festlegen.
+- [x] Fallback-Pfad dokumentiert: reines CONNECT-`dstdomain` (Paket `squid`, kein SSL) für Umgebungen ohne peek/splice.
 
 **Definition of Done:** crabbox-E2E erweitert: gesperrte HTTPS-Domain wird per SNI
 (bzw. CONNECT) mit 403 abgelehnt, erlaubte durchgelassen, **ohne** dass ein
