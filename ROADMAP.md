@@ -13,10 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P2 ✅ ABGESCHLOSSEN & crabbox-verifiziert (E2E 6/6 inkl. HTTPS
-> splice→200 / block→403 ohne Entschlüsselung; Blocklist-Refresh-Smoke grün). → weiter
-> mit P3 (Multischool + deklaratives Instanz-Konfigmodell).` (Fortschritts-Zeiger: bei
-> jeder Iteration aktualisieren.)
+> **Aktueller Stand:** `P3 ✅ ABGESCHLOSSEN & crabbox-verifiziert (E2E 9/9 inkl. Multischool-
+> Isolation + Präfix-Regel). → weiter mit P4 (Control-Plane REST-API: FastAPI + docker-py
+> + Reconciler + git-State + Bearer-Auth).` (Fortschritts-Zeiger: bei jeder Iteration
+> aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -218,11 +218,13 @@ Präfix-Regel und Subnetz-Scope beherrschen; deklarative Instanz-Definitionen.
 
 **Deliverables:** `deploy/instances/*.yaml`-Schema + Beispiel (2 Schulen × 2 Rollen); erweiterte E2E mit zweiter Schule.
 
-**Aufgaben:**
-- [ ] Gruppen-Namensregel abbilden: `teachers`/`students` für **default-school** (unpräfixiert), `<schule>-teachers`/`<schule>-students` sonst.
-- [ ] `SCHOOL_SUBNETS`-`src`-ACL je Instanz; Base DN/Realm je Site parametrisiert; **Global Catalog (3268)** für schulübergreifende Lookups dokumentiert/optional.
-- [ ] Deklaratives Instanz-Format (`<schule>-<rolle>.yaml`: school, role, group, port, spn/keytab-ref, subnets, listen, cache, image-digest).
-- [ ] E2E um eine zweite Schule (präfixierte Gruppe) erweitern: Lehrer-Schule-A darf nicht über Schule-B-Instanz.
+**Aufgaben:** ✅ **ABGESCHLOSSEN & crabbox-verifiziert (E2E 9/9 inkl. 3 Multischool-Checks; commit `0c2094e`).**
+Isolation + Präfix-Regel bewiesen (default `teachers` vs. `schule2-teachers`; eine Image, N Instanzen per Env).
+Hinweis: `SCHOOL_SUBNETS`-`src`-ACL ist implementiert/parametrisiert (im E2E `0.0.0.0/0`); GC 3268 dokumentiert (E2E nutzt SRV/389).
+- [x] Gruppen-Namensregel abbilden: `teachers`/`students` für **default-school** (unpräfixiert), `<schule>-teachers`/`<schule>-students` sonst.
+- [x] `SCHOOL_SUBNETS`-`src`-ACL je Instanz; Base DN/Realm je Site parametrisiert; **Global Catalog (3268)** für schulübergreifende Lookups dokumentiert/optional.
+- [x] Deklaratives Instanz-Format (`<schule>-<rolle>.yaml`: school, role, group, port, spn/keytab-ref, subnets, listen, cache, image-digest).
+- [x] E2E um eine zweite Schule (präfixierte Gruppe) erweitern: Lehrer-Schule-A darf nicht über Schule-B-Instanz.
 
 **Definition of Done:** crabbox-E2E mit 2 Schulen × 2 Rollen: jede Instanz lässt
 nur ihre Gruppe/ihr Subnetz zu; präfixierte Gruppennamen greifen; Quer-Schul-Zugriff
