@@ -17,7 +17,7 @@ Gruppen-ACL erzwungen und automatisiert bewiesen.
 > Abfrage nachgezogen → Tag v1.0.0-rc2. Multi-Perspektiven-Gap-Review gemacht → P11-Backlog
 > (Deployment-Realität/Betrieb/Ehrlichkeit) unten, priorisiert mit Ziel+Verifikation je Punkt.
 > P11.1–P11.2 ✅ (Upgrade-Restart + reconcile/restore, crabbox-verifiziert). P11.3 ✅ (ECH/QUIC/DoH dokumentiert +
-> mitigiert). P11.4 ✅. NÄCHSTES: P11.5 (Betriebs-Signale). Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
+> mitigiert). P11.1–P11.6 ✅ (autonom, crabbox-verifiziert). Rest: P11.7 (Lasttest, verschoben) + Human-Gates. Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -445,25 +445,25 @@ kein falsches Kinderschutz-Versprechen.
 ### P11.5 — 🟢 Leichtgewichtige Betriebs-Signale
 
 **Ziel:** Ausfälle früh sichtbar, ohne Monitoring-Stack.
-- [ ] **Auth-Health-Signal:** Keytab-Ablauf/407-Spike erkennbar (Healthcheck oder `lmnsquid status`); mind. dokumentierte Warnung. *Verif:* Unit/Smoke (kaputter Keytab → Signal) oder Doku.
-- [ ] **Alerting-Doku:** `docker events`/Healthcheck an vorhandene Schul-Infra hängen (kein Prometheus-Stack — das wäre Über­engineering). *Verif:* Doku-Review.
-- [ ] **dockerd-down → 503:** schmaler Handler mappt `docker.errors.DockerException` → 503 statt rohem 500. *Verif:* Unit (Docker weg → 503).
-- [ ] **Cache-Korruption-Recovery:** 2 Zeilen Doku (Cache-Volume wegwerfbar/neu erzeugbar; Log-Volume = einziger nicht-rekonstruierbarer Zustand neben secrets/config). *Verif:* Doku-Review.
+- [x] **Auth-Health-Signal:** Keytab-Ablauf/407-Spike erkennbar (Healthcheck oder `lmnsquid status`); mind. dokumentierte Warnung. *Verif:* Unit/Smoke (kaputter Keytab → Signal) oder Doku.
+- [x] **Alerting-Doku:** `docker events`/Healthcheck an vorhandene Schul-Infra hängen (kein Prometheus-Stack — das wäre Über­engineering). *Verif:* Doku-Review.
+- [x] **dockerd-down → 503:** schmaler Handler mappt `docker.errors.DockerException` → 503 statt rohem 500. *Verif:* Unit (Docker weg → 503).
+- [x] **Cache-Korruption-Recovery:** 2 Zeilen Doku (Cache-Volume wegwerfbar/neu erzeugbar; Log-Volume = einziger nicht-rekonstruierbarer Zustand neben secrets/config). *Verif:* Doku-Review.
 
 **DoD:** ein toter/kaputter Proxy ist erkennbar, bevor Nutzer klagen.
 
 ### P11.6 — 🟢 Supply-Chain / Kleinkram
 
 **Ziel:** Konsistente Digest-Disziplin + integre Blocklisten.
-- [ ] **Socket-Proxy `@sha256` pinnen** (+ Renovate trackt) statt `:latest` auf einer Root-nahen Komponente. *Verif:* grep zeigt Digest statt `:latest`.
-- [ ] **Blocklisten-Integrität:** Checksum/Signatur prüfen falls verfügbar, sonst Sanity-Floor (Zeilenzahl) + **fail-closed** (alte Liste behalten). *Verif:* `blocklist_smoke`: manipuliertes/leeres Archiv → alte Liste bleibt.
+- [x] **Socket-Proxy `@sha256` pinnen** (+ Renovate trackt) statt `:latest` auf einer Root-nahen Komponente. *Verif:* grep zeigt Digest statt `:latest`.
+- [x] **Blocklisten-Integrität:** Checksum/Signatur prüfen falls verfügbar, sonst Sanity-Floor (Zeilenzahl) + **fail-closed** (alte Liste behalten). *Verif:* `blocklist_smoke`: manipuliertes/leeres Archiv → alte Liste bleibt.
 
 **DoD:** kein `:latest` auf Root-nahen Komponenten; die Blocklist ersetzt sich nie durch Müll.
 
 ### P11.7 — 🟢 Lasttest (verschoben — YAGNI bis Evidenz)
 
 **Ziel:** Verhalten unter „ganze Klasse gleichzeitig" ist belegt, wenn es real relevant wird.
-- [ ] Soak/Load-Smoke: viele parallele Kerberos-Auth durch eine Instanz (negotiate `children` + `ext_kerberos_ldap_group_acl`-Concurrency). *Verif:* crabbox-Lasttest (N parallele `curl --proxy-negotiate`, p95-Latenz, keine 5xx). *Auslöser:* erst bei realem Stall-Report — Tuning ohne Messung = Raten.
+- [~] Soak/Load-Smoke: viele parallele Kerberos-Auth durch eine Instanz (negotiate `children` + `ext_kerberos_ldap_group_acl`-Concurrency). *Verif:* crabbox-Lasttest (N parallele `curl --proxy-negotiate`, p95-Latenz, keine 5xx). *Auslöser:* erst bei realem Stall-Report — Tuning ohne Messung = Raten.
 
 ### Bewusst NICHT (dokumentierte Entscheidungen, kein Über­engineering)
 
