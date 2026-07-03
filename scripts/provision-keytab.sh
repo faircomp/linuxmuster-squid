@@ -17,8 +17,26 @@ FQDN="${1:?Usage: provision-keytab.sh <proxy-fqdn> <service-account> <out.keytab
 ACCOUNT="${2:?service account (kinit-fähig, existierend)}"
 OUT="${3:?output keytab path}"
 
-echo "== SPN HTTP/${FQDN} an Account ${ACCOUNT} hängen =="
-samba-tool spn add "HTTP/${FQDN}" "${ACCOUNT}"
+SPN="HTTP/${FQDN}"
+SAM_LDB="${SAM_LDB:-/var/lib/samba/private/sam.ldb}"
+
+echo "== SPN ${SPN} prüfen/anhängen an ${ACCOUNT} =="
+if samba-tool spn list "${ACCOUNT}" 2>/dev/null | grep -Fq "${SPN}"; then
+    echo "   ${SPN} ist bereits auf ${ACCOUNT} — überspringe (idempotent)."
+else
+    # Duplicate-SPN früh erkennen: hängt der SPN schon auf einem ANDEREN Konto, bricht
+    # Kerberos später mit KRB_AP_ERR_MODIFIED (der KDC kann nicht disambiguieren).
+    if command -v ldbsearch >/dev/null 2>&1 && [ -r "${SAM_LDB}" ]; then
+        OWNER=$(ldbsearch -H "${SAM_LDB}" "(servicePrincipalName=${SPN})" sAMAccountName \
+            2>/dev/null | awk '/^sAMAccountName:/ {print $2}')
+        if [ -n "${OWNER:-}" ]; then
+            echo "FATAL: ${SPN} existiert bereits auf Konto '${OWNER}' (duplicate SPN)." >&2
+            echo "       Erst dort entfernen: samba-tool spn delete ${SPN} ${OWNER}" >&2
+            exit 1
+        fi
+    fi
+    samba-tool spn add "${SPN}" "${ACCOUNT}"
+fi
 
 echo "== Keytab für ${ACCOUNT} exportieren -> ${OUT} =="
 rm -f "${OUT}"                                # frischer Keytab (exportkeytab APPENDET sonst)

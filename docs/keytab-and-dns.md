@@ -46,6 +46,22 @@ die `HTTP/<fqdn>`-Tickets über denselben Account-Schlüssel.
   Passwortwechsel neu exportieren. Nach Rotation Instanz neu erstellen (Secret neu
   mounten) bzw. `restart`.
 
+## KVNO- & SPN-Fallstricke (verifiziert)
+
+- **Keytab mehrfach exportieren ist harmlos** — `samba-tool domain exportkeytab` schreibt
+  die *aktuellen* Schlüssel, ändert **kein** Passwort und **bumpt die KVNO nicht**. ABER es
+  **hängt an** eine bestehende Datei an → deshalb macht `provision-keytab.sh` `rm -f` vor dem
+  Export (sonst sammeln sich veraltete KVNO-Einträge und Squid greift evtl. den falschen).
+- **Passwort-Reset / Neu-Join (gleicher Name) macht alte Keytabs ungültig** — jeder Reset
+  erhöht die KVNO (`msDS-KeyVersionNumber`); alte Keytabs werden stale (`KRB_AP_ERR_MODIFIED`
+  bzw. „matching key not found in keytab"). → Keytab **neu exportieren** und Instanz neu
+  mounten/`restart`.
+- **Derselbe SPN auf zwei Konten = Bruch** — ein SPN (`HTTP/<fqdn>`) muss domänenweit
+  **eindeutig** sein, sonst kann der KDC nicht disambiguieren (`KRB_AP_ERR_MODIFIED`, oft
+  NTLM-Fallback). `provision-keytab.sh` prüft das vorab (`ldbsearch`) und ist idempotent;
+  manuell prüfen: `setspn -X` (Windows) bzw.
+  `ldbsearch -H .../sam.ldb '(servicePrincipalName=HTTP/<fqdn>)' sAMAccountName` (Samba).
+
 ## DNS- & Zeit-Anforderungen (hart)
 
 - **A-Record** für jeden Proxy-FQDN (`visible_hostname`).
