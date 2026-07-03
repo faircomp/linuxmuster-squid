@@ -77,8 +77,8 @@ http_access deny all                       # authentifiziert, aber nicht in Grup
 
 # --- Cache & Logs ---
 # In Dateien loggen (nicht /dev/stdout): nach dem Drop auf cache_effective_user
-# proxy ist /proc/self/fd nicht mehr erreichbar -> /dev/stdout scheitert.
-# Container-Log-Streaming (Sidecar/Tailer) ist ein P10-Härtungsthema.
+# proxy ist /proc/self/fd nicht mehr erreichbar -> /dev/stdout scheitert. Der Entrypoint
+# spiegelt den Access-Log per `tail -F` auf Container-stdout (-> docker/lmnsquid logs).
 cache_dir ufs /var/spool/squid ${CACHE_SIZE_MB} 16 256
 access_log stdio:/var/log/squid/access.log squid
 cache_log /var/log/squid/cache.log
