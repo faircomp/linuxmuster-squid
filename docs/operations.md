@@ -21,6 +21,10 @@ zufälligen API-Token in `/etc/linuxmuster-squid/config.yml` (0600) und startet 
 
 ## Instanzen verwalten (CLI = dünner Client der REST-API)
 
+> **Tipp:** Die exakten `--ad-group`-Werte je Schule + fertige `create`-Befehle liefert
+> `scripts/discover-ad-facts.sh` (auf dem DC ausführen, join-frei) — beugt vertippten
+> Gruppennamen vor (die sonst einen stillen 403 verursachen).
+
 ```
 lmnsquid create --school default-school --role teachers --ad-group teachers \
   --realm LINUXMUSTER.MEINESCHULE.DE \
