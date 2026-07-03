@@ -62,6 +62,14 @@ services:
       e2e:
         ipv4_address: 172.28.0.20
 
+  # Erlaubtes HTTPS-Ziel (self-signed) — für den splice-Test.
+  origin-https:
+    build: ./origin-https
+    hostname: secure.example.internal
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.21
+
   # Kerberos-Client, der die vier Assertions fährt (ENTRYPOINT = /assert.sh).
   test-client:
     build: ./client

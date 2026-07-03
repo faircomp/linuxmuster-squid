@@ -7,7 +7,11 @@
 # ============================================================
 
 # --- Expliziter Forward-Proxy (NIEMALS intercept: Kerberos-407 braucht explizit) ---
-http_port ${HTTP_PORT}
+# ssl-bump nur für SNI peek/splice (KEINE Entschlüsselung). generate-host-certificates=off,
+# da wir nie MITM-bumpen; die tls-cert-CA wird nur zum Aktivieren der Bump-Maschinerie
+# gebraucht und NIE an Clients ausgeliefert (splice = Ende-zu-Ende-Tunnel).
+http_port ${HTTP_PORT} ssl-bump generate-host-certificates=off tls-cert=/etc/squid/ssl/bump.pem
+sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/spool/squid/ssl_db -M 4MB
 visible_hostname ${VISIBLE_HOSTNAME}
 cache_effective_user proxy
 
@@ -36,6 +40,16 @@ acl school_net src ${SCHOOL_SUBNETS}
 # dstdomain matcht den Plain-HTTP-Host UND den CONNECT-Ziel-Host (HTTPS),
 # also kein SSL-Bump / kein Client-CA nötig.
 acl blocked_domains dstdomain "/etc/squid/lists/blocked.domains"
+
+# --- HTTPS: SNI peek + splice (KEINE Entschlüsselung) ---
+# step1 liest den TLS-ClientHello (SNI); gesperrte SNIs werden getrennt (terminate),
+# alles andere wird getunnelt (splice, kein MITM). Fängt auch Fälle, in denen der
+# CONNECT-Host von der echten SNI abweicht (Domain-Fronting).
+acl step1 at_step SslBump1
+acl blocked_sni ssl::server_name "/etc/squid/lists/blocked.domains"
+ssl_bump peek step1
+ssl_bump terminate blocked_sni
+ssl_bump splice all
 
 # --- Sichere Ports & Methoden ---
 acl SSL_ports port 443

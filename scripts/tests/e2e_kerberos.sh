@@ -26,8 +26,8 @@ trap cleanup EXIT
 log "reset"
 $DC down -v --remove-orphans >/dev/null 2>&1 || true
 
-log "build squid image"
-$DC build squid || exit 1
+log "build images (squid, origin-https, test-client)"
+$DC build || exit 1
 
 log "start samba-dc"
 $DC up -d samba-dc || exit 1
@@ -53,10 +53,11 @@ dcx samba-tool spn   add "HTTP/squid.$DLC" squidsvc >/dev/null 2>&1 || true
 dcx samba-tool domain exportkeytab /shared/squid.keytab --principal=squidsvc || { echo "keytab-Export fehlgeschlagen"; exit 1; }
 dcx chmod 0644 /shared/squid.keytab
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid  A "$SQUID_IP"  -U "Administrator%$PW" >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" origin A "$ORIGIN_IP" -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" origin A "$ORIGIN_IP"   -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" secure A 172.28.0.21    -U "Administrator%$PW" >/dev/null 2>&1 || true
 
-log "start origin + squid"
-$DC up -d origin squid || exit 1
+log "start origin + origin-https + squid"
+$DC up -d origin origin-https squid || exit 1
 
 log "wait for squid healthy"
 ready=0; st=none

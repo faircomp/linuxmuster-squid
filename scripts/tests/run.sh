@@ -73,13 +73,22 @@ e2e(){
   fi
 }
 
+blocklist(){
+  echo "== blocklist =="
+  if have curl && have tar; then
+    if bash scripts/tests/blocklist_smoke.sh; then pass "blocklist-refresh-smoke"; else fail "blocklist-refresh-smoke"; fi
+  else
+    skip "blocklist-smoke" "curl/tar fehlt"
+  fi
+}
+
 mode="${1:-quick}"
 case "$mode" in
   lint)  lint ;;
   unit)  unit ;;
-  quick) lint; unit ;;
+  quick) lint; unit; blocklist ;;
   e2e)   e2e ;;
-  all)   lint; unit; e2e ;;
+  all)   lint; unit; blocklist; e2e ;;
   *) echo "usage: run.sh [lint|unit|quick|e2e|all]" >&2; exit 2 ;;
 esac
 

@@ -45,6 +45,22 @@ EOF
 mkdir -p /etc/ldap
 printf 'SASL_NOCANON on\n' > /etc/ldap/ldap.conf
 
+# TLS-Bump-Infrastruktur für SNI peek/splice (KEIN MITM, CA wird NIE verteilt):
+# Wegwerf-CA (nur zum Aktivieren der Bump-Maschinerie) + Cert-Cache-DB initialisieren.
+if [ ! -f /etc/squid/ssl/bump.pem ]; then
+    mkdir -p /etc/squid/ssl
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+        -subj "/CN=linuxmuster-squid-bump" \
+        -keyout /etc/squid/ssl/bump.key -out /etc/squid/ssl/bump.crt 2>/dev/null
+    cat /etc/squid/ssl/bump.crt /etc/squid/ssl/bump.key > /etc/squid/ssl/bump.pem
+    chmod 640 /etc/squid/ssl/bump.pem
+    chown -R proxy:proxy /etc/squid/ssl
+fi
+if [ ! -d /var/spool/squid/ssl_db ]; then
+    /usr/lib/squid/security_file_certgen -c -s /var/spool/squid/ssl_db -M 4MB >/dev/null 2>&1 || true
+    chown -R proxy:proxy /var/spool/squid/ssl_db 2>/dev/null || true
+fi
+
 if [ ! -r "${KEYTAB}" ]; then
     echo "FATAL: keytab '${KEYTAB}' is missing or not readable (mount it as a secret)." >&2
     exit 1
