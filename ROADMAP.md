@@ -13,10 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P8 ✅ Deliverables (GPO/WPAD-Vorlagen + Deployment-Doku); Rollen-
-> Trennung server-seitig im E2E bewiesen. ⏸ Manuelle Windows-Abnahme = HUMAN-GATE
-> (docs/deployment-gpo.md, braucht echte Clients). → weiter mit P9 (Packaging: signiertes
-> .deb + gehärteter systemd-Dienst).` (Fortschritts-Zeiger: bei jeder Iteration aktualisieren.)
+> **Aktueller Stand:** `P9 ✅ ABGESCHLOSSEN & crabbox-verifiziert (.deb install/upgrade →
+> systemd active + API/CLI health). → weiter mit P10 (Härtung: read-only-Container + TLS +
+> docker-socket-proxy + Security-Review + Docs/CHANGELOG + v1.0.0).` (Fortschritts-Zeiger:
+> bei jeder Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -357,11 +357,12 @@ Squid-`access.log`-Kontrolle; automatisiertes Pendant im crabbox-E2E.
 
 **Deliverables:** `packaging/debian/` (dh-virtualenv), systemd-Unit, optional `docker-socket-proxy`; Install-/Update-Doku.
 
-**Aufgaben:**
-- [ ] `.deb` `linuxmuster-squid` mit **dh-virtualenv** (hermetisches venv zur Build-Zeit — **kein** pip-in-postinst wie webui7/api7); Layout an linuxmuster angelehnt (`/etc/...`, systemd, GPG-signiert, lmn73-apt-Layout).
-- [ ] Gehärtete systemd-Unit: fester System-User in Gruppe `docker`, `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `ProtectKernelTunables/Modules`, `RestrictAddressFamilies`; TLS-Cert bei Erstinstallation erzeugen.
-- [ ] **Docker-Socket absichern:** `tecnativa/docker-socket-proxy` (nur benötigte Endpunkte) oder rootless Docker; `DOCKER_HOST` darauf zeigen. ADR: Socket-Zugriff = **root-äquivalent** → API nie über localhost/Mgmt-Net hinaus exponieren.
-- [ ] Install/Upgrade/Rollback der **Tooling** via apt dokumentiert (apt = Tooling, digest-gepinnter Pull = Squid-Container).
+**Aufgaben:** ✅ **ABGESCHLOSSEN & crabbox-verifiziert (build → `apt install` → systemd `active` → API `{"status":"ok"}` → CLI `health` → Upgrade 0.9.1 `active`; commit `cc9d80c`).**
+Hermetisches venv am Ziel-Pfad (statt dh-virtualenv, gleiche Wirkung: **kein** pip-in-postinst). GPG-Signierung dokumentiert (braucht den linuxmuster-Key); **TLS + docker-socket-proxy → in P10 (Härtung)**.
+- [x] `.deb` `linuxmuster-squid` mit hermetischem venv (kein pip-in-postinst); Layout an linuxmuster angelehnt (`/etc/...`, systemd, GPG-Signierung dokumentiert, lmn73-apt-Layout).
+- [x] Gehärtete systemd-Unit: fester System-User in Gruppe `docker`, `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `ProtectKernelTunables/Modules`, `RestrictAddressFamilies`. *(TLS-Cert-Erzeugung → P10.)*
+- [~] **Docker-Socket absichern:** dokumentiert (ADR-012, Unit-Kommentar); `docker-socket-proxy`-Verdrahtung → P10. Socket = **root-äquivalent** → API strikt localhost.
+- [x] Install/Upgrade/Rollback der **Tooling** via apt dokumentiert (Upgrade verifiziert; Rollback = vorheriges `.deb` installieren, gleicher Mechanismus).
 
 **Definition of Done:** Auf crabbox: `apt install ./linuxmuster-squid_*.deb` bringt
 den Control-Plane-Dienst hoch (systemd `active`), API erreichbar (localhost/TLS),
