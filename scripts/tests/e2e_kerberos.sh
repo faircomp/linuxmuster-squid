@@ -55,19 +55,29 @@ dcx chmod 0644 /shared/squid.keytab
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid  A "$SQUID_IP"  -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" origin A "$ORIGIN_IP"   -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" secure A 172.28.0.21    -U "Administrator%$PW" >/dev/null 2>&1 || true
+# Multischool-Fixtures: 2. Schule "schule2" mit präfixierter Gruppe + eigenem Lehrer
+dcx samba-tool user  create teacher2 "$PW"                      >/dev/null 2>&1 || true
+dcx samba-tool group add schule2-teachers                      >/dev/null 2>&1 || true
+dcx samba-tool group addmembers schule2-teachers teacher2      >/dev/null 2>&1 || true
+dcx samba-tool spn   add "HTTP/squid2.$DLC" squidsvc           >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid2 A 172.28.0.11   -U "Administrator%$PW" >/dev/null 2>&1 || true
 
-log "start origin + origin-https + squid"
-$DC up -d origin origin-https squid || exit 1
+log "start origin + origin-https + squid + squid2"
+$DC up -d origin origin-https squid squid2 || exit 1
 
-log "wait for squid healthy"
-ready=0; st=none
-for _ in $(seq 1 40); do
-  cid=$($DC ps -q squid 2>/dev/null)
-  st=$($DOCKER inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo none)
-  if [ "$st" = healthy ]; then ready=1; break; fi
-  sleep 3
-done
-if [ "$ready" != 1 ]; then echo "squid nicht healthy (status=$st)"; $DC logs squid 2>/dev/null | tail -60; exit 1; fi
+wait_healthy() {
+  local svc="$1" ready=0 st=none cid
+  for _ in $(seq 1 40); do
+    cid=$($DC ps -q "$svc" 2>/dev/null)
+    st=$($DOCKER inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo none)
+    if [ "$st" = healthy ]; then ready=1; break; fi
+    sleep 3
+  done
+  if [ "$ready" != 1 ]; then echo "$svc nicht healthy (status=$st)"; $DC logs "$svc" 2>/dev/null | tail -60; return 1; fi
+}
+log "wait for squid + squid2 healthy"
+wait_healthy squid  || exit 1
+wait_healthy squid2 || exit 1
 
 log "run assertions (test-client)"
 $DC run --rm test-client

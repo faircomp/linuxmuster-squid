@@ -54,6 +54,28 @@ services:
       - shared:/shared:ro
       - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
 
+  # 2. Schule (Multischool): DIESELBE Image, andere Gruppe/FQDN — beweist Isolation
+  # + Präfix-Regel (default-school unpräfixiert, andere Schulen "<schule>-...").
+  squid2:
+    image: linuxmuster-squid:dev
+    hostname: squid2.example.internal
+    depends_on: [samba-dc, squid]
+    environment:
+      INSTANCE: "e2e-schule2-teachers"
+      VISIBLE_HOSTNAME: "squid2.example.internal"
+      REALM: "EXAMPLE.INTERNAL"
+      AD_GROUP: "schule2-teachers"
+      SCHOOL_SUBNETS: "0.0.0.0/0"
+      KEYTAB: "/shared/squid.keytab"
+      CACHE_SIZE_MB: "200"
+    dns: ["172.28.0.2"]
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.11
+    volumes:
+      - shared:/shared:ro
+      - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
+
   # Erlaubtes Ziel (liefert 200).
   origin:
     image: nginx:alpine
