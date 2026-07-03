@@ -13,10 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P7 ✅ ABGESCHLOSSEN (Keytab-Lifecycle + DNS-Doku + Admin-Helfer;
-> Consumption im E2E bewiesen). → weiter mit P8 (Client-Steuerung GPO/WPAD-Vorlagen +
-> Produktiv-Abnahme — echte Windows-Abnahme ist ein Human-Gate).` (Fortschritts-Zeiger:
-> bei jeder Iteration aktualisieren.)
+> **Aktueller Stand:** `P8 ✅ Deliverables (GPO/WPAD-Vorlagen + Deployment-Doku); Rollen-
+> Trennung server-seitig im E2E bewiesen. ⏸ Manuelle Windows-Abnahme = HUMAN-GATE
+> (docs/deployment-gpo.md, braucht echte Clients). → weiter mit P9 (Packaging: signiertes
+> .deb + gehärteter systemd-Dienst).` (Fortschritts-Zeiger: bei jeder Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -329,13 +329,14 @@ bekommen — plus eine dokumentierte **manuelle Abnahme auf echten Windows-Clien
 
 **Deliverables:** `deploy/clients/` — Edge/Chrome-`ProxySettings`-Vorlage, Firefox `policies.json`/ADMX, Site-to-Zone/AuthServerAllowlist, GPP-Item-Level-Targeting-/Security-Filtering-Anleitung, optional WPAD/PAC; `docs/deployment-gpo.md` mit Abnahme-Checkliste.
 
-**Aufgaben:**
-- [ ] Edge/Chrome: `ProxySettings = {ProxyMode: fixed_servers, ProxyServer: proxy-<rolle>.<schule>:PORT, ProxyBypassList: <no-proxy>}`; Firefox: `Proxy{Mode:manual,HTTPProxy,HTTPProxyAll,Locked}` + `Authentication{SPNEGO:[fqdn],AllowProxies.SPNEGO:true,Locked}`.
-- [ ] **Stilles SSO:** Proxy-FQDN in Local-Intranet-Zone (Site-to-Zone) **oder** `AuthServerAllowlist` (eine Methode je FQDN, konsistent). Hinweis: Kerberos-Delegation funktioniert nicht für Proxy-Auth (plain Negotiate schon).
-- [ ] **Pro-Rolle-Steuerung:** per-user Proxy-Policy + **Security-Filtering** auf `<schule>-teachers`/`-students` **oder** GPP-Item-Level-Targeting; optional Loopback für Raum-/PC-basierte Steuerung.
-- [ ] Bypass-Liste (LDAP/Linbo/WebUI/interne Dienste) in jede Proxy-Config; `SCHOOL_SUBNETS` je Instanz konsistent.
-- [ ] Exam-Mode dokumentieren: `<user>-exam` ist in keiner teachers/students-Gruppe → Proxy verweigert ohnehin; lmn7 deaktiviert im Prüfungsmodus den Proxy.
-- [ ] **Klarstellung (verifiziert):** GPO steuert nur Default/UX — die **Sicherheit erzwingt die Gruppen-ACL** server-seitig; ein Schüler am Lehrer-Proxy wird trotz gültigem Ticket per ACL abgewiesen.
+**Aufgaben:** ✅ **DELIVERABLES ABGESCHLOSSEN (`deploy/clients/` + `docs/deployment-gpo.md`; commit `dfbcc8c`).**
+Server-seitige Rollen-Trennung ist im crabbox-E2E bewiesen; die manuelle Windows-Abnahme (DoD unten) ist ein **HUMAN-GATE** ⏸.
+- [x] Edge/Chrome: `ProxySettings = {ProxyMode: fixed_servers, ProxyServer: proxy-<rolle>.<schule>:PORT, ProxyBypassList: <no-proxy>}`; Firefox: `Proxy{Mode:manual,HTTPProxy,HTTPProxyAll,Locked}` + `Authentication{SPNEGO:[fqdn],AllowProxies.SPNEGO:true,Locked}`.
+- [x] **Stilles SSO:** Proxy-FQDN in Local-Intranet-Zone (Site-to-Zone) **oder** `AuthServerAllowlist` (eine Methode je FQDN, konsistent). Hinweis: Kerberos-Delegation funktioniert nicht für Proxy-Auth (plain Negotiate schon).
+- [x] **Pro-Rolle-Steuerung:** per-user Proxy-Policy + **Security-Filtering** auf `<schule>-teachers`/`-students` **oder** GPP-Item-Level-Targeting; optional Loopback für Raum-/PC-basierte Steuerung.
+- [x] Bypass-Liste (LDAP/Linbo/WebUI/interne Dienste) in jede Proxy-Config; `SCHOOL_SUBNETS` je Instanz konsistent.
+- [x] Exam-Mode dokumentieren: `<user>-exam` ist in keiner teachers/students-Gruppe → Proxy verweigert ohnehin; lmn7 deaktiviert im Prüfungsmodus den Proxy.
+- [x] **Klarstellung (verifiziert):** GPO steuert nur Default/UX — die **Sicherheit erzwingt die Gruppen-ACL** server-seitig; ein Schüler am Lehrer-Proxy wird trotz gültigem Ticket per ACL abgewiesen.
 
 **Definition of Done (Produktiv-Abnahme, manuell auf echten Windows-Clients,
 protokolliert):** angemeldeter **Lehrer** → Lehrer-Proxy liefert Internet (SSO,
