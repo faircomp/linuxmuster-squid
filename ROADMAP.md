@@ -13,10 +13,11 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P0–P10 ✅ CODE-COMPLETE & crabbox-verifiziert (run.sh all grün: Unit 41
-> + mypy + ruff + E2E 9/9 + docker-Integration + .deb install/upgrade; Security-Review-Befunde
-> behoben). Tag v1.0.0-rc1. Offen NUR menschliche Gates: manuelle Windows-GPO-Abnahme,
-> GPG-Signierung mit dem linuxmuster-Key, reale AD-Fakten.` (Fortschritts-Zeiger.)
+> **Aktueller Stand:** `P0–P10 ✅ CODE-COMPLETE & crabbox-verifiziert; Log-Rotation/Retention/
+> Abfrage nachgezogen → Tag v1.0.0-rc2. Multi-Perspektiven-Gap-Review gemacht → P11-Backlog
+> (Deployment-Realität/Betrieb/Ehrlichkeit) unten, priorisiert mit Ziel+Verifikation je Punkt.
+> NÄCHSTES: P11.1 (Upgrade-Restart-Bug + Release/GHCR-Bootstrap). Human-Gates: Windows-Abnahme,
+> GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -392,6 +393,87 @@ kritische Befunde; `v1.0.0` getaggt.
 
 **Verifikation:** `run.sh all` auf crabbox (grün) + manuelle Produktiv-Abnahme +
 Review-Report.
+
+---
+
+## P11 — Post-RC: Deployment-Realität, Betrieb & Ehrlichkeit (Gap-Backlog)
+
+**Herkunft:** Multi-Perspektiven-Gap-Review (2026-07-03) auf `v1.0.0-rc2`. Priorisiert;
+**jeder Punkt trägt Ziel + Verifikation.** Human-Gates ⏸ markiert. „Bewusst nicht" unten.
+
+### P11.1 — 🔴 Kritisch: Update wirkt + überhaupt deploybar
+
+**Ziel:** Ein `.deb`-Upgrade lädt wirklich den neuen Code; es existiert ein publiziertes,
+digest-pinbares Image + ein dokumentierter Bootstrap.
+- [ ] **Upgrade-Restart-Bug:** postinst ruft bei Upgrade `systemctl try-restart linuxmuster-squid` (guarded). *Ziel:* laufender Prozess = neue Version (heute No-op → alter Code bleibt). *Verif:* `deb_smoke` hittet nach Upgrade `GET /v1/version` und prüft die **neue** Versionsnummer (nicht nur `dpkg -s`).
+- [ ] **Release/GHCR-Bootstrap** (`RELEASE.md`): push→tag→CI baut→GHCR→Package public; realen `@sha256`-Digest festhalten. *Verif:* Doku-Review; erster CI-Run grün; `docker pull <digest>` klappt.
+- [ ] ⏸ **Human-Gate:** Image tatsächlich publizieren (GitHub/GHCR).
+
+**DoD:** Upgrade-Test beweist die neue *laufende* Version; ein echter Digest ist dokumentiert.
+
+### P11.2 — 🟠 Betrieb: Restore & Reconcile
+
+**Ziel:** Gesicherter Soll-Zustand lässt sich auf frischem Host wieder in laufende Container
+überführen; Drift ist behebbar.
+- [ ] **`reconcile_all` exponieren:** `POST /v1/reconcile` + `lmnsquid reconcile` (Methode existiert + unit-getestet, aber tot). *Verif:* Unit (ruft reconcile_all, 401 ohne Token) + cp-docker-it (Instanz entfernen → reconcile → läuft wieder).
+- [ ] **Restore-Runbook** (`operations.md`): apt install → secrets/instances_dir zurückspielen → `lmnsquid reconcile` → digest-Pull. *Verif:* crabbox-Restore-Smoke (frischer Zustand → reconcile → Container healthy).
+- [ ] **DR/Rebuild-Runbook** + „Downgrade = altes `.deb` + Restart" (fasst P11.1). *Verif:* Doku-Review.
+- [ ] `instances_dir` `git init` im postinst (+ git-Identität für `lmnsquid`) **oder** Change-Log-Aussage in der Doku entschärfen. *Verif:* `deb_smoke` prüft, dass ein create-Commit landet — bzw. Doku korrigiert.
+- [ ] *(optional, abwägen)* reconcile-on-boot in `main.py`. *Verif:* nur falls gewünscht; bei konsistentem Zustand No-op.
+
+**DoD:** frischer Host → Restore → laufende Instanzen, crabbox-bewiesen. (Reboot selbst ist ok: `restart_policy` bringt Container zurück.)
+
+### P11.3 — 🟠 Filter-Grenzen: ECH/QUIC/DoH ehrlich + mitigiert
+
+**Ziel:** Die bekannten Grenzen des SNI-Filters sind dokumentiert und am Netzrand mitigiert —
+kein falsches Kinderschutz-Versprechen.
+- [ ] **Threat-Model + docs:** ECH verschlüsselt die SNI → Splice-Filter blind; QUIC/HTTP3 (UDP 443) umgeht den TCP-Proxy; DoH umgeht die DNS-Sicht. Als bekannte Grenze/Nicht-Ziel. *Verif:* Doku-Review; T4/Nicht-Ziele ergänzt.
+- [ ] **Mitigation dokumentieren:** OPNsense **UDP 443 blocken** (erzwingt TCP durch den Proxy); bekannte DoH-Resolver + `use-application-dns.net` blocken; ECH-Status beobachten. *Verif:* Deployment-Doku; ⏸ Firewall-Review am Standort.
+
+**DoD:** Doku macht klar, was der Filter NICHT kann + wie man es am Rand schließt.
+
+### P11.4 — 🟠 Ehrlichkeit: Doku == Code
+
+**Ziel:** Keine Fähigkeit behaupten, die im Code fehlt; Sicherheits-Framing stimmt.
+- [ ] **TLS:** Doku/ROADMAP/Threat-Model auf „API nur loopback; off-host nur via betreiber-eigenen TLS-Reverse-Proxy" korrigieren **und** `main.py`: laute Warnung/Abbruch bei non-loopback-Bind ohne TLS. *Verif:* Unit (bind_host≠loopback ohne TLS → Warnung/Exit) + Doku-Review.
+- [ ] **Socket-Proxy ehrlich framen** (ADR-012/Threat-Model): reduziert Angriffsfläche, **kein** Downgrade unter Host-Root; rootless Docker = echte Antwort. *Verif:* Doku-Review.
+- [ ] **Socket-Proxy vs. Access-Log-Historie:** `access_logs()` host-seitig aus dem Log-Volume lesen (kein `docker exec`) **oder** die Einschränkung (EXEC nötig) klar dokumentieren. *Verif:* falls Umbau: Smoke über den Socket-Proxy-Pfad; sonst Doku-Note.
+- [ ] **GPG/apt-Signierung:** gegen die echte `deb.linuxmuster.net`-Pipeline verifizieren (Repo-`Release`-Signatur, **nicht** per-`.deb`), Note in `build-deb.sh` korrigieren. *Verif:* WebFetch/Quelle + korrigierte Doku. ⏸ Human-Gate: echter Key.
+
+**DoD:** kein Doku-vs-Code-Widerspruch mehr offen.
+
+### P11.5 — 🟢 Leichtgewichtige Betriebs-Signale
+
+**Ziel:** Ausfälle früh sichtbar, ohne Monitoring-Stack.
+- [ ] **Auth-Health-Signal:** Keytab-Ablauf/407-Spike erkennbar (Healthcheck oder `lmnsquid status`); mind. dokumentierte Warnung. *Verif:* Unit/Smoke (kaputter Keytab → Signal) oder Doku.
+- [ ] **Alerting-Doku:** `docker events`/Healthcheck an vorhandene Schul-Infra hängen (kein Prometheus-Stack — das wäre Über­engineering). *Verif:* Doku-Review.
+- [ ] **dockerd-down → 503:** schmaler Handler mappt `docker.errors.DockerException` → 503 statt rohem 500. *Verif:* Unit (Docker weg → 503).
+- [ ] **Cache-Korruption-Recovery:** 2 Zeilen Doku (Cache-Volume wegwerfbar/neu erzeugbar; Log-Volume = einziger nicht-rekonstruierbarer Zustand neben secrets/config). *Verif:* Doku-Review.
+
+**DoD:** ein toter/kaputter Proxy ist erkennbar, bevor Nutzer klagen.
+
+### P11.6 — 🟢 Supply-Chain / Kleinkram
+
+**Ziel:** Konsistente Digest-Disziplin + integre Blocklisten.
+- [ ] **Socket-Proxy `@sha256` pinnen** (+ Renovate trackt) statt `:latest` auf einer Root-nahen Komponente. *Verif:* grep zeigt Digest statt `:latest`.
+- [ ] **Blocklisten-Integrität:** Checksum/Signatur prüfen falls verfügbar, sonst Sanity-Floor (Zeilenzahl) + **fail-closed** (alte Liste behalten). *Verif:* `blocklist_smoke`: manipuliertes/leeres Archiv → alte Liste bleibt.
+
+**DoD:** kein `:latest` auf Root-nahen Komponenten; die Blocklist ersetzt sich nie durch Müll.
+
+### P11.7 — 🟢 Lasttest (verschoben — YAGNI bis Evidenz)
+
+**Ziel:** Verhalten unter „ganze Klasse gleichzeitig" ist belegt, wenn es real relevant wird.
+- [ ] Soak/Load-Smoke: viele parallele Kerberos-Auth durch eine Instanz (negotiate `children` + `ext_kerberos_ldap_group_acl`-Concurrency). *Verif:* crabbox-Lasttest (N parallele `curl --proxy-negotiate`, p95-Latenz, keine 5xx). *Auslöser:* erst bei realem Stall-Report — Tuning ohne Messung = Raten.
+
+### Bewusst NICHT (dokumentierte Entscheidungen, kein Über­engineering)
+
+- **TLS auf dem Loopback-Socket** (Sniffing bräuchte lokalen Root; Token `0600` + `docker`-Gruppe eh root-äquivalent) — nur relevant beim Mgmt-IP-Bind (siehe P11.4).
+- **Tiefere systemd-seccomp/`SystemCallFilter`** (mit `docker`-Gruppe moot; optional near-free `PrivateDevices=yes`/`ProtectProc=invisible`).
+- **Weitere Input-Validierungs-Schichten** (schon Boundary + defense-in-depth: `models.py`, `Store._file`, keytab-`realpath`-Containment).
+- **Log-Datenbank in der Control-Plane** (stattdessen Docker-`syslog`-Treiber an vorhandenes SIEM).
+
+**Human-Gates gesamt:** Image publish (GHCR), GPG-Key/Signierung, Windows-GPO-Abnahme (P8),
+Renovate-Merge, reale AD-Fakten (P0).
 
 ---
 
