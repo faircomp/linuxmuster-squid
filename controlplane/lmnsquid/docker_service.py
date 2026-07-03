@@ -105,8 +105,14 @@ class DockerService:
             environment=env,
             detach=True,
             restart_policy={"Name": "unless-stopped"},
+            read_only=True,
+            tmpfs={"/run": "", "/tmp": "", "/var/log/squid": ""},
+            cap_drop=["ALL"],
+            cap_add=["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"],
+            security_opt=["no-new-privileges:true"],
             volumes={
                 keytab_host_path: {"bind": keytab_container_path, "mode": "ro"},
+                f"lmnsquid-cache-{inst.name}": {"bind": "/var/spool/squid", "mode": "rw"},
             },
             ports={f"{inst.http_port}/tcp": inst.http_port},
         )

@@ -1,6 +1,6 @@
 #!/bin/sh
-# linuxmuster-squid entrypoint: render per-instance squid.conf from the template
-# and run Squid in the foreground (so `docker logs` captures access/cache logs).
+# linuxmuster-squid entrypoint. Read-only-rootfs-freundlich: ALLE generierten Dateien
+# liegen unter /run/lmnsquid (tmpfs). Squid läuft im Vordergrund.
 set -eu
 
 # ---- required per-instance configuration ----
@@ -15,21 +15,28 @@ set -eu
 : "${KEYTAB:=/run/secrets/squid_keytab}"
 : "${SCHOOL_SUBNETS:=0.0.0.0/0}"          # school is identified by source subnet(s)
 
-# The Kerberos SSO helper AND the group-ACL helper both read the keytab via
-# KRB5_KTNAME. Use a file credential cache — the kernel-keyring ccache fails
-# in unprivileged containers.
-export KRB5_KTNAME="${KEYTAB}"
-export KRB5CCNAME="FILE:/tmp/krb5cc_${INSTANCE}"
+RUN=/run/lmnsquid
+mkdir -p "${RUN}/ssl"
+chown -R proxy:proxy "${RUN}"
+# Schreibbare Pfade (bei read-only als tmpfs/Volume gemountet -> für proxy chownen).
+mkdir -p /var/log/squid /var/spool/squid
+chown proxy:proxy /var/log/squid /var/spool/squid 2>/dev/null || true
 
-# envsubst ersetzt nur EXPORTIERTE Variablen. Defaults wie HTTP_PORT stehen sonst
-# nicht in der Umgebung → leere Substitution ("http_port " => FATAL). Daher alle
-# Template-Variablen explizit exportieren.
+# Kerberos: Helfer lesen den Keytab via KRB5_KTNAME; FILE-ccache (kein Kernel-Keyring).
+# krb5.conf/ldap.conf unter /run, damit /etc read-only bleiben kann.
+export KRB5_KTNAME="${KEYTAB}"
+export KRB5CCNAME="FILE:${RUN}/krb5cc_${INSTANCE}"
+# GSSAPI-Replay-Cache in einen schreibbaren Pfad (Default /var/tmp ist bei
+# read-only-Rootfs nicht beschreibbar -> "Read-only file system" -> Auth BH/407).
+export KRB5RCACHEDIR="${RUN}"
+export KRB5_CONFIG="${RUN}/krb5.conf"
+export LDAPCONF="${RUN}/ldap.conf"
+# envsubst ersetzt nur EXPORTIERTE Variablen (sonst "http_port " => FATAL).
 export INSTANCE HTTP_PORT CACHE_SIZE_MB KEYTAB REALM AD_GROUP VISIBLE_HOSTNAME SCHOOL_SUBNETS
 
-# /etc/krb5.conf für den LDAP-Gruppen-Helper (GSSAPI-Bind): rdns/canonicalize=false,
-# damit der ldap/-SPN aus dem literalen DC-Namen (via SRV) gebildet wird und NICHT
-# per Reverse-DNS (das im Container-Netz auf falsche Namen zeigt -> SASL "Local error").
-cat > /etc/krb5.conf <<EOF
+# krb5.conf: rdns/canonicalize=false, damit der ldap/-SPN aus dem literalen DC-Namen
+# (via SRV) gebildet wird und NICHT per Reverse-DNS (-> SASL "Local error").
+cat > "${KRB5_CONFIG}" <<EOF
 [libdefaults]
     default_realm = ${REALM}
     dns_lookup_realm = false
@@ -38,23 +45,17 @@ cat > /etc/krb5.conf <<EOF
     dns_canonicalize_hostname = false
     forwardable = true
 EOF
+# OpenLDAP-Client: SASL-Host NICHT per Reverse-DNS kanonikalisieren.
+printf 'SASL_NOCANON on\n' > "${LDAPCONF}"
 
-# OpenLDAP-Client: den SASL-Host NICHT per Reverse-DNS kanonikalisieren. Sonst bildet
-# libldap den ldap/-SPN aus dem (falschen) PTR-Namen des DC und der GSSAPI-Bind
-# scheitert mit "Local error" — unabhängig von der krb5-rdns-Einstellung.
-mkdir -p /etc/ldap
-printf 'SASL_NOCANON on\n' > /etc/ldap/ldap.conf
-
-# TLS-Bump-Infrastruktur für SNI peek/splice (KEIN MITM, CA wird NIE verteilt):
-# Wegwerf-CA (nur zum Aktivieren der Bump-Maschinerie) + Cert-Cache-DB initialisieren.
-if [ ! -f /etc/squid/ssl/bump.pem ]; then
-    mkdir -p /etc/squid/ssl
+# TLS-Bump-Infrastruktur für SNI peek/splice (KEIN MITM, CA wird NIE verteilt).
+if [ ! -f "${RUN}/ssl/bump.pem" ]; then
     openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
         -subj "/CN=linuxmuster-squid-bump" \
-        -keyout /etc/squid/ssl/bump.key -out /etc/squid/ssl/bump.crt 2>/dev/null
-    cat /etc/squid/ssl/bump.crt /etc/squid/ssl/bump.key > /etc/squid/ssl/bump.pem
-    chmod 640 /etc/squid/ssl/bump.pem
-    chown -R proxy:proxy /etc/squid/ssl
+        -keyout "${RUN}/ssl/bump.key" -out "${RUN}/ssl/bump.crt" 2>/dev/null
+    cat "${RUN}/ssl/bump.crt" "${RUN}/ssl/bump.key" > "${RUN}/ssl/bump.pem"
+    chmod 640 "${RUN}/ssl/bump.pem"
+    chown -R proxy:proxy "${RUN}/ssl"
 fi
 if [ ! -d /var/spool/squid/ssl_db ]; then
     /usr/lib/squid/security_file_certgen -c -s /var/spool/squid/ssl_db -M 4MB >/dev/null 2>&1 || true
@@ -67,14 +68,14 @@ if [ ! -r "${KEYTAB}" ]; then
 fi
 
 TEMPLATE=/etc/squid/templates/squid.conf.template
-CONF=/etc/squid/squid.conf
+CONF="${RUN}/squid.conf"
 
 # Only substitute OUR variables so Squid's own %-tokens survive untouched.
 envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROUP} ${VISIBLE_HOSTNAME} ${SCHOOL_SUBNETS}' \
     < "${TEMPLATE}" > "${CONF}"
 
 # The blocklist file is normally mounted read-only; create an empty one only if absent.
-[ -e /etc/squid/lists/blocked.domains ] || : > /etc/squid/lists/blocked.domains
+[ -e /etc/squid/lists/blocked.domains ] || : > /etc/squid/lists/blocked.domains 2>/dev/null || true
 
 # Validate config, then initialise cache dirs on first run.
 squid -k parse -f "${CONF}"
