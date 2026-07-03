@@ -55,7 +55,7 @@ Keytabs sind Domänen-Credentials (Secret/tmpfs, least-privilege). **Keine
 HTTPS-Entschlüsselung** (datenschutzfreundlich, kein Client-CA-Rollout). Der
 Control-Plane-Docker-Socket-Zugriff ist **root-äquivalent** — API nur an
 localhost/Mgmt-Netz, Token/TLS, hinter Socket-Proxy. Mehr:
-[`docs/threat-model.md`](docs/threat-model.md).
+[`docs/threat-model.md`](docs/threat-model.md) · [`docs/keytab-and-dns.md`](docs/keytab-and-dns.md).
 
 ## Lizenz
 
