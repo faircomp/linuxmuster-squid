@@ -2,7 +2,10 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -e
-if [ -d /run/systemd/system ]; then
+# NUR bei echtem Remove stoppen/deaktivieren. Beim Upgrade ($1=upgrade) den Dienst
+# LAUFEN lassen, damit das postinst ihn per try-restart neu starten kann (neuer Code);
+# ihn hier zu stoppen würde ihn nach dem Upgrade inaktiv zurücklassen.
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
     systemctl disable --now linuxmuster-squid.service || true
 fi
 exit 0

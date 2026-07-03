@@ -37,7 +37,15 @@ chmod 700 /etc/linuxmuster-squid/secrets
 
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
-    systemctl enable --now linuxmuster-squid.service || true
+    systemctl enable linuxmuster-squid.service || true
+    # Frisch-Installation ($2 leer) -> start; Upgrade ($2 = Vorversion) -> try-restart,
+    # damit der laufende Dienst den neuen Code aus dem venv WIRKLICH lädt (enable --now
+    # wäre auf einem bereits laufenden Dienst ein No-op -> alter Code bliebe aktiv).
+    if [ -n "${2:-}" ]; then
+        systemctl try-restart linuxmuster-squid.service || true
+    else
+        systemctl start linuxmuster-squid.service || true
+    fi
 fi
 
 exit 0

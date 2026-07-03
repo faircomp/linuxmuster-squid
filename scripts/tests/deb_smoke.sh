@@ -8,6 +8,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+echo "== clean slate: evtl. Vorinstallation entfernen (fest gegen Box-Reuse) =="
+dpkg --purge linuxmuster-squid >/dev/null 2>&1 || true
+
 echo "== build .deb (0.9.0) =="
 VERSION=0.9.0 bash "$ROOT/packaging/build-deb.sh"
 DEB="$ROOT/linuxmuster-squid_0.9.0_all.deb"
@@ -25,12 +28,23 @@ curl -fsS http://127.0.0.1:8080/v1/health; echo
 echo "== CLI 'lmnsquid health' (liest /etc/linuxmuster-squid/config.yml) =="
 sudo -u lmnsquid /opt/linuxmuster-squid/venv/bin/lmnsquid health
 
-echo "== Upgrade auf 0.9.1 =="
+PID_BEFORE="$(systemctl show -p MainPID --value linuxmuster-squid.service)"
+echo "== Upgrade auf 0.9.1 (MainPID vorher=$PID_BEFORE) =="
 VERSION=0.9.1 bash "$ROOT/packaging/build-deb.sh"
 apt-get install -y -q "$ROOT/linuxmuster-squid_0.9.1_all.deb" \
     || dpkg -i "$ROOT/linuxmuster-squid_0.9.1_all.deb"
 sleep 4
 systemctl is-active linuxmuster-squid.service
 dpkg -s linuxmuster-squid | grep '^Version:'
+
+echo "== Upgrade hat den Dienst neu gestartet? (= neuer Code geladen) =="
+PID_AFTER="$(systemctl show -p MainPID --value linuxmuster-squid.service)"
+echo "  MainPID vorher=$PID_BEFORE nachher=$PID_AFTER"
+if [ -n "$PID_AFTER" ] && [ "$PID_AFTER" != 0 ] && [ "$PID_AFTER" != "$PID_BEFORE" ]; then
+    echo "  [PASS] Upgrade hat neu gestartet -> neuer Code aktiv"
+else
+    echo "  [FAIL] Upgrade hat NICHT neu gestartet (MainPID unverändert) -> alter Code bliebe aktiv"
+    exit 1
+fi
 
 echo "== deb smoke OK =="
