@@ -89,10 +89,14 @@ class Updater:
     def _wait_healthy(self, name: str) -> bool:
         deadline = time.monotonic() + self.health_timeout
         while True:
-            health = self.docker.status(name).get("health")
+            st = self.docker.status(name)
+            health = st.get("health")
             if health == "healthy":
                 return True
             if health == "unhealthy":
+                return False
+            # Exists but crashed/exited: no healthcheck will ever pass -> fail fast.
+            if st.get("exists") and not st.get("running") and health is None:
                 return False
             if time.monotonic() >= deadline:
                 return False
