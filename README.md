@@ -10,9 +10,13 @@ mit **Kerberos-SSO** gegen Samba Active Directory und **gruppenbasierten
 Zugriffsregeln** (Lehrer / Schüler), je **(Schule × Rolle)** eine isolierte
 Instanz — verwaltet über eine **REST-API + CLI**.
 
-> **Status:** in Entwicklung. Der Umsetzungsplan (Phasen, Ziele, Definition of
-> Done, Verifikation) steht in **[`ROADMAP.md`](ROADMAP.md)**. Noch **nicht**
-> produktionsreif.
+> **Status:** **`v1.0.0-rc1` — code-complete & crabbox-verifiziert** (alle 11 Phasen
+> P0–P10, `run.sh all` grün: Unit 41 + mypy + ruff + E2E 9/9 + docker-Integration +
+> `.deb`-Install/Upgrade; adversarialer Security-Review mit allen Befunden behoben —
+> siehe **[`CHANGELOG.md`](CHANGELOG.md)** / **[`ROADMAP.md`](ROADMAP.md)**). Vor dem
+> Produktiveinsatz noch **menschliche Gates**: manuelle Windows-GPO-Abnahme
+> (**[`docs/deployment-gpo.md`](docs/deployment-gpo.md)**), GPG-Signierung des `.deb`
+> mit dem linuxmuster-Key, site-spezifische AD-Fakten (Realm/Base DN/Gruppen-DN).
 
 ## Warum
 
