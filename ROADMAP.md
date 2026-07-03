@@ -13,10 +13,9 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P4 ✅ ABGESCHLOSSEN & crabbox-verifiziert (Control-Plane: unit 17/17
-> + mypy + ruff + echte docker-py-Container-Integration). → weiter mit P5 (Updater:
-> Digest-Pin + Health-Auto-Rollback, Renovate, CI/GHCR).` (Fortschritts-Zeiger: bei jeder
-> Iteration aktualisieren.)
+> **Aktueller Stand:** `P5 ✅ ABGESCHLOSSEN & crabbox-verifiziert (Updater: digest-pin +
+> Health-Auto-Rollback REAL bewiesen; Renovate + CI/GHCR). → weiter mit P6 (Typer-CLI,
+> dünner Client der REST-API).` (Fortschritts-Zeiger: bei jeder Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -266,11 +265,11 @@ Health-Check-gated, **Auto-Rollback** auf den letzten Known-Good.
 
 **Deliverables:** `controlplane/.../updater/`; `renovate.json`; CI-Workflow (Image bauen + nach GHCR pushen + Digest ausgeben); Compose/Definition digest-gepinnt.
 
-**Aufgaben:**
-- [ ] Update-Ablauf: laufenden Digest festhalten → neuen `image@sha256:` pullen → Container ersetzen → `State.Health` bis `healthy`/Timeout pollen → bei `unhealthy` **automatisch** alten Container/Digest wiederherstellen.
-- [ ] Endpunkte `:update` / `:rollback`; Known-Good-Digest auf Host persistieren.
-- [ ] `renovate.json` (`docker:pinDigests`, `automerge:false` — Merge = einziges Go/No-Go). **Kein Watchtower** (archiviert).
-- [ ] CI: Image bauen, nach GHCR (o. ä.) publizieren, Digest emittieren (für Renovate).
+**Aufgaben:** ✅ **ABGESCHLOSSEN & crabbox-verifiziert (unit 21/21 + REALER Auto-Rollback: Update→kaputtes Image→Container-Crash→Rollback auf Known-Good, Dienst läuft weiter; commits `c159614`, `4e9caac`).**
+- [x] Update-Ablauf: laufenden Digest festhalten → neuen `image@sha256:` pullen → Container ersetzen → `State.Health` bis `healthy`/Timeout pollen → bei `unhealthy` **automatisch** alten Container/Digest wiederherstellen.
+- [x] Endpunkte `:update` / `:rollback`; Known-Good-Digest auf Host persistieren.
+- [x] `renovate.json` (`docker:pinDigests`, `automerge:false` — Merge = einziges Go/No-Go). **Kein Watchtower** (archiviert).
+- [x] CI: Image bauen, nach GHCR (o. ä.) publizieren, Digest emittieren (für Renovate). *(+ Fast-Tier-CI `ci.yml`.)*
 
 **Definition of Done:** crabbox-E2E: Update auf ein **absichtlich kaputtes** Image
 löst Auto-Rollback aus, Dienst bleibt verfügbar; Update auf gültiges Image
