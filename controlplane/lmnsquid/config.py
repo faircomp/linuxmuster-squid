@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     docker_host: str | None = None
     bind_host: str = "127.0.0.1"
     bind_port: int = 8080
+    api_url: str = "http://127.0.0.1:8080"
     version: str = "0.4.0"
 
     model_config = SettingsConfigDict(env_prefix=_ENV_PREFIX)

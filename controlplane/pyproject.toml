@@ -35,6 +35,7 @@ dev = [
 
 [project.scripts]
 lmnsquid-api = "lmnsquid.main:main"
+lmnsquid = "lmnsquid.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["lmnsquid*"]
