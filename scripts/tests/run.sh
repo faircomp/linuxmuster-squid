@@ -69,6 +69,17 @@ e2e(){
   else
     skip "kerberos-e2e" "scripts/tests/e2e_kerberos.sh fehlt (kommt in P1)"
   fi
+  # Control-Plane-Docker-Integration: echter DockerService legt einen Container an.
+  # via sudo, da der crabbox-User (evtl.) nicht in der docker-Gruppe ist.
+  if [ -x .venv/bin/pytest ]; then
+    if sudo env LMNSQUID_DOCKER_IT=1 ./.venv/bin/pytest -q controlplane/tests/test_docker_integration.py; then
+      pass "cp-docker-it"
+    else
+      fail "cp-docker-it"
+    fi
+  else
+    skip "cp-docker-it" ".venv/pytest fehlt"
+  fi
 }
 
 blocklist(){
