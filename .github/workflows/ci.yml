@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fast tier: control-plane lint/type/unit + shell + blocklist smoke.
+# (The heavy Kerberos + docker-py E2E runs on crabbox, not in GitHub CI.)
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install control-plane + tools
+        run: pip install ruff mypy pytest pytest-asyncio httpx types-PyYAML ./controlplane
+      - name: ruff
+        run: ruff check .
+      - name: mypy
+        run: mypy --config-file controlplane/pyproject.toml controlplane/lmnsquid
+      - name: pytest
+        run: pytest -q controlplane/tests
+      - name: shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck && shellcheck $(git ls-files '*.sh')
+      - name: blocklist smoke
+        run: bash scripts/tests/blocklist_smoke.sh

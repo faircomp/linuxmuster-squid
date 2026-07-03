@@ -13,6 +13,7 @@ from .config import load_settings
 from .docker_service import DockerService
 from .reconciler import Reconciler
 from .store import Store
+from .updater import Updater
 
 
 def main() -> None:
@@ -22,7 +23,8 @@ def main() -> None:
     store = Store(settings.instances_dir)
     docker = DockerService(settings.docker_host, settings.secrets_dir)
     reconciler = Reconciler(store, docker)
-    app = create_app(settings, store, reconciler, docker)
+    updater = Updater(store, docker, reconciler)
+    app = create_app(settings, store, reconciler, docker, updater)
     uvicorn.run(app, host=settings.bind_host, port=settings.bind_port)
 
 

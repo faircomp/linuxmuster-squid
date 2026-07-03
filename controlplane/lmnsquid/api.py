@@ -11,10 +11,11 @@ from fastapi import Depends, FastAPI, HTTPException, status
 
 from .config import Settings
 from .docker_service import DockerService
-from .models import Instance, InstancePatch
+from .models import Instance, InstancePatch, UpdateRequest
 from .reconciler import Reconciler
 from .security import make_verify_token
 from .store import Store
+from .updater import Updater
 
 audit = logging.getLogger("lmnsquid.audit")
 
@@ -24,6 +25,7 @@ def create_app(
     store: Store,
     reconciler: Reconciler,
     docker: DockerService,
+    updater: Updater,
 ) -> FastAPI:
     """Build the FastAPI app wiring routes to the store, reconciler and docker service."""
     verify = make_verify_token(settings)
@@ -119,5 +121,23 @@ def create_app(
     async def instance_logs(name: str, tail: int = 100) -> dict[str, str]:
         _require(name)
         return {"logs": docker.logs(name, tail=tail)}
+
+    # ---------------------------------------------------- digest-pinned updates
+    @app.post("/v1/instances/{name}/update", dependencies=auth)
+    async def update_instance(name: str, body: UpdateRequest) -> dict[str, Any]:
+        _require(name)
+        audit.info("update request name=%s image=%s", name, body.image)
+        return updater.update(name, body.image)
+
+    @app.post("/v1/instances/{name}/rollback", dependencies=auth)
+    async def rollback_instance(name: str) -> dict[str, Any]:
+        _require(name)
+        audit.info("rollback request name=%s", name)
+        try:
+            return updater.rollback(name)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+            ) from exc
 
     return app

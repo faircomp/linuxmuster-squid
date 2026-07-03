@@ -54,3 +54,9 @@ class InstancePatch(BaseModel):
     keytab_secret: str | None = None
     cache_size_mb: int | None = None
     image: str | None = None
+
+
+class UpdateRequest(BaseModel):
+    """Body for ``POST /v1/instances/{name}/update``."""
+
+    image: str

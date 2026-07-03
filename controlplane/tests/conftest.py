@@ -19,6 +19,7 @@ from lmnsquid.config import Settings
 from lmnsquid.models import Instance
 from lmnsquid.reconciler import Reconciler
 from lmnsquid.store import Store
+from lmnsquid.updater import Updater
 
 TEST_TOKEN = "test-secret-token"
 
@@ -60,7 +61,7 @@ class FakeDockerService:
         self.containers[inst.name] = {
             "running": True,
             "image": inst.image,
-            "health": "healthy",
+            "health": "unhealthy" if "bad" in inst.image else "healthy",
             "env": self.env_for(inst),
             "logs": f"started {inst.container_name}\n",
         }
@@ -144,13 +145,19 @@ def reconciler(store: Store, docker: FakeDockerService) -> Reconciler:
 
 
 @pytest.fixture
+def updater(store: Store, docker: FakeDockerService, reconciler: Reconciler) -> Updater:
+    return Updater(store, docker, reconciler, health_timeout=1.0, poll_interval=0.0)  # type: ignore[arg-type]
+
+
+@pytest.fixture
 def app(
     settings: Settings,
     store: Store,
     reconciler: Reconciler,
     docker: FakeDockerService,
+    updater: Updater,
 ) -> Any:
-    return create_app(settings, store, reconciler, docker)  # type: ignore[arg-type]
+    return create_app(settings, store, reconciler, docker, updater)  # type: ignore[arg-type]
 
 
 @pytest.fixture
