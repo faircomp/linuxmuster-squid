@@ -7,6 +7,7 @@ environment variables (environment always wins over the file).
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ class Settings(BaseSettings):
     bind_host: str = "127.0.0.1"
     bind_port: int = 8080
     api_url: str = "http://127.0.0.1:8080"
+    container_bind_ip: str = "127.0.0.1"  # host IP the proxy container port binds to
     version: str = "0.4.0"
 
     model_config = SettingsConfigDict(env_prefix=_ENV_PREFIX)
@@ -44,6 +46,12 @@ def load_settings(config_path: str | None = None) -> Settings:
     if config_path:
         path = Path(config_path)
         if path.is_file():
+            if path.stat().st_mode & 0o077:
+                logging.getLogger("lmnsquid").warning(
+                    "config %s is group/world accessible (mode %o); it holds the API token — chmod 600",
+                    config_path,
+                    path.stat().st_mode & 0o777,
+                )
             data = yaml.safe_load(path.read_text()) or {}
             if isinstance(data, dict):
                 for key, value in data.items():

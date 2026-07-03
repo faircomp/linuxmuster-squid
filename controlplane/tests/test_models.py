@@ -37,7 +37,7 @@ def test_defaults_applied() -> None:
         realm="EXAMPLE.LAN",
         visible_hostname="h",
         keytab_secret="s-r.keytab",
-        image="img",
+        image="img:1",
     )
     assert inst.http_port == 3128
     assert inst.school_subnets == "0.0.0.0/0"

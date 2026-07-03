@@ -36,8 +36,10 @@ die `HTTP/<fqdn>`-Tickets über denselben Account-Schlüssel.
   `/etc/linuxmuster-squid/secrets`), Dateiname == `keytab_secret` der Instanz.
   Die Control-Plane mountet sie **read-only** unter `/run/secrets/<keytab_secret>`
   (= `KEYTAB` im Container).
-- **Rechte:** `0600` auf dem Host; im Container muss `cache_effective_user proxy`
-  sie lesen können (Secret-Mount ist world-readable/tmpfs). **Nie ins Env/Log.**
+- **Rechte:** `0600` auf dem Host, read-only gemountet. Der Container-Entrypoint (als
+  root, mit `DAC_OVERRIDE`) kopiert den Keytab einmalig nach `/run/lmnsquid/keytab`
+  (proxy-lesbar, `0600`), damit der als `proxy` laufende Squid ihn lesen kann — der
+  gemountete Keytab bleibt `0600`. **Nie ins Env/Log.**
 - **Pro Instanz getrennt** — kein geteilter Keytab über Schulen hinweg.
 - **Rotation:** `net ads`-Keytabs werden durch Maschinenpasswort-Rotation ungültig
   → `msktutil --auto-update` oder neu exportieren; Service-Account-Keytabs bei

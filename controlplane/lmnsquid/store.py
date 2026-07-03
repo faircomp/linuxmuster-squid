@@ -24,6 +24,8 @@ class Store:
         self.path.mkdir(parents=True, exist_ok=True)
 
     def _file(self, name: str) -> Path:
+        if not name or "/" in name or "\\" in name or ".." in name:
+            raise ValueError(f"unsafe instance name: {name!r}")
         return self.path / f"{name}.yaml"
 
     def list(self) -> list[Instance]:

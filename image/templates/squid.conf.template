@@ -58,10 +58,16 @@ acl SSL_ports port 443
 acl Safe_ports port 80 21 443 70 210 1025-65535 280 488 591 777
 acl CONNECT method CONNECT
 acl localhost src 127.0.0.1/32 ::1
+# IP-Literale beim CONNECT ablehnen — sie sind nicht domain-/SNI-filterbar und würden
+# den (namensbasierten) Filter umgehen.
+acl connect_ip_literal dstdom_regex ^([0-9]{1,3}\.){3}[0-9]{1,3}$
+acl connect_ip6_literal dstdom_regex :
 
 # --- Zugriffskette (Reihenfolge zählt) ---
 http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
+http_access deny CONNECT connect_ip_literal
+http_access deny CONNECT connect_ip6_literal
 http_access allow localhost manager        # nur Healthcheck (squidclient mgr:info)
 http_access deny manager
 http_access deny !authenticated            # kein Ticket -> 407 (Negotiate-Challenge)

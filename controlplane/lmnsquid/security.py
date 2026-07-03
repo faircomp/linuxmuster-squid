@@ -34,7 +34,9 @@ def make_verify_token(
                 detail="Missing authentication credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        if not hmac.compare_digest(cred.credentials, settings.api_token):
+        if not hmac.compare_digest(
+            cred.credentials.encode("utf-8"), settings.api_token.encode("utf-8")
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid authentication token",

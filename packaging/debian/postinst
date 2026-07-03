@@ -18,7 +18,9 @@ mkdir -p /etc/linuxmuster-squid/secrets /var/lib/linuxmuster-squid/instances
 CFG=/etc/linuxmuster-squid/config.yml
 if [ ! -f "$CFG" ]; then
     TOKEN="$(openssl rand -hex 32)"
-    cat > "$CFG" <<EOF
+    # umask 077 -> Datei entsteht mit 0600 (kein 0644-Fenster für den API-Token).
+    ( umask 077
+      cat > "$CFG" <<EOF
 api_token: "$TOKEN"
 instances_dir: /var/lib/linuxmuster-squid/instances
 secrets_dir: /etc/linuxmuster-squid/secrets
@@ -26,6 +28,7 @@ bind_host: 127.0.0.1
 bind_port: 8080
 api_url: http://127.0.0.1:8080
 EOF
+    )
     chmod 600 "$CFG"
 fi
 

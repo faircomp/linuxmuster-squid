@@ -11,6 +11,7 @@
 # Squid mit -s GSS_C_NO_NAME arbeitet. Den Keytab dann als Secret <keytab_secret>
 # in secrets_dir der Control-Plane ablegen (siehe docs/keytab-and-dns.md).
 set -euo pipefail
+umask 077                                    # Keytab entsteht mit 0600 (kein 0644-Fenster)
 
 FQDN="${1:?Usage: provision-keytab.sh <proxy-fqdn> <service-account> <out.keytab>}"
 ACCOUNT="${2:?service account (kinit-fähig, existierend)}"
@@ -20,6 +21,7 @@ echo "== SPN HTTP/${FQDN} an Account ${ACCOUNT} hängen =="
 samba-tool spn add "HTTP/${FQDN}" "${ACCOUNT}"
 
 echo "== Keytab für ${ACCOUNT} exportieren -> ${OUT} =="
+rm -f "${OUT}"                                # frischer Keytab (exportkeytab APPENDET sonst)
 samba-tool domain exportkeytab "${OUT}" --principal="${ACCOUNT}"
 chmod 0600 "${OUT}"
 

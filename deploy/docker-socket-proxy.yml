@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Gefilterter Docker-Socket-Proxy. Der direkte /var/run/docker.sock ist root-äquivalent;
+# stattdessen exponiert dieser Proxy NUR die Endpunkte, die die Control-Plane braucht,
+# an tcp://127.0.0.1:2375. Danach in /etc/linuxmuster-squid/config.yml setzen:
+#   docker_host: "tcp://127.0.0.1:2375"
+# und den Dienst neu starten. (ADR-012.)
+services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    environment:
+      CONTAINERS: "1"   # create/inspect/start/stop/remove/logs
+      IMAGES: "1"       # pull
+      VOLUMES: "1"      # cache-Volumes
+      POST: "1"         # mutierende Aufrufe erlauben
+      INFO: "1"
+      # Rest explizit aus (Angriffsfläche minimieren):
+      EXEC: "0"
+      NETWORKS: "0"
+      AUTH: "0"
+      SECRETS: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      CONFIGS: "0"
+      NODES: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "127.0.0.1:2375:2375"
+    read_only: true
+    tmpfs: ["/run", "/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped

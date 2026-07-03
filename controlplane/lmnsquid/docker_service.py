@@ -25,9 +25,11 @@ class DockerService:
         self,
         docker_host: Optional[str] = None,
         secrets_dir: str = "/etc/linuxmuster-squid/secrets",
+        container_bind_ip: str = "127.0.0.1",
     ) -> None:
         self.docker_host: Optional[str] = docker_host
         self.secrets_dir: str = secrets_dir
+        self.container_bind_ip: str = container_bind_ip
         self.client: docker.DockerClient = (
             docker.DockerClient(base_url=docker_host) if docker_host else docker.from_env()
         )
@@ -96,7 +98,12 @@ class DockerService:
 
         env = self.env_for(inst)
         keytab_container_path = env["KEYTAB"]
-        keytab_host_path = os.path.join(self.secrets_dir, inst.keytab_secret)
+        # Defense in depth (the model already forbids '/'/'..'): resolve and assert
+        # the keytab source stays inside secrets_dir before bind-mounting it.
+        secrets_root = os.path.realpath(self.secrets_dir)
+        keytab_host_path = os.path.realpath(os.path.join(secrets_root, inst.keytab_secret))
+        if os.path.commonpath([secrets_root, keytab_host_path]) != secrets_root:
+            raise ValueError(f"keytab_secret escapes secrets_dir: {inst.keytab_secret!r}")
 
         self.client.containers.run(
             inst.image,
@@ -114,7 +121,7 @@ class DockerService:
                 keytab_host_path: {"bind": keytab_container_path, "mode": "ro"},
                 f"lmnsquid-cache-{inst.name}": {"bind": "/var/spool/squid", "mode": "rw"},
             },
-            ports={f"{inst.http_port}/tcp": inst.http_port},
+            ports={f"{inst.http_port}/tcp": (self.container_bind_ip, inst.http_port)},
         )
         return self.status(inst.name)
 

@@ -22,7 +22,7 @@ UT_CAPITOLE_URL="file://$TMP/bl.tar.gz" \
   bash "$ROOT/scripts/blocklist-refresh.sh" >/dev/null 2>&1
 
 # adult muss drin sein, news NICHT (nur 'adult' angefordert)
-if grep -qx 'bad1.example' "$out" && grep -qx 'bad2.example' "$out" && ! grep -q 'news1.example' "$out"; then
+if grep -qx '.bad1.example' "$out" && grep -qx '.bad2.example' "$out" && ! grep -q 'news1.example' "$out"; then
   echo "blocklist-refresh smoke: OK ($(wc -l < "$out") Domains)"
   exit 0
 else

@@ -21,7 +21,9 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     settings = load_settings()
     store = Store(settings.instances_dir)
-    docker = DockerService(settings.docker_host, settings.secrets_dir)
+    docker = DockerService(
+        settings.docker_host, settings.secrets_dir, settings.container_bind_ip
+    )
     reconciler = Reconciler(store, docker)
     updater = Updater(store, docker, reconciler)
     app = create_app(settings, store, reconciler, docker, updater)

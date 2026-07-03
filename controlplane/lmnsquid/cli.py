@@ -21,8 +21,14 @@ def _get_client() -> httpx.Client:
     """Build an HTTP client for the API from settings (localhost, bearer token)."""
     settings = load_settings()
     headers = {"Authorization": f"Bearer {settings.api_token}"} if settings.api_token else {}
-    # verify=False: the API is a localhost service with a self-signed cert (P9).
-    return httpx.Client(base_url=settings.api_url, headers=headers, timeout=30.0, verify=False)
+    # Only skip TLS verification for a loopback API (self-signed localhost); the token
+    # is a full-privilege credential, so verify certs for any off-host api_url.
+    loopback = any(
+        s in settings.api_url for s in ("://127.0.0.1", "://localhost", "://[::1]")
+    )
+    return httpx.Client(
+        base_url=settings.api_url, headers=headers, timeout=30.0, verify=not loopback
+    )
 
 
 def _emit(resp: httpx.Response) -> None:

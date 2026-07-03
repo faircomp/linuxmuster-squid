@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -18,6 +19,9 @@ from .store import Store
 from .updater import Updater
 
 audit = logging.getLogger("lmnsquid.audit")
+
+# {name} path param flows into Store filenames + docker names; require a safe school-role name.
+_NAME_PARAM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{1,62}$")
 
 
 def create_app(
@@ -34,6 +38,11 @@ def create_app(
     auth = [Depends(verify)]
 
     def _require(name: str) -> Instance:
+        if not _NAME_PARAM_RE.match(name):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="invalid instance name",
+            )
         inst = store.get(name)
         if inst is None:
             raise HTTPException(
@@ -74,7 +83,11 @@ def create_app(
     async def patch_instance(name: str, patch: InstancePatch) -> dict[str, Any]:
         existing = _require(name)
         updates = patch.model_dump(exclude_unset=True)
-        merged = existing.model_copy(update=updates)
+        # Re-validate the merged instance through Instance validators; school/role
+        # are not in InstancePatch, so the identity/name stays immutable.
+        merged = Instance.model_validate(
+            {**existing.model_dump(exclude={"name", "container_name"}), **updates}
+        )
         result = reconciler.apply(merged)
         audit.info(
             "patch instance name=%s fields=%s",

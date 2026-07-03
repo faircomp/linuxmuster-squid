@@ -17,7 +17,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "== blocklist-refresh: $URL =="
-curl -fsSL "$URL" -o "$TMP/bl.tar.gz"
+# Kein -L: verhindert Redirect-basiertes HTTPS->HTTP-Downgrade. Integrität sollte in
+# Produktion zusätzlich per Checksumme/Signatur der UT-Capitole-Liste geprüft werden.
+curl -fsS "$URL" -o "$TMP/bl.tar.gz"
 tar -xzf "$TMP/bl.tar.gz" -C "$TMP"
 # UT-Capitole entpackt nach $TMP/blacklists/<kategorie>/domains
 NEW="$TMP/new.domains"
@@ -32,8 +34,10 @@ for c in $CATEGORIES; do
   fi
 done
 
-# dedupe + sort, dann atomar ersetzen
-sort -u "$NEW" > "${OUT}.tmp"
+# Domain-Normalisierung: führenden Punkt erzwingen, damit dstdomain / ssl::server_name
+# auch Subdomains matchen (ohne Punkt matcht dstdomain nur den exakten Host). Kommentare/
+# Leerzeilen raus, dedupe + sort, dann atomar ersetzen.
+grep -vE '^[[:space:]]*(#|$)' "$NEW" | sed -E 's/^\.*/./' | sort -u > "${OUT}.tmp"
 mv "${OUT}.tmp" "$OUT"
 echo "== $(wc -l < "$OUT") Domains -> $OUT =="
 

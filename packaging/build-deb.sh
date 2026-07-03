@@ -9,6 +9,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="${VERSION:-0.9.0}"
+case "$VERSION" in
+    ""|*[!0-9A-Za-z.+~-]*) echo "invalid VERSION: '$VERSION'" >&2; exit 1 ;;
+esac
 VENV=/opt/linuxmuster-squid/venv
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT

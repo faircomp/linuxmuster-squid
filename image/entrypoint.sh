@@ -22,6 +22,18 @@ chown -R proxy:proxy "${RUN}"
 mkdir -p /var/log/squid /var/spool/squid
 chown proxy:proxy /var/log/squid /var/spool/squid 2>/dev/null || true
 
+# Keytab in einen proxy-lesbaren Pfad kopieren: der gemountete Keytab ist typ. 0600 und
+# gehört einem fremden uid; der Entrypoint (root, mit DAC_OVERRIDE) kopiert ihn nach /run
+# (proxy, 0600), damit die als 'proxy' laufenden Helfer ihn lesen können.
+if [ ! -r "${KEYTAB}" ]; then
+    echo "FATAL: keytab '${KEYTAB}' is missing or not readable (mount it as a secret)." >&2
+    exit 1
+fi
+cp "${KEYTAB}" "${RUN}/keytab"
+chmod 600 "${RUN}/keytab"                 # chmod VOR chown (root ohne CAP_FOWNER kann fremd-owned nicht chmodden)
+chown proxy:proxy "${RUN}/keytab"
+KEYTAB="${RUN}/keytab"
+
 # Kerberos: Helfer lesen den Keytab via KRB5_KTNAME; FILE-ccache (kein Kernel-Keyring).
 # krb5.conf/ldap.conf unter /run, damit /etc read-only bleiben kann.
 export KRB5_KTNAME="${KEYTAB}"
@@ -60,11 +72,6 @@ fi
 if [ ! -d /var/spool/squid/ssl_db ]; then
     /usr/lib/squid/security_file_certgen -c -s /var/spool/squid/ssl_db -M 4MB >/dev/null 2>&1 || true
     chown -R proxy:proxy /var/spool/squid/ssl_db 2>/dev/null || true
-fi
-
-if [ ! -r "${KEYTAB}" ]; then
-    echo "FATAL: keytab '${KEYTAB}' is missing or not readable (mount it as a secret)." >&2
-    exit 1
 fi
 
 TEMPLATE=/etc/squid/templates/squid.conf.template
