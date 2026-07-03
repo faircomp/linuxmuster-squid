@@ -72,6 +72,8 @@ def create(
     http_port: int = typer.Option(3128),
     school_subnets: str = typer.Option("0.0.0.0/0"),
     cache_size_mb: int = typer.Option(1000),
+    log_retention_days: int = typer.Option(30, help="access-log retention (days)"),
+    access_log_enabled: bool = typer.Option(True, help="log requests (privacy: --no-access-log-enabled)"),
 ) -> None:
     """Create (and reconcile) an instance."""
     body = {
@@ -85,6 +87,8 @@ def create(
         "http_port": http_port,
         "school_subnets": school_subnets,
         "cache_size_mb": cache_size_mb,
+        "log_retention_days": log_retention_days,
+        "access_log_enabled": access_log_enabled,
     }
     with _get_client() as c:
         _emit(c.post("/v1/instances", json=body))

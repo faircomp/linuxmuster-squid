@@ -7,6 +7,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
+## [1.0.0-rc2] - 2026-07-03
+
+### Added
+- **Log-Aufbewahrung & -Abfrage:** Access-Log auf `docker/lmnsquid logs` gespiegelt; dauerhafte
+  **gzip-rotierte Historie** im persistenten Log-Volume (`logrotate`, `log_retention_days`,
+  Default 30, bis 3650). Docker-json-log gedeckelt (`log_max_size/log_max_file`).
+- **API/CLI-Abfrage:** `GET /logs?since=&until=&grep=` (live) + neu `GET /logs/access` (historisch,
+  durchsucht die `.gz`-Tagesdateien injection-sicher); CLI `logs`/`access-logs`.
+- **Datenschutz:** `access_log_enabled` pro Instanz (Requests komplett abschaltbar); Retention =
+  dokumentierte Löschfrist (Threat-Model T13).
+
 ## [1.0.0-rc1] - 2026-07-03
 
 Erste vollständige, crabbox-verifizierte Fassung. Alle autonom testbaren

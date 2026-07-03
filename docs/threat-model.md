@@ -33,6 +33,7 @@ Risiken + Gegenmaßnahmen. Wächst pro Roadmap-Phase; die Negativtests dazu steh
 | T10 | **DC/LDAP-Ausfall staut jede Anfrage** | externe-ACL `ttl/negative_ttl/grace` + Helfer-Concurrency tunen | Lasttest P10 |
 | T11 | **Container-Escape/Privileg** | `read_only`-Rootfs + tmpfs, `cap_drop: ALL` (minimal Caps), non-root `proxy`, Manager-ACL localhost | Härtungs-Review P10 |
 | T12 | **Exam-Mode** | `<user>-exam` in keiner teachers/students-Gruppe → ACL verweigert; lmn7 deaktiviert Proxy im Prüfungsmodus | Doku + optionaler Test |
+| T13 | **Access-Logs = personenbezogen** (Surfverhalten, DSGVO) | Aufbewahrung = `log_retention_days` (dokumentierte Löschfrist, Default 30), gzip-rotiert; Access-Logging pro Instanz abschaltbar (`access_log_enabled:false`); Log-Zugriff nur per API-Token, Abfragen ins Audit-Log; keine Secrets im Log | Retention-/Rotation-Smoke; `access_log none`-Render-Test |
 
 ## Nicht-Ziele (bewusst)
 
