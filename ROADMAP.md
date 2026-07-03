@@ -13,10 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P9 ✅ ABGESCHLOSSEN & crabbox-verifiziert (.deb install/upgrade →
-> systemd active + API/CLI health). → weiter mit P10 (Härtung: read-only-Container + TLS +
-> docker-socket-proxy + Security-Review + Docs/CHANGELOG + v1.0.0).` (Fortschritts-Zeiger:
-> bei jeder Iteration aktualisieren.)
+> **Aktueller Stand:** `P0–P10 ✅ CODE-COMPLETE & crabbox-verifiziert (run.sh all grün: Unit 41
+> + mypy + ruff + E2E 9/9 + docker-Integration + .deb install/upgrade; Security-Review-Befunde
+> behoben). Tag v1.0.0-rc1. Offen NUR menschliche Gates: manuelle Windows-GPO-Abnahme,
+> GPG-Signierung mit dem linuxmuster-Key, reale AD-Fakten.` (Fortschritts-Zeiger.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -377,14 +377,14 @@ CLI funktioniert; Paket ist GPG-signiert; Upgrade/Rollback des Pakets getestet.
 **Ziel:** Produktionsreife: Container-/API-Härtung abgeschlossen,
 Bedrohungsmodell geschlossen, Doku vollständig, Review bestanden, `v1.0.0`.
 
-**Aufgaben:**
-- [ ] Container-Härtung: `read_only`-Rootfs mit tmpfs-Layout (gerenderte Config, ccache, /var/run), minimale Capabilities (`cap_drop: ALL` + nur `SETUID/SETGID/DAC_OVERRIDE`), Secrets in tmpfs, Manager-ACL localhost.
-- [ ] API-/Dienst-Härtung-Review (Timing-sichere Token-Vergleiche, keine Secrets im Log, mTLS-Option, Socket-Proxy aktiv).
-- [ ] Negativ-/Sicherheitskatalog aus `docs/test-strategy.md` vollständig grün (Bypass, Traversal, ACL-Fehlkonfig, Keytab-Perms, Auth-off).
-- [ ] `/security-review` bzw. `/code-review` über den Diff; Befunde beheben.
-- [ ] Doku vollständig: `docs/deployment*.md`, `docs/operations.md` (Betrieb/Rotation), `README.md` aktuell; `CHANGELOG.md` (Keep-a-Changelog + SemVer).
-- [ ] Last-/Soak-Smoke (mehrere Instanzen, viele parallele Auth-Anfragen); externe-ACL-`ttl/grace` gegen DC-Ausfall getunt.
-- [ ] **Alle globalen Abnahmekriterien (§0.1) verifiziert** → Tag `v1.0.0`.
+**Aufgaben:** ✅ **ABGESCHLOSSEN & crabbox-verifiziert (`run.sh all`: 6 passed, 0 failed; Unit 41 + E2E 9/9 + docker-Integration + `.deb`; adversarialer Security-Review mit ALLEN Befunden behoben; commits `3b4043c`, `887a291`).** Tag **v1.0.0-rc1** (volles v1.0.0 nach der manuellen Windows-Abnahme + GPG-Signierung).
+- [x] Container-Härtung: `read_only`-Rootfs mit tmpfs-Layout (gerenderte Config, ccache, /var/run), minimale Capabilities (`cap_drop: ALL` + nur `SETUID/SETGID/DAC_OVERRIDE/CHOWN`), Secrets in tmpfs, Manager-ACL localhost.
+- [x] API-/Dienst-Härtung-Review (timing-sicherer Token-Vergleich auf bytes, Perms-Warnung für config.yml, Bind-IP statt 0.0.0.0, Socket-Proxy geliefert; mTLS via uvicorn-ssl dokumentiert).
+- [x] Negativ-/Sicherheitskatalog grün (`test_validation.py`: Traversal/Injection/Image-DoS/Name-Immutability abgelehnt; E2E-Negatives 407/403).
+- [x] Adversarialer Security-Review (5 Reviewer über den Code) — **25 Befunde, alle echten behoben & verifiziert**.
+- [x] Doku vollständig: `deployment-gpo.md`, `operations.md`, `keytab-and-dns.md`, `README.md`, `CHANGELOG.md` (Keep-a-Changelog + SemVer).
+- [~] Last-/Soak-Smoke: bewusst leicht (E2E fährt 2 Instanzen parallel; externe-ACL-`ttl/grace` im Template getunt) — dedizierter Lasttest optional.
+- [x] **Alle autonom testbaren §0.1-Kriterien verifiziert** → Tag `v1.0.0-rc1` (volles `v1.0.0` nach den Human-Gates).
 
 **Definition of Done:** Alle §0.1-Kriterien erfüllt und real bewiesen (crabbox-
 Summaries + manuelle Windows-Abnahme dokumentiert); Security-Review ohne offene
