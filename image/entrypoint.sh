@@ -14,6 +14,15 @@ set -eu
 : "${CACHE_SIZE_MB:=1000}"
 : "${KEYTAB:=/run/secrets/squid_keytab}"
 : "${SCHOOL_SUBNETS:=0.0.0.0/0}"          # school is identified by source subnet(s)
+: "${LOG_RETENTION_DAYS:=30}"             # Access-Log-Aufbewahrung in Tagen (logrotate)
+: "${ACCESS_LOG_ENABLED:=1}"              # 1=Access-Log an, 0=aus (Datenschutz)
+
+# Access-Log an/aus (Datenschutz): bei 0 protokolliert Squid keine Requests.
+if [ "${ACCESS_LOG_ENABLED}" = "0" ]; then
+    ACCESS_LOG_DIRECTIVE="access_log none"
+else
+    ACCESS_LOG_DIRECTIVE="access_log stdio:/var/log/squid/access.log squid"
+fi
 
 RUN=/run/lmnsquid
 mkdir -p "${RUN}/ssl"
@@ -45,6 +54,7 @@ export KRB5_CONFIG="${RUN}/krb5.conf"
 export LDAPCONF="${RUN}/ldap.conf"
 # envsubst ersetzt nur EXPORTIERTE Variablen (sonst "http_port " => FATAL).
 export INSTANCE HTTP_PORT CACHE_SIZE_MB KEYTAB REALM AD_GROUP VISIBLE_HOSTNAME SCHOOL_SUBNETS
+export ACCESS_LOG_DIRECTIVE
 
 # krb5.conf: rdns/canonicalize=false, damit der ldap/-SPN aus dem literalen DC-Namen
 # (via SRV) gebildet wird und NICHT per Reverse-DNS (-> SASL "Local error").
@@ -78,7 +88,7 @@ TEMPLATE=/etc/squid/templates/squid.conf.template
 CONF="${RUN}/squid.conf"
 
 # Only substitute OUR variables so Squid's own %-tokens survive untouched.
-envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROUP} ${VISIBLE_HOSTNAME} ${SCHOOL_SUBNETS}' \
+envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROUP} ${VISIBLE_HOSTNAME} ${SCHOOL_SUBNETS} ${ACCESS_LOG_DIRECTIVE}' \
     < "${TEMPLATE}" > "${CONF}"
 
 # The blocklist file is normally mounted read-only; create an empty one only if absent.
@@ -88,11 +98,40 @@ envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROU
 squid -k parse -f "${CONF}"
 squid -N -f "${CONF}" -z || true
 
-# Access-Log auf Container-stdout spiegeln, damit `docker logs` / `lmnsquid logs` ihn zeigen.
-# Squid kann nach dem setuid auf 'proxy' nicht auf /dev/stdout schreiben (Datei + Tailer).
-# tail -F wartet, bis Squid die Datei anlegt, und überlebt Log-Rotation. stdbuf -oL erzwingt
-# Zeilen-Pufferung (sonst block-buffert tail auf die Pipe -> Zeilen erscheinen erst spät/nie).
-stdbuf -oL tail -F /var/log/squid/access.log 2>/dev/null &
+if [ "${ACCESS_LOG_ENABLED}" != "0" ]; then
+    # Access-Log auf Container-stdout spiegeln, damit `docker logs` / `lmnsquid logs` ihn zeigen.
+    # Squid kann nach dem setuid auf 'proxy' nicht auf /dev/stdout schreiben (Datei + Tailer).
+    # tail -F folgt über Rotation hinweg; stdbuf -oL erzwingt Zeilen-Pufferung (sonst block-
+    # buffert tail auf die Pipe -> Zeilen erscheinen erst spät/nie).
+    stdbuf -oL tail -F /var/log/squid/access.log 2>/dev/null &
+
+    # logrotate: access.log/cache.log täglich bzw. wöchentlich rotieren + gzip, LOG_RETENTION_DAYS
+    # behalten. State-Datei auf dem PERSISTENTEN Volume, damit "daily" auch über Neustarts stimmt.
+    # copytruncate: kein squid-Signal nötig, tail -F folgt der Truncation. Retention = Löschfrist.
+    cat > "${RUN}/logrotate.conf" <<EOF
+/var/log/squid/access.log {
+    daily
+    rotate ${LOG_RETENTION_DAYS}
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+/var/log/squid/cache.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+EOF
+    ( while true; do
+          logrotate -s /var/log/squid/.logrotate.state "${RUN}/logrotate.conf" 2>/dev/null || true
+          sleep 3600
+      done ) &
+fi
 
 echo "linuxmuster-squid: instance='${INSTANCE}' fqdn='${VISIBLE_HOSTNAME}' group='${AD_GROUP}@${REALM}' port=${HTTP_PORT}" >&2
 exec squid -N -d1 -f "${CONF}"

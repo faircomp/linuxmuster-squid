@@ -20,6 +20,7 @@ RUN apt-get update \
       ca-certificates \
       libsasl2-modules-gssapi-mit \
       openssl \
+      logrotate \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /etc/squid/lists /etc/squid/templates /var/log/squid /var/spool/squid \
  && chown -R proxy:proxy /var/log/squid /var/spool/squid \

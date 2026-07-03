@@ -80,7 +80,7 @@ http_access deny all                       # authentifiziert, aber nicht in Grup
 # proxy ist /proc/self/fd nicht mehr erreichbar -> /dev/stdout scheitert. Der Entrypoint
 # spiegelt den Access-Log per `tail -F` auf Container-stdout (-> docker/lmnsquid logs).
 cache_dir ufs /var/spool/squid ${CACHE_SIZE_MB} 16 256
-access_log stdio:/var/log/squid/access.log squid
+${ACCESS_LOG_DIRECTIVE}
 cache_log /var/log/squid/cache.log
 
 # WICHTIG: der Container-hostname MUSS ${VISIBLE_HOSTNAME} sein (SPN-Kanonikalisierung),
