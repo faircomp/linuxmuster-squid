@@ -16,8 +16,8 @@ Gruppen-ACL erzwungen und automatisiert bewiesen.
 > **Aktueller Stand:** `P0–P10 ✅ CODE-COMPLETE & crabbox-verifiziert; Log-Rotation/Retention/
 > Abfrage nachgezogen → Tag v1.0.0-rc2. Multi-Perspektiven-Gap-Review gemacht → P11-Backlog
 > (Deployment-Realität/Betrieb/Ehrlichkeit) unten, priorisiert mit Ziel+Verifikation je Punkt.
-> NÄCHSTES: P11.1 (Upgrade-Restart-Bug + Release/GHCR-Bootstrap). Human-Gates: Windows-Abnahme,
-> GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
+> P11.1 ✅ (Upgrade-Restart-Fix crabbox-verifiziert; RELEASE.md). NÄCHSTES: P11.2 (reconcile/
+> restore). Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -405,8 +405,8 @@ Review-Report.
 
 **Ziel:** Ein `.deb`-Upgrade lädt wirklich den neuen Code; es existiert ein publiziertes,
 digest-pinbares Image + ein dokumentierter Bootstrap.
-- [ ] **Upgrade-Restart-Bug:** postinst ruft bei Upgrade `systemctl try-restart linuxmuster-squid` (guarded). *Ziel:* laufender Prozess = neue Version (heute No-op → alter Code bleibt). *Verif:* `deb_smoke` hittet nach Upgrade `GET /v1/version` und prüft die **neue** Versionsnummer (nicht nur `dpkg -s`).
-- [ ] **Release/GHCR-Bootstrap** (`RELEASE.md`): push→tag→CI baut→GHCR→Package public; realen `@sha256`-Digest festhalten. *Verif:* Doku-Review; erster CI-Run grün; `docker pull <digest>` klappt.
+- [x] **Upgrade-Restart-Bug:** ✅ postinst: Frisch→`start`, Upgrade→`try-restart`; `prerm` stoppt nur bei `remove` (zweiter Bug, den der Fix aufdeckte). *Verif (crabbox):* `deb_smoke` prüft **MainPID-Wechsel** über das Upgrade (9550→9939 = neu gestartet, neuer Code aktiv) + clean-slate reuse-fest. commit `12af923`.
+- [x] **Release/GHCR-Bootstrap** (`RELEASE.md`): push→tag→CI baut→GHCR→Package public; realen `@sha256`-Digest festhalten. *Verif:* Doku (RELEASE.md); erster CI-Run + Publish sind Human-Gate.
 - [ ] ⏸ **Human-Gate:** Image tatsächlich publizieren (GitHub/GHCR).
 
 **DoD:** Upgrade-Test beweist die neue *laufende* Version; ein echter Digest ist dokumentiert.
