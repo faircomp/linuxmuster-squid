@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Unit]
+Description=linuxmuster-squid control plane (REST API)
+Documentation=https://github.com/faircomp/linuxmuster-squid
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=lmnsquid
+SupplementaryGroups=docker
+ExecStart=/opt/linuxmuster-squid/venv/bin/lmnsquid-api
+Environment=LMNSQUID_CONFIG=/etc/linuxmuster-squid/config.yml
+Restart=on-failure
+RestartSec=3
+
+# --- Härtung (Docker-Socket-Zugriff bleibt root-äquivalent -> ergänzend Socket-Proxy) ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+ReadWritePaths=/etc/linuxmuster-squid /var/lib/linuxmuster-squid
+
+[Install]
+WantedBy=multi-user.target

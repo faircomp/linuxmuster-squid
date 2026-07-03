@@ -38,6 +38,8 @@ def load_settings(config_path: str | None = None) -> Settings:
     Values read from ``config_path`` act as defaults; any matching
     ``LMNSQUID_<FIELD>`` environment variable takes precedence.
     """
+    if config_path is None:
+        config_path = os.environ.get("LMNSQUID_CONFIG", "/etc/linuxmuster-squid/config.yml")
     overrides: dict[str, Any] = {}
     if config_path:
         path = Path(config_path)

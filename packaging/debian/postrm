@@ -1,0 +1,13 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+# Config/State + venv absichtlich NICHT bei remove löschen (nur bei purge).
+if [ "$1" = "purge" ]; then
+    rm -rf /opt/linuxmuster-squid
+    rm -rf /etc/linuxmuster-squid /var/lib/linuxmuster-squid
+fi
+exit 0

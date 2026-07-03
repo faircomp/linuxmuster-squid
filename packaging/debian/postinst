@@ -1,0 +1,40 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -e
+
+# System-User (in docker-Gruppe für den Socket-Zugriff)
+if ! getent passwd lmnsquid >/dev/null 2>&1; then
+    adduser --system --group --no-create-home \
+        --home /var/lib/linuxmuster-squid lmnsquid
+fi
+if getent group docker >/dev/null 2>&1; then
+    usermod -aG docker lmnsquid || true
+fi
+
+mkdir -p /etc/linuxmuster-squid/secrets /var/lib/linuxmuster-squid/instances
+
+# Config mit zufälligem API-Token (nur, wenn noch nicht vorhanden)
+CFG=/etc/linuxmuster-squid/config.yml
+if [ ! -f "$CFG" ]; then
+    TOKEN="$(openssl rand -hex 32)"
+    cat > "$CFG" <<EOF
+api_token: "$TOKEN"
+instances_dir: /var/lib/linuxmuster-squid/instances
+secrets_dir: /etc/linuxmuster-squid/secrets
+bind_host: 127.0.0.1
+bind_port: 8080
+api_url: http://127.0.0.1:8080
+EOF
+    chmod 600 "$CFG"
+fi
+
+chown -R lmnsquid:lmnsquid /etc/linuxmuster-squid /var/lib/linuxmuster-squid
+chmod 700 /etc/linuxmuster-squid/secrets
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    systemctl enable --now linuxmuster-squid.service || true
+fi
+
+exit 0

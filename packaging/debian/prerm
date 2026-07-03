@@ -1,0 +1,8 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl disable --now linuxmuster-squid.service || true
+fi
+exit 0

@@ -1,0 +1,12 @@
+Package: linuxmuster-squid
+Version: @VERSION@
+Architecture: all
+Maintainer: Kevin Stenzel <kevin@ks98.de>
+Section: admin
+Priority: optional
+Depends: python3 (>= 3.11), adduser, openssl
+Recommends: docker.io | docker-ce
+Description: Control plane for containerized linuxmuster-squid proxies
+ REST API + CLI to manage per-school Squid proxy containers (Kerberos SSO,
+ AD group ACLs, SNI filtering) with digest-pinned, health-checked, auto-rolling
+ updates. Ships a self-contained Python virtualenv under /opt/linuxmuster-squid.
