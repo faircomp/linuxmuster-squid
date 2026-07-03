@@ -83,6 +83,26 @@ def test_patch_cannot_change_identity(
     assert resp.json()["instance"]["name"] == "default-school-teachers"
 
 
+def test_dockerd_down_returns_503(
+    client: Any,
+    auth_headers: dict[str, str],
+    docker: Any,
+    instance_data: dict[str, Any],
+    monkeypatch: Any,
+) -> None:
+    from docker.errors import DockerException
+
+    client.post("/v1/instances", json=instance_data, headers=auth_headers)
+
+    def boom(*_a: Any, **_k: Any) -> None:
+        raise DockerException("daemon down")
+
+    monkeypatch.setattr(docker, "status", boom)
+    resp = client.get("/v1/instances/default-school-teachers/status", headers=auth_headers)
+    assert resp.status_code == 503
+    assert "docker daemon unreachable" in resp.json()["detail"]
+
+
 def test_insecure_bind_warns(caplog: Any) -> None:
     import logging as _logging
 

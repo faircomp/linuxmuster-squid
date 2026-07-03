@@ -60,7 +60,19 @@ lmnsquid logs <name> --tail 100 --grep teacher1   # Live: Access + Squid, option
 lmnsquid logs <name> --since 1783000000            # ab Unix-Epoch-Sekunde
 lmnsquid access-logs <name> --grep blocked.example --since 1782900000  # HISTORIE (Tage/Monate)
 ```
-Mutationen der API laufen ins Audit-Log (`logger "lmnsquid.audit"`).
+Mutationen der API laufen ins Audit-Log (`logger "lmnsquid.audit"`). Ist der Docker-Daemon
+weg, antwortet die API mit **503** (nicht rohem 500).
+
+### Alerting & Auth-Health (ohne Monitoring-Stack)
+
+- **Instanz down/unhealthy melden:** vorhandene Signale an eure Schul-Infra hängen, z. B.
+  `docker events --filter event=health_status --filter event=die` in ein Skript, das bei
+  `unhealthy`/`die` eine Mail/Matrix-Nachricht schickt (kein Prometheus nötig).
+- **Keytab-Ablauf früh erkennen** (sonst ganze Schule offline, wenn der Dienst-Account das
+  Passwort rotiert): `klist -kt <keytab>` zeigt KVNO/Enctypes; ein Cron alarmiert bei einem
+  Spike von `Negotiate … BH` / 407-nach-Ticket im Access-Log
+  (`lmnsquid access-logs <name> --grep BH`). Nach Rotation: Keytab neu exportieren, Instanz
+  `restart`. Siehe [`keytab-and-dns.md`](keytab-and-dns.md) (KVNO/SPN-Fallstricke).
 
 ## Logs, Rotation & Aufbewahrung
 

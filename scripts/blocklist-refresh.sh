@@ -38,6 +38,18 @@ done
 # auch Subdomains matchen (ohne Punkt matcht dstdomain nur den exakten Host). Kommentare/
 # Leerzeilen raus, dedupe + sort, dann atomar ersetzen.
 grep -vE '^[[:space:]]*(#|$)' "$NEW" | sed -E 's/^\.*/./' | sort -u > "${OUT}.tmp"
+
+# Fail-closed: eine echte UT-Capitole-Kategorie hat Tausende Einträge. Ist die neue Liste
+# verdächtig klein (leerer/abgeschnittener/manipulierter Download), NICHT ersetzen — die alte
+# Liste bleibt aktiv und wir signalisieren einen Fehler (fürs Alerting). BLOCKLIST_MIN_LINES anpassbar.
+LINES="$(wc -l < "${OUT}.tmp")"
+MIN="${BLOCKLIST_MIN_LINES:-1000}"
+if [ "$LINES" -lt "$MIN" ]; then
+    echo "FEHLER: neue Blockliste hat nur $LINES Zeilen (< $MIN) — verdächtig; behalte die alte (fail-closed)." >&2
+    rm -f "${OUT}.tmp"
+    exit 1
+fi
+
 mv "${OUT}.tmp" "$OUT"
 echo "== $(wc -l < "$OUT") Domains -> $OUT =="
 

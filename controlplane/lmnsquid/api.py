@@ -8,7 +8,9 @@ import logging
 import re
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from docker.errors import DockerException
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 
 from .config import Settings
 from .docker_service import DockerService
@@ -34,6 +36,14 @@ def create_app(
     """Build the FastAPI app wiring routes to the store, reconciler and docker service."""
     verify = make_verify_token(settings)
     app = FastAPI(title="linuxmuster-squid control plane")
+
+    @app.exception_handler(DockerException)
+    async def _docker_unreachable(_request: Request, exc: DockerException) -> JSONResponse:
+        # Docker daemon down / Engine-API error -> 503 with a clear detail, not a raw 500.
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": f"docker daemon unreachable: {exc}"},
+        )
 
     auth = [Depends(verify)]
 
