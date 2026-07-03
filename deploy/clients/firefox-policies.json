@@ -1,0 +1,22 @@
+{
+  "_comment": "SPDX-License-Identifier: GPL-3.0-or-later — Firefox enterprise policy (policies.json bzw. ADMX). Lehrer-Variante; für Schüler den FQDN auf proxy-students.* ändern und per GPO-Security-Filtering/ILT der jeweiligen Gruppe zuweisen. FQDNs an eure AD-DNS-Domain anpassen.",
+  "policies": {
+    "Proxy": {
+      "Mode": "manual",
+      "HTTPProxy": "proxy-teachers.linuxmuster.meineschule.de:3128",
+      "SSLProxy": "proxy-teachers.linuxmuster.meineschule.de:3128",
+      "UseHTTPProxyForAllProtocols": true,
+      "Passthrough": "localhost, 127.0.0.1, *.linuxmuster.meineschule.de, 10.0.0.0/8",
+      "Locked": true
+    },
+    "Authentication": {
+      "SPNEGO": [
+        "proxy-teachers.linuxmuster.meineschule.de",
+        "proxy-students.linuxmuster.meineschule.de"
+      ],
+      "AllowProxies": { "SPNEGO": true, "NTLM": true },
+      "AllowNonFQDN": { "SPNEGO": false, "NTLM": false },
+      "Locked": true
+    }
+  }
+}
