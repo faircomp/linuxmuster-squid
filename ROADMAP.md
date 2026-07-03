@@ -17,7 +17,7 @@ Gruppen-ACL erzwungen und automatisiert bewiesen.
 > Abfrage nachgezogen → Tag v1.0.0-rc2. Multi-Perspektiven-Gap-Review gemacht → P11-Backlog
 > (Deployment-Realität/Betrieb/Ehrlichkeit) unten, priorisiert mit Ziel+Verifikation je Punkt.
 > P11.1–P11.2 ✅ (Upgrade-Restart + reconcile/restore, crabbox-verifiziert). P11.3 ✅ (ECH/QUIC/DoH dokumentiert +
-> mitigiert). NÄCHSTES: P11.4 (Doku==Code: TLS/Socket-Proxy/Signierung). Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
+> mitigiert). P11.4 ✅. NÄCHSTES: P11.5 (Betriebs-Signale). Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -435,9 +435,9 @@ kein falsches Kinderschutz-Versprechen.
 ### P11.4 — 🟠 Ehrlichkeit: Doku == Code
 
 **Ziel:** Keine Fähigkeit behaupten, die im Code fehlt; Sicherheits-Framing stimmt.
-- [ ] **TLS:** Doku/ROADMAP/Threat-Model auf „API nur loopback; off-host nur via betreiber-eigenen TLS-Reverse-Proxy" korrigieren **und** `main.py`: laute Warnung/Abbruch bei non-loopback-Bind ohne TLS. *Verif:* Unit (bind_host≠loopback ohne TLS → Warnung/Exit) + Doku-Review.
-- [ ] **Socket-Proxy ehrlich framen** (ADR-012/Threat-Model): reduziert Angriffsfläche, **kein** Downgrade unter Host-Root; rootless Docker = echte Antwort. *Verif:* Doku-Review.
-- [ ] **Socket-Proxy vs. Access-Log-Historie:** `access_logs()` host-seitig aus dem Log-Volume lesen (kein `docker exec`) **oder** die Einschränkung (EXEC nötig) klar dokumentieren. *Verif:* falls Umbau: Smoke über den Socket-Proxy-Pfad; sonst Doku-Note.
+- [x] **TLS:** Doku/ROADMAP/Threat-Model auf „API nur loopback; off-host nur via betreiber-eigenen TLS-Reverse-Proxy" korrigieren **und** `main.py`: laute Warnung/Abbruch bei non-loopback-Bind ohne TLS. *Verif:* Unit (bind_host≠loopback ohne TLS → Warnung/Exit) + Doku-Review.
+- [x] **Socket-Proxy ehrlich framen** (ADR-012/Threat-Model): reduziert Angriffsfläche, **kein** Downgrade unter Host-Root; rootless Docker = echte Antwort. *Verif:* Doku-Review.
+- [x] **Socket-Proxy vs. Access-Log-Historie:** `access_logs()` host-seitig aus dem Log-Volume lesen (kein `docker exec`) **oder** die Einschränkung (EXEC nötig) klar dokumentieren. *Verif:* falls Umbau: Smoke über den Socket-Proxy-Pfad; sonst Doku-Note.
 - [ ] **GPG/apt-Signierung:** gegen die echte `deb.linuxmuster.net`-Pipeline verifizieren (Repo-`Release`-Signatur, **nicht** per-`.deb`), Note in `build-deb.sh` korrigieren. *Verif:* WebFetch/Quelle + korrigierte Doku. ⏸ Human-Gate: echter Key.
 
 **DoD:** kein Doku-vs-Code-Widerspruch mehr offen.
