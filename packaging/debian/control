@@ -4,7 +4,7 @@ Architecture: all
 Maintainer: Kevin Stenzel <kevin@ks98.de>
 Section: admin
 Priority: optional
-Depends: python3 (>= 3.11), adduser, openssl
+Depends: python3 (>= 3.11), adduser, openssl, git
 Recommends: docker.io | docker-ce
 Description: Control plane for containerized linuxmuster-squid proxies
  REST API + CLI to manage per-school Squid proxy containers (Kerberos SSO,

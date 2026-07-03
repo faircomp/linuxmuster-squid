@@ -194,6 +194,13 @@ def health() -> None:
         _emit(c.get("/v1/health"))
 
 
+@app.command()
+def reconcile() -> None:
+    """Re-apply all stored instances (reconverge drift / restore on a fresh host)."""
+    with _get_client() as c:
+        _emit(c.post("/v1/reconcile"))
+
+
 def main() -> None:
     app()
 

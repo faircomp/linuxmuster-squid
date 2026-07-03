@@ -83,6 +83,17 @@ def test_patch_cannot_change_identity(
     assert resp.json()["instance"]["name"] == "default-school-teachers"
 
 
+def test_reconcile_endpoint(
+    client: Any, auth_headers: dict[str, str], instance_data: dict[str, Any]
+) -> None:
+    client.post("/v1/instances", json=instance_data, headers=auth_headers)
+    resp = client.post("/v1/reconcile", headers=auth_headers)
+    assert resp.status_code == 200
+    names = [s["name"] for s in resp.json()["reconciled"]]
+    assert "default-school-teachers" in names
+    assert client.post("/v1/reconcile").status_code == 401  # auth required
+
+
 def test_log_query_endpoints(
     client: Any, auth_headers: dict[str, str], instance_data: dict[str, Any]
 ) -> None:

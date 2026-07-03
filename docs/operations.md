@@ -89,7 +89,28 @@ Access-Logs zeigen **wer welche Seite besucht/geblockt bekam** = personenbezogen
 ## Sicherung
 
 - `/etc/linuxmuster-squid/config.yml` (API-Token!), `/etc/linuxmuster-squid/secrets/` (Keytabs),
-- `instances_dir` (`/var/lib/linuxmuster-squid/instances/*.yaml` — git-versioniert = Change-Log).
+- `instances_dir` (`/var/lib/linuxmuster-squid/instances/*.yaml` — git-versioniert = Change-Log;
+  der postinst legt das Repo an),
+- Log-**Volumes** (`lmnsquid-logs-<name>`) nur, falls die Access-Historie aufbewahrungspflichtig
+  ist — das Cache-Volume (`lmnsquid-cache-<name>`) ist **wegwerfbar**.
+
+## Restore / Disaster-Recovery
+
+Frischer Host → laufende Instanzen:
+```
+apt install ./linuxmuster-squid_<version>_all.deb          # Dienst kommt hoch
+# API-Token behalten: config.yml zurückspielen ODER neuen Token akzeptieren
+cp -a <backup>/secrets/*        /etc/linuxmuster-squid/secrets/      # Keytabs
+cp -a <backup>/instances/*.yaml /var/lib/linuxmuster-squid/instances/
+chown -R lmnsquid:lmnsquid /etc/linuxmuster-squid/secrets /var/lib/linuxmuster-squid/instances
+lmnsquid reconcile      # liest den Soll-Zustand + pullt die gepinnten Digests -> Container laufen
+```
+- **`lmnsquid reconcile`** (`POST /v1/reconcile`) wendet **alle** gespeicherten Instanzen erneut
+  an — auch zum Beheben von Drift nach einem Vorfall.
+- **Reboot** braucht das nicht: `restart_policy: unless-stopped` bringt laufende Container zurück.
+- **Downgrade des Tools:** älteres `.deb` installieren → der postinst startet den Dienst neu
+  (lädt den alten Code). **Cache-Volume kaputt** (Container bleibt unhealthy nach Stromausfall):
+  `docker rm -f <container>` + `docker volume rm lmnsquid-cache-<name>` → `lmnsquid reconcile`.
 
 ## Sicherheits-Posture (Kurz)
 

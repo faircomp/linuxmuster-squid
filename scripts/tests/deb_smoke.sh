@@ -28,6 +28,13 @@ curl -fsS http://127.0.0.1:8080/v1/health; echo
 echo "== CLI 'lmnsquid health' (liest /etc/linuxmuster-squid/config.yml) =="
 sudo -u lmnsquid /opt/linuxmuster-squid/venv/bin/lmnsquid health
 
+echo "== instances_dir ist ein git-Repo (Change-Log)? =="
+if sudo -u lmnsquid git -C /var/lib/linuxmuster-squid/instances rev-parse --git-dir >/dev/null 2>&1; then
+    echo "  [PASS] instances_dir git-initialisiert"
+else
+    echo "  [FAIL] kein git-Repo in instances_dir"; exit 1
+fi
+
 PID_BEFORE="$(systemctl show -p MainPID --value linuxmuster-squid.service)"
 echo "== Upgrade auf 0.9.1 (MainPID vorher=$PID_BEFORE) =="
 VERSION=0.9.1 bash "$ROOT/packaging/build-deb.sh"

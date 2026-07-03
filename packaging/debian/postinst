@@ -35,6 +35,16 @@ fi
 chown -R lmnsquid:lmnsquid /etc/linuxmuster-squid /var/lib/linuxmuster-squid
 chmod 700 /etc/linuxmuster-squid/secrets
 
+# instances_dir als git-Repo initialisieren -> Store-Änderungen werden als Change-Log
+# committet (Store._git ist best-effort und braucht ein Repo + Identität).
+INST_DIR=/var/lib/linuxmuster-squid/instances
+if command -v git >/dev/null 2>&1 && [ ! -d "$INST_DIR/.git" ]; then
+    git -C "$INST_DIR" init -q || true
+    git -C "$INST_DIR" config user.name  "linuxmuster-squid" || true
+    git -C "$INST_DIR" config user.email "lmnsquid@localhost" || true
+    chown -R lmnsquid:lmnsquid "$INST_DIR/.git" || true
+fi
+
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
     systemctl enable linuxmuster-squid.service || true

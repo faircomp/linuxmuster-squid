@@ -72,6 +72,12 @@ def create_app(
     async def version() -> dict[str, str]:
         return {"version": settings.version}
 
+    @app.post("/v1/reconcile", dependencies=auth)
+    async def reconcile() -> dict[str, Any]:
+        """Re-apply every stored instance (reconverge drift / restore on a fresh host)."""
+        audit.info("reconcile all instances")
+        return {"reconciled": reconciler.reconcile_all()}
+
     # --------------------------------------------------------------- instances
     @app.post(
         "/v1/instances",
