@@ -14,21 +14,18 @@ die `HTTP/<fqdn>`-Tickets über denselben Account-Schlüssel.
 
 ## Keytab erzeugen (durch den AD-Admin)
 
-**Standard (ADR-009):** der Admin liefert den Keytab; die Control-Plane provisioniert
-**nicht** selbst (least privilege). Drei belegte Wege:
+**Standard (ADR-009): KEIN Domänen-Join.** Weder der Proxy-Host noch die Container treten
+der Domäne bei. Der AD-Admin erzeugt den Keytab **einmalig auf dem DC** und liefert die
+Datei; die Control-Plane provisioniert **nicht** selbst (least privilege).
 
-1. **Domänenmitglied + `net ads` (empfohlen für Produktion).** Proxy-Host der Domäne
-   beitreten, dann Maschinenkonto-Keytab (kinit-fähig):
-   ```
-   kinit administrator@REALM
-   export KRB5_KTNAME=FILE:/etc/squid/HTTP.keytab
-   net ads keytab CREATE
-   net ads keytab ADD HTTP
-   ```
-2. **`msktutil` mit dediziertem Computerkonto** (+ nächtlicher `msktutil --auto-update`
-   gegen Passwort-Rotation) — sauberer Lifecycle, wenn der Host Domänenmitglied ist.
-3. **Service-Account + `samba-tool` (wie im E2E).** Ein kinit-fähiges Konto anlegen,
-   SPN anhängen, dessen Keytab exportieren — siehe `scripts/provision-keytab.sh`.
+1. **Empfohlen — Service-Account + `samba-tool` auf dem DC (join-frei, wie im E2E bewiesen).**
+   Ein kinit-fähiges Dienstkonto anlegen (existiert nur als AD-Objekt — kein Join), den
+   `HTTP/<proxy-fqdn>`-SPN anhängen, dessen Keytab exportieren → Datei ins `secrets_dir`.
+   Siehe `scripts/provision-keytab.sh` (prüft Duplicate-SPN, idempotent).
+2. *(Alternative, nur falls der Proxy-Host ohnehin Domänenmitglied ist.)* `net ads keytab`
+   bzw. `msktutil` (mit `--auto-update` gegen Passwort-Rotation) nutzt den Maschinenkonto-
+   Keytab. Für das reine Container-Modell **nicht nötig** — und ein Join pro Instanz wäre
+   sogar kontraproduktiv (Maschinenkonto-Rotation macht Keytabs stale).
 
 ## Keytab an die Instanz geben
 
