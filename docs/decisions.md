@@ -97,10 +97,20 @@ sonst an linuxmuster angelehnt. **Achtung:** Build- und Ziel-Python-Minor müsse
 übereinstimmen.
 
 ### ADR-012 — Docker-Socket hinter Proxy (root-äquivalent behandeln)
-**Status:** Accepted (verifiziert). **Entscheidung:** Zugriff über
-`docker-socket-proxy` (nur nötige Endpunkte) oder rootless Docker; API strikt an
-localhost/Mgmt-Netz, Token/TLS. **Warum:** Schreibzugriff auf `docker.sock` =
-passwortloses Root auf dem Host; das untergräbt sonst die systemd-Härtung.
+**Status:** Accepted (verifiziert). **Entscheidung:** API strikt an **`127.0.0.1`** +
+Token; Zugriff auf den Socket via `docker-socket-proxy` (nur nötige Endpunkte) oder
+rootless Docker. **Warum:** Schreibzugriff auf `docker.sock` = passwortloses Root auf
+dem Host; das untergräbt sonst die systemd-Härtung.
+**Ehrliche Grenze (P11.4):** Der Socket-Proxy braucht `CONTAINERS`+`VOLUMES`+`POST`, um
+Instanzen zu fahren — damit kann ein kompromittierter Aufrufer einen Container **mit
+Host-Bind-Mount** erzeugen = weiterhin Host-Root. Der Proxy **verkleinert die Fläche,
+downgradet aber nicht unter Root**; die echte Antwort ist **rootless Docker**. Zudem
+lauscht der Proxy auf `127.0.0.1:2375` ohne Auth → jeder lokale Prozess hat denselben
+Zugriff (wie die `docker`-Gruppe beim Direkt-Socket). In-App-TLS ist NICHT implementiert;
+off-host nur über einen betreiber-eigenen TLS-Reverse-Proxy. Der Host ist die
+Vertrauensgrenze. **Nebeneffekt:** `access-logs` (historisch) nutzt `docker exec` →
+funktioniert **nicht** hinter dem Proxy mit `EXEC:0`; der Live-`logs`-Pfad (container.logs)
+schon.
 ### ADR-013 — Image-Registry: GHCR (Default)
 **Status:** Accepted (Default 2026-07-02; jederzeit änderbar). **Entscheidung:**
 Das Data-Plane-Image wird nach **GHCR (ghcr.io)** publiziert; Renovate pinnt den

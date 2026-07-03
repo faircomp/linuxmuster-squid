@@ -27,7 +27,7 @@ Statusdokument. Bei jeder inhaltlich relevanten Änderung mitpflegen (siehe
 ## 2. Zielbild: Control Plane / Data Plane
 
 ```
-   Admin ──CLI (Typer/httpx)──▶ REST-API (FastAPI, localhost/TLS, Bearer)
+   Admin ──CLI (Typer/httpx)──▶ REST-API (FastAPI, localhost-only, Bearer)
                                      │  Reconciler + Updater
                                      │  git-State (instances/*.yaml)
                                      ▼  docker-py (Container-Lifecycle)
@@ -72,8 +72,9 @@ Statusdokument. Bei jeder inhaltlich relevanten Änderung mitpflegen (siehe
 - **REST-API (FastAPI/uvicorn):** CRUD über Instanz-Definitionen +
   Lifecycle-Aktionen (`start/stop/restart/update/rollback/status/logs`).
   `HTTPBearer(auto_error=False)` + `hmac.compare_digest`; App-weite Dependency;
-  Bind an **127.0.0.1/Mgmt-IP**; TLS (optional mTLS); Secret in `config.yml`
-  `chmod 600`; **Audit-Log** jeder Mutation.
+  Bind **nur 127.0.0.1** (In-App-TLS ist NICHT implementiert; off-host ausschließlich über
+  einen betreiber-eigenen TLS-Reverse-Proxy — bei non-loopback-Bind warnt `main.py`, weil der
+  Token sonst im Klartext liefe); Secret in `config.yml` `chmod 600`; **Audit-Log** jeder Mutation.
 - **Reconciler:** deklarativer, git-versionierter State (`instances/*.yaml`) →
   rendert Config, gleicht Ist/Soll ab (docker-py).
 - **Updater:** pull-by-**Digest** (`image@sha256:`), Health-gated, **Auto-Rollback**

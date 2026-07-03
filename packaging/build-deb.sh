@@ -39,6 +39,8 @@ echo "== dpkg-deb -> $OUT =="
 dpkg-deb --build --root-owner-group "$STAGE" "$OUT"
 echo "== built $OUT =="
 
-# Produktion: Paket + Repo signieren mit dem linuxmuster-GPG-Key, z. B.
-#   dpkg-sig --sign builder -k <KEYID> "$OUT"
-# und beim Einhängen in deb.linuxmuster.net (Branch lmn73) die Release-Signatur.
+# Signierung (Produktion): apt verifiziert NICHT einzelne .deb-Signaturen, sondern die
+# signierte Repo-`Release` (InRelease / Release.gpg). Also das .deb ins lmn73-**reprepro**-
+# Repo (deb.linuxmuster.net) einhängen; reprepro signiert die `Release` mit dem linuxmuster-
+# GPG-Key (reprepro `SignWith`). KEIN `dpkg-sig` je Paket. Braucht den echten Key + Repo-Zugang
+# (Human-Gate). Verifiziert gegen wiki.debian.org/DebianRepository/SetupWithReprepro + deb.linuxmuster.net.

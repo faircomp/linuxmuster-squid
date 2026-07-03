@@ -16,7 +16,8 @@ services:
       POST: "1"         # mutierende Aufrufe erlauben
       INFO: "1"
       # Rest explizit aus (Angriffsfläche minimieren):
-      EXEC: "0"
+      EXEC: "0"          # HINWEIS: deaktiviert `lmnsquid access-logs` (Historie via docker exec);
+                         # der Live-`logs`-Pfad (container.logs) läuft weiter. Siehe ADR-012.
       NETWORKS: "0"
       AUTH: "0"
       SECRETS: "0"

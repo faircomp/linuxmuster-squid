@@ -83,6 +83,20 @@ def test_patch_cannot_change_identity(
     assert resp.json()["instance"]["name"] == "default-school-teachers"
 
 
+def test_insecure_bind_warns(caplog: Any) -> None:
+    import logging as _logging
+
+    from lmnsquid.main import _warn_if_insecure_bind
+
+    with caplog.at_level(_logging.WARNING, logger="lmnsquid"):
+        _warn_if_insecure_bind("0.0.0.0")
+    assert "cleartext" in caplog.text
+    caplog.clear()
+    with caplog.at_level(_logging.WARNING, logger="lmnsquid"):
+        _warn_if_insecure_bind("127.0.0.1")
+    assert "cleartext" not in caplog.text
+
+
 def test_reconcile_endpoint(
     client: Any, auth_headers: dict[str, str], instance_data: dict[str, Any]
 ) -> None:

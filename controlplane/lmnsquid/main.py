@@ -16,6 +16,21 @@ from .store import Store
 from .updater import Updater
 
 
+def _warn_if_insecure_bind(bind_host: str) -> None:
+    """Warn if the API is bound off-loopback — the token would travel in cleartext.
+
+    In-app TLS is intentionally not implemented; off-host access must go through an
+    operator-managed TLS reverse proxy (see docs/architecture.md, threat-model T5).
+    """
+    if bind_host not in ("127.0.0.1", "localhost", "::1"):
+        logging.getLogger("lmnsquid").warning(
+            "API is bound to non-loopback %s over plain HTTP: the bearer token "
+            "(root-equivalent) travels in cleartext. Bind 127.0.0.1, or put an "
+            "operator-managed TLS reverse proxy in front — in-app TLS is not implemented.",
+            bind_host,
+        )
+
+
 def main() -> None:
     """Load settings, wire the components together and run the uvicorn server."""
     logging.basicConfig(level=logging.INFO)
@@ -31,6 +46,7 @@ def main() -> None:
     reconciler = Reconciler(store, docker)
     updater = Updater(store, docker, reconciler)
     app = create_app(settings, store, reconciler, docker, updater)
+    _warn_if_insecure_bind(settings.bind_host)
     uvicorn.run(app, host=settings.bind_host, port=settings.bind_port)
 
 
