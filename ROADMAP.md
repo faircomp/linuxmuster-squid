@@ -13,9 +13,10 @@ gesteuert über eine **REST-API + CLI**. Am Ende dieser Roadmap ist das System
 **Gruppenrichtlinie** ihren Proxy, und es funktioniert — server-seitig durch die
 Gruppen-ACL erzwungen und automatisiert bewiesen.
 
-> **Aktueller Stand:** `P5 ✅ ABGESCHLOSSEN & crabbox-verifiziert (Updater: digest-pin +
-> Health-Auto-Rollback REAL bewiesen; Renovate + CI/GHCR). → weiter mit P6 (Typer-CLI,
-> dünner Client der REST-API).` (Fortschritts-Zeiger: bei jeder Iteration aktualisieren.)
+> **Aktueller Stand:** `P6 ✅ ABGESCHLOSSEN & crabbox-verifiziert (Typer-CLI, dünner Client
+> der REST-API; pytest 24/24). → weiter mit P7 (Keytab-/AD-Integration & DNS — v. a. Doku;
+> Keytab-Consumption ist bereits im P1-E2E bewiesen).` (Fortschritts-Zeiger: bei jeder
+> Iteration aktualisieren.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -286,10 +287,11 @@ löst Auto-Rollback aus, Dienst bleibt verfügbar; Update auf gültiges Image
 
 **Deliverables:** `cli/` (Typer + httpx), liest Base-URL/Token aus derselben Config.
 
-**Aufgaben:**
-- [ ] Kommandos: `instance create|list|show|start|stop|rm`, `policy set`, `status`, `logs`, `update`, `rollback`.
-- [ ] Config-/Token-Handling (dieselbe `config.yml`); Fehler/Exit-Codes sauber.
-- [ ] Tests gegen einen laufenden API-Testserver.
+**Aufgaben:** ✅ **ABGESCHLOSSEN & crabbox-verifiziert (pytest 24/24; kompletter CLI-Lifecycle gegen die API; commit `e5ed437`).**
+Policy (ad_group/Subnetze) wird via `create` gesetzt; die API bietet zusätzlich PATCH (ein CLI-`patch` wäre trivialer Zusatz).
+- [x] Kommandos: `instance create|list|show|start|stop|rm`, `policy set`, `status`, `logs`, `update`, `rollback`.
+- [x] Config-/Token-Handling (dieselbe `config.yml`); Fehler/Exit-Codes sauber.
+- [x] Tests gegen einen laufenden API-Testserver.
 
 **Definition of Done:** Kompletter Admin-Flow (Instanz anlegen → starten → Policy
 setzen → Status → updaten → zurückrollen) rein über die CLI, gegen die API,
