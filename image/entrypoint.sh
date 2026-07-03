@@ -88,5 +88,11 @@ envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROU
 squid -k parse -f "${CONF}"
 squid -N -f "${CONF}" -z || true
 
+# Access-Log auf Container-stdout spiegeln, damit `docker logs` / `lmnsquid logs` ihn zeigen.
+# Squid kann nach dem setuid auf 'proxy' nicht auf /dev/stdout schreiben (Datei + Tailer).
+# tail -F wartet, bis Squid die Datei anlegt, und überlebt Log-Rotation. stdbuf -oL erzwingt
+# Zeilen-Pufferung (sonst block-buffert tail auf die Pipe -> Zeilen erscheinen erst spät/nie).
+stdbuf -oL tail -F /var/log/squid/access.log 2>/dev/null &
+
 echo "linuxmuster-squid: instance='${INSTANCE}' fqdn='${VISIBLE_HOSTNAME}' group='${AD_GROUP}@${REALM}' port=${HTTP_PORT}" >&2
 exec squid -N -d1 -f "${CONF}"
