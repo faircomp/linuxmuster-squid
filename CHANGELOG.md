@@ -7,6 +7,31 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
+## [1.0.0-rc3] - 2026-07-03
+
+Multi-Perspektiven-Gap-Review-Backlog (ROADMAP P11) abgearbeitet — Deployment-Realität,
+Betrieb, Ehrlichkeit. Alle autonom umsetzbaren Punkte crabbox-verifiziert.
+
+### Fixed
+- **`.deb`-Upgrade startet den Dienst neu** (postinst `try-restart`; `prerm` stoppt nur bei
+  `remove`) → neuer Code wird wirklich geladen. `deb_smoke` prüft den MainPID-Wechsel.
+
+### Added
+- **reconcile/restore:** `POST /v1/reconcile` + `lmnsquid reconcile`; Restore-/DR-Runbook;
+  `instances_dir` als git-Repo (Change-Log).
+- **dockerd-down → 503** (statt rohem 500); Alerting/Auth-Health-Doku (ohne Monitoring-Stack).
+- **Blocklist fail-closed** (Sanity-Floor) gegen manipulierte/abgeschnittene Downloads.
+- **Bind-Warnung** bei non-loopback (Token-Klartext); `RELEASE.md` (GHCR-Bootstrap).
+
+### Docs / Ehrlichkeit
+- **ECH/QUIC/DoH** als bekannte SNI-Filter-Grenze dokumentiert + OPNsense-Mitigation (Threat-Model **T14**).
+- TLS nur loopback (In-App-TLS nicht implementiert); Socket-Proxy **kein** Root-Downgrade
+  (rootless Docker = echte Antwort); GPG-Signierung via reprepro-`Release` statt per-`.deb`.
+- Socket-Proxy auf `:v0.4.2` gepinnt.
+
+### Pending (human gates)
+- Image bei GHCR publizieren; GPG-Key/Signierung; Windows-GPO-Abnahme; reale AD-Fakten.
+
 ## [1.0.0-rc2] - 2026-07-03
 
 ### Added
