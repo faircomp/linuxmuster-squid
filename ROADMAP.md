@@ -16,8 +16,8 @@ Gruppen-ACL erzwungen und automatisiert bewiesen.
 > **Aktueller Stand:** `P0–P10 ✅ CODE-COMPLETE & crabbox-verifiziert; Log-Rotation/Retention/
 > Abfrage nachgezogen → Tag v1.0.0-rc2. Multi-Perspektiven-Gap-Review gemacht → P11-Backlog
 > (Deployment-Realität/Betrieb/Ehrlichkeit) unten, priorisiert mit Ziel+Verifikation je Punkt.
-> P11.1–P11.2 ✅ (Upgrade-Restart + reconcile/restore, crabbox-verifiziert). NÄCHSTES: P11.3
-> (ECH/QUIC/DoH-Filter-Grenzen). Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
+> P11.1–P11.2 ✅ (Upgrade-Restart + reconcile/restore, crabbox-verifiziert). P11.3 ✅ (ECH/QUIC/DoH dokumentiert +
+> mitigiert). NÄCHSTES: P11.4 (Doku==Code: TLS/Socket-Proxy/Signierung). Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -427,8 +427,8 @@ digest-pinbares Image + ein dokumentierter Bootstrap.
 
 **Ziel:** Die bekannten Grenzen des SNI-Filters sind dokumentiert und am Netzrand mitigiert —
 kein falsches Kinderschutz-Versprechen.
-- [ ] **Threat-Model + docs:** ECH verschlüsselt die SNI → Splice-Filter blind; QUIC/HTTP3 (UDP 443) umgeht den TCP-Proxy; DoH umgeht die DNS-Sicht. Als bekannte Grenze/Nicht-Ziel. *Verif:* Doku-Review; T4/Nicht-Ziele ergänzt.
-- [ ] **Mitigation dokumentieren:** OPNsense **UDP 443 blocken** (erzwingt TCP durch den Proxy); bekannte DoH-Resolver + `use-application-dns.net` blocken; ECH-Status beobachten. *Verif:* Deployment-Doku; ⏸ Firewall-Review am Standort.
+- [x] **Threat-Model + docs:** ECH verschlüsselt die SNI → Splice-Filter blind; QUIC/HTTP3 (UDP 443) umgeht den TCP-Proxy; DoH umgeht die DNS-Sicht. Als bekannte Grenze/Nicht-Ziel. *Verif:* Doku-Review; T4/Nicht-Ziele ergänzt.
+- [x] **Mitigation dokumentieren:** OPNsense **UDP 443 blocken** (erzwingt TCP durch den Proxy); bekannte DoH-Resolver + `use-application-dns.net` blocken; ECH-Status beobachten. *Verif:* Deployment-Doku; ⏸ Firewall-Review am Standort.
 
 **DoD:** Doku macht klar, was der Filter NICHT kann + wie man es am Rand schließt.
 

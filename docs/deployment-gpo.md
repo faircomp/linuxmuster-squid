@@ -28,10 +28,22 @@ einträgt, wird er per Gruppe abgewiesen.
    oder GPP-Item-Level-Targeting; optional Loopback für Raum-/PC-basierte Steuerung.
 5. **Bypass-Liste** (LDAP/LINBO/WebUI/interne Dienste) in jede Proxy-Config; sicherstellen,
    dass die Client-Subnetze zur `SCHOOL_SUBNETS` der jeweiligen Instanz passen.
-6. **Force-Proxy** auf der OPNsense (direkten 80/443-Egress blocken), sonst umgehen
-   Clients den nicht-inline Proxy.
+6. **Force-Proxy** auf der OPNsense (direkten 80/443-**TCP**-Egress blocken), sonst umgehen
+   Clients den nicht-inline Proxy. **Zusätzlich UDP 443 blocken** (siehe Filter-Grenzen).
 7. **Prüfungsmodus:** `<user>-exam` ist in keiner teachers/students-Gruppe → der Proxy
    verweigert ohnehin; lmn7 deaktiviert im Prüfungsmodus zusätzlich den Proxy.
+
+## Filter-Grenzen (ECH/QUIC/DoH) — am Netzrand schließen
+
+Der HTTPS-Filter ist **namensbasiert** (SNI/CONNECT, keine Entschlüsselung). Drei moderne
+Techniken hebeln ihn aus — der Proxy allein kann das nicht auffangen, die OPNsense schon:
+- **QUIC / HTTP-3** läuft über **UDP 443** komplett am TCP-Proxy vorbei → **UDP 443 blocken**
+  (Browser fallen dann auf TCP/443 durch den Proxy zurück).
+- **DoH** (DNS-over-HTTPS) umgeht die DNS-Sicht → bekannte DoH-Resolver blocken **und**
+  `use-application-dns.net` per DNS auf NXDOMAIN setzen (Canary → Firefox lässt DoH aus).
+- **ECH** (Encrypted Client Hello) verschlüsselt die SNI → der Splice-Filter sieht den Host
+  nicht mehr. Verbreitung noch gering; beobachten. Vollständig lösbar nur mit SSL-Interception
+  (bewusstes **Nicht-Ziel**, [ADR-002](decisions.md)). Bedrohungsmodell: **T14**.
 
 ## Produktiv-Abnahme (Human-Gate — auf echten Windows-Clients)
 

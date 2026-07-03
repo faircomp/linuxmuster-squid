@@ -34,6 +34,7 @@ Risiken + Gegenmaßnahmen. Wächst pro Roadmap-Phase; die Negativtests dazu steh
 | T11 | **Container-Escape/Privileg** | `read_only`-Rootfs + tmpfs, `cap_drop: ALL` (minimal Caps), non-root `proxy`, Manager-ACL localhost | Härtungs-Review P10 |
 | T12 | **Exam-Mode** | `<user>-exam` in keiner teachers/students-Gruppe → ACL verweigert; lmn7 deaktiviert Proxy im Prüfungsmodus | Doku + optionaler Test |
 | T13 | **Access-Logs = personenbezogen** (Surfverhalten, DSGVO) | Aufbewahrung = `log_retention_days` (dokumentierte Löschfrist, Default 30), gzip-rotiert; Access-Logging pro Instanz abschaltbar (`access_log_enabled:false`); Log-Zugriff nur per API-Token, Abfragen ins Audit-Log; keine Secrets im Log | Retention-/Rotation-Smoke; `access_log none`-Render-Test |
+| T14 | **SNI-Filter-Umgehung: ECH / QUIC / DoH** | **ECH** (Encrypted Client Hello) verschlüsselt die SNI → Splice-Filter blind; **QUIC/HTTP3** läuft über **UDP 443** am TCP-Forward-Proxy vorbei; **DoH** umgeht die DNS-Sicht. Grenze des namensbasierten Filters — der Proxy allein schließt das nicht. **Am Netzrand mitigieren:** OPNsense **UDP 443 blocken** (erzwingt TCP/443 durch den Proxy), bekannte DoH-Resolver + `use-application-dns.net` blocken (Canary schaltet Firefox-DoH ab); ECH-Verbreitung beobachten. Für echte Vollständigkeit bräuchte es SSL-Interception (bewusstes Nicht-Ziel, ADR-002). | Firewall-Review am Standort; dokumentierte Grenze |
 
 ## Nicht-Ziele (bewusst)
 
