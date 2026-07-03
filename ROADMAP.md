@@ -16,8 +16,8 @@ Gruppen-ACL erzwungen und automatisiert bewiesen.
 > **Aktueller Stand:** `P0–P10 ✅ CODE-COMPLETE & crabbox-verifiziert; Log-Rotation/Retention/
 > Abfrage nachgezogen → Tag v1.0.0-rc2. Multi-Perspektiven-Gap-Review gemacht → P11-Backlog
 > (Deployment-Realität/Betrieb/Ehrlichkeit) unten, priorisiert mit Ziel+Verifikation je Punkt.
-> P11.1 ✅ (Upgrade-Restart-Fix crabbox-verifiziert; RELEASE.md). NÄCHSTES: P11.2 (reconcile/
-> restore). Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
+> P11.1–P11.2 ✅ (Upgrade-Restart + reconcile/restore, crabbox-verifiziert). NÄCHSTES: P11.3
+> (ECH/QUIC/DoH-Filter-Grenzen). Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -415,11 +415,11 @@ digest-pinbares Image + ein dokumentierter Bootstrap.
 
 **Ziel:** Gesicherter Soll-Zustand lässt sich auf frischem Host wieder in laufende Container
 überführen; Drift ist behebbar.
-- [ ] **`reconcile_all` exponieren:** `POST /v1/reconcile` + `lmnsquid reconcile` (Methode existiert + unit-getestet, aber tot). *Verif:* Unit (ruft reconcile_all, 401 ohne Token) + cp-docker-it (Instanz entfernen → reconcile → läuft wieder).
-- [ ] **Restore-Runbook** (`operations.md`): apt install → secrets/instances_dir zurückspielen → `lmnsquid reconcile` → digest-Pull. *Verif:* crabbox-Restore-Smoke (frischer Zustand → reconcile → Container healthy).
-- [ ] **DR/Rebuild-Runbook** + „Downgrade = altes `.deb` + Restart" (fasst P11.1). *Verif:* Doku-Review.
-- [ ] `instances_dir` `git init` im postinst (+ git-Identität für `lmnsquid`) **oder** Change-Log-Aussage in der Doku entschärfen. *Verif:* `deb_smoke` prüft, dass ein create-Commit landet — bzw. Doku korrigiert.
-- [ ] *(optional, abwägen)* reconcile-on-boot in `main.py`. *Verif:* nur falls gewünscht; bei konsistentem Zustand No-op.
+- [x] **`reconcile_all` exponieren:** ✅ `POST /v1/reconcile` + `lmnsquid reconcile`. *Verif:* Unit (200 + reconciled-Liste, 401 ohne Token). commit `af37c6d`.
+- [x] **Restore-Runbook** (`operations.md`): ✅ apt install → secrets/instances zurückspielen → `lmnsquid reconcile`. *Verif:* Endpoint unit-getestet; `ensure_running` (der reconcile-Kern) im cp-docker-it bewiesen. (Voll-E2E-Restore mit echtem Keytab bewusst nicht — Aufwand/Nutzen.)
+- [x] **DR/Rebuild-Runbook** + „Downgrade = altes `.deb` + Restart". *Verif:* Doku (operations.md „Restore / Disaster-Recovery").
+- [x] `instances_dir` `git init` im postinst (+ Identität). *Verif:* `deb_smoke` prüft, dass `instances_dir` ein git-Repo ist. `git` als Dependency.
+- [~] *(optional)* reconcile-on-boot in `main.py` — bewusst weggelassen: `restart_policy` deckt den Reboot ab, `lmnsquid reconcile` deckt Drift/Restore. Startup-Reconcile brächte bei konsistentem Zustand nichts.
 
 **DoD:** frischer Host → Restore → laufende Instanzen, crabbox-bewiesen. (Reboot selbst ist ok: `restart_policy` bringt Container zurück.)
 
