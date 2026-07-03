@@ -10,6 +10,7 @@ from typing import Any, Optional
 import docker
 from docker.errors import ImageNotFound, NotFound
 from docker.models.containers import Container
+from docker.types import LogConfig
 
 from .models import Instance
 
@@ -26,10 +27,14 @@ class DockerService:
         docker_host: Optional[str] = None,
         secrets_dir: str = "/etc/linuxmuster-squid/secrets",
         container_bind_ip: str = "127.0.0.1",
+        log_max_size: str = "20m",
+        log_max_file: int = 5,
     ) -> None:
         self.docker_host: Optional[str] = docker_host
         self.secrets_dir: str = secrets_dir
         self.container_bind_ip: str = container_bind_ip
+        self.log_max_size: str = log_max_size
+        self.log_max_file: int = log_max_file
         self.client: docker.DockerClient = (
             docker.DockerClient(base_url=docker_host) if docker_host else docker.from_env()
         )
@@ -64,7 +69,7 @@ class DockerService:
     # -- environment -------------------------------------------------------
 
     def env_for(self, inst: Instance) -> dict[str, str]:
-        """Build the eight environment variables consumed by entrypoint.sh."""
+        """Build the environment variables consumed by entrypoint.sh."""
         return {
             "INSTANCE": inst.name,
             "VISIBLE_HOSTNAME": inst.visible_hostname,
@@ -74,6 +79,8 @@ class DockerService:
             "KEYTAB": f"/run/secrets/{inst.keytab_secret}",
             "CACHE_SIZE_MB": str(inst.cache_size_mb),
             "HTTP_PORT": str(inst.http_port),
+            "LOG_RETENTION_DAYS": str(inst.log_retention_days),
+            "ACCESS_LOG_ENABLED": "1" if inst.access_log_enabled else "0",
         }
 
     # -- lifecycle ---------------------------------------------------------
@@ -113,13 +120,20 @@ class DockerService:
             detach=True,
             restart_policy={"Name": "unless-stopped"},
             read_only=True,
-            tmpfs={"/run": "", "/tmp": "", "/var/log/squid": ""},
+            tmpfs={"/run": "", "/tmp": ""},
             cap_drop=["ALL"],
             cap_add=["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"],
             security_opt=["no-new-privileges:true"],
+            # Docker-json-log gedeckelt (nur der Live-Blick); die dauerhafte, gzip-rotierte
+            # Historie liegt im persistenten Log-Volume (logrotate, LOG_RETENTION_DAYS).
+            log_config=LogConfig(
+                type="json-file",
+                config={"max-size": self.log_max_size, "max-file": str(self.log_max_file)},
+            ),
             volumes={
                 keytab_host_path: {"bind": keytab_container_path, "mode": "ro"},
                 f"lmnsquid-cache-{inst.name}": {"bind": "/var/spool/squid", "mode": "rw"},
+                f"lmnsquid-logs-{inst.name}": {"bind": "/var/log/squid", "mode": "rw"},
             },
             ports={f"{inst.http_port}/tcp": (self.container_bind_ip, inst.http_port)},
         )

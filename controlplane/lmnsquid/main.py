@@ -22,7 +22,11 @@ def main() -> None:
     settings = load_settings()
     store = Store(settings.instances_dir)
     docker = DockerService(
-        settings.docker_host, settings.secrets_dir, settings.container_bind_ip
+        settings.docker_host,
+        settings.secrets_dir,
+        settings.container_bind_ip,
+        settings.log_max_size,
+        settings.log_max_file,
     )
     reconciler = Reconciler(store, docker)
     updater = Updater(store, docker, reconciler)

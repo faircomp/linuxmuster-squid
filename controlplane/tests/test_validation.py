@@ -43,6 +43,8 @@ def _base(**over: Any) -> dict[str, Any]:
         ("school_subnets", "not-a-cidr"),
         ("http_port", 0),
         ("http_port", 70000),
+        ("log_retention_days", 0),
+        ("log_retention_days", 4000),
     ],
 )
 def test_instance_rejects_bad_field(field: str, bad: Any) -> None:

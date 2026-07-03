@@ -56,6 +56,8 @@ class Instance(BaseModel):
     keytab_secret: str
     cache_size_mb: int = 1000
     image: str
+    log_retention_days: int = 30
+    access_log_enabled: bool = True
 
     @field_validator("school", "role")
     @classmethod
@@ -113,6 +115,13 @@ class Instance(BaseModel):
             raise ValueError("image must carry an explicit :tag or @sha256:<digest> (no bare repo)")
         return v
 
+    @field_validator("log_retention_days")
+    @classmethod
+    def _v_retention(cls, v: int) -> int:
+        if not 1 <= v <= 3650:
+            raise ValueError("log_retention_days must be between 1 and 3650")
+        return v
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def name(self) -> str:
@@ -142,6 +151,8 @@ class InstancePatch(BaseModel):
     keytab_secret: str | None = None
     cache_size_mb: int | None = None
     image: str | None = None
+    log_retention_days: int | None = None
+    access_log_enabled: bool | None = None
 
 
 class UpdateRequest(BaseModel):

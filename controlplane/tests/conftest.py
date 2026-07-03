@@ -54,6 +54,8 @@ class FakeDockerService:
             "KEYTAB": f"/run/secrets/{inst.keytab_secret}",
             "CACHE_SIZE_MB": str(inst.cache_size_mb),
             "HTTP_PORT": str(inst.http_port),
+            "LOG_RETENTION_DAYS": str(inst.log_retention_days),
+            "ACCESS_LOG_ENABLED": "1" if inst.access_log_enabled else "0",
         }
 
     def ensure_running(self, inst: Instance) -> dict[str, Any]:
