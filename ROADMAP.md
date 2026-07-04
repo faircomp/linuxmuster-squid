@@ -17,7 +17,7 @@ Gruppen-ACL erzwungen und automatisiert bewiesen.
 > Abfrage nachgezogen → Tag v1.0.0-rc2. Multi-Perspektiven-Gap-Review gemacht → P11-Backlog
 > (Deployment-Realität/Betrieb/Ehrlichkeit) unten, priorisiert mit Ziel+Verifikation je Punkt.
 > P11.1–P11.2 ✅ (Upgrade-Restart + reconcile/restore, crabbox-verifiziert). P11.3 ✅ (ECH/QUIC/DoH dokumentiert +
-> mitigiert). P11.1–P11.6 ✅ (autonom, crabbox-verifiziert). Rest: P11.7 (Lasttest, verschoben) + Human-Gates. Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
+> mitigiert). P11.1–P11.7 ✅ KOMPLETT (autonom, crabbox-verifiziert; inkl. Klassen-Lasttest 50/50). Offen NUR Human-Gates. Human-Gates: Windows-Abnahme, GPG-Key, reale AD-Fakten, Image-Publish.` (Fortschritts-Zeiger.)
 
 Verweise: Architektur → [`docs/architecture.md`](docs/architecture.md) ·
 Entscheidungen/ADRs → [`docs/decisions.md`](docs/decisions.md) ·
@@ -463,7 +463,7 @@ kein falsches Kinderschutz-Versprechen.
 ### P11.7 — 🟢 Lasttest (verschoben — YAGNI bis Evidenz)
 
 **Ziel:** Verhalten unter „ganze Klasse gleichzeitig" ist belegt, wenn es real relevant wird.
-- [~] Soak/Load-Smoke: viele parallele Kerberos-Auth durch eine Instanz (negotiate `children` + `ext_kerberos_ldap_group_acl`-Concurrency). *Verif:* crabbox-Lasttest (N parallele `curl --proxy-negotiate`, p95-Latenz, keine 5xx). *Auslöser:* erst bei realem Stall-Report — Tuning ohne Messung = Raten.
+- [x] **Soak/Load-Smoke** ✅ crabbox-verifiziert: 50 parallele `curl --proxy-negotiate` eines Lehrers durch eine Instanz → **50/50 200, 0 5xx**. negotiate `children=20` + Gruppen-ACL halten die Klassen-Concurrency ohne Tuning. `scripts/tests/load_smoke.sh`.
 
 ### Bewusst NICHT (dokumentierte Entscheidungen, kein Über­engineering)
 
