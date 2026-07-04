@@ -69,7 +69,7 @@ AD-Fakten).
 - Strikte Feldvalidierung aller Instanzfelder (Abwehr von Path-Traversal & Injection),
   Image muss `:tag`/`@sha256:` tragen (kein pull-all-tags-DoS), IP-Literal-CONNECT-Deny,
   Token-TOCTOU-Fix, konstant-zeitiger Token-Vergleich, Docker-Socket-Proxy.
-  **Alle Befunde eines adversarialen Security-Reviews behoben.**
+  **Alle Befunde eines Security-Reviews behoben.**
 
 ### Verified (E2E)
 - E2E: Lehrer 200 / Schüler 403 / gesperrt 403 / kein-Ticket 407; HTTPS splice/block;
