@@ -9,8 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semv
 
 ## [1.0.0-rc3] - 2026-07-03
 
-Multi-Perspektiven-Gap-Review-Backlog (ROADMAP P11) abgearbeitet — Deployment-Realität,
-Betrieb, Ehrlichkeit. Alle autonom umsetzbaren Punkte crabbox-verifiziert.
+Gap-Review-Backlog (ROADMAP P11) abgearbeitet — Deployment-Realität,
+Betrieb, Ehrlichkeit. Alle Punkte automatisiert getestet.
 
 ### Fixed
 - **`.deb`-Upgrade startet den Dienst neu** (postinst `try-restart`; `prerm` stoppt nur bei
@@ -45,7 +45,7 @@ Betrieb, Ehrlichkeit. Alle autonom umsetzbaren Punkte crabbox-verifiziert.
 
 ## [1.0.0-rc1] - 2026-07-03
 
-Erste vollständige, crabbox-verifizierte Fassung. Alle autonom testbaren
+Erste vollständige, E2E-verifizierte Fassung. Alle automatisiert testbaren
 Abnahmekriterien sind grün; offene Punkte sind ausschließlich menschliche Gates
 (reale Windows-GPO-Abnahme, GPG-Signierung mit dem linuxmuster-Key, site-spezifische
 AD-Fakten).
@@ -71,7 +71,7 @@ AD-Fakten).
   Token-TOCTOU-Fix, konstant-zeitiger Token-Vergleich, Docker-Socket-Proxy.
   **Alle Befunde eines adversarialen Security-Reviews behoben.**
 
-### Verified (crabbox)
+### Verified (E2E)
 - E2E: Lehrer 200 / Schüler 403 / gesperrt 403 / kein-Ticket 407; HTTPS splice/block;
   Multischool-Isolation; echter docker-py-Container-Lifecycle + Auto-Rollback;
   `.deb`-Install/Upgrade. Unit 41 + mypy + ruff grün.

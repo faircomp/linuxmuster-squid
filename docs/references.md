@@ -106,8 +106,3 @@ Recherche-Workflows am **2026-07-02** (Confidence in Klammern).
   — https://github.com/containrrr/watchtower · https://docs.renovatebot.com/docker/
 - `.deb` reproduzierbar via dh-virtualenv (kein pip-in-postinst). (high)
   — https://dh-virtualenv.readthedocs.io/en/latest/
-
-## Roh-Erhebungen (Task-Outputs)
-
-- Architektur-Workflow: `wf_a9c1bd93-8a6` · Roadmap-Verifikation: `wf_322b99df-78b`
-  (vollständige Fakten + Confidence + Evidence in den jeweiligen Task-Outputs).

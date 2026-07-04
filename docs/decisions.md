@@ -61,7 +61,7 @@ filelists.
 Config, rekursive Gruppen, DC-Discovery via SRV); `ext_ldap_group_acl` als
 Alternative mit explizitem Bind/GC. **Offen (P0):** `%u` vs. `%v`-Platzhalter und
 exakter Gruppen-DN am realen DC verifizieren.
-**Verifiziert (P1, crabbox-E2E 4/4):** Der Helper funktioniert im Container nur mit
+**Verifiziert (P1, E2E 4/4):** Der Helper funktioniert im Container nur mit
 (1) Paket `libsasl2-modules-gssapi-mit`; (2) `/etc/ldap/ldap.conf` mit
 `SASL_NOCANON on` — libldap kanonikalisiert den SASL-Host sonst per Reverse-DNS →
 falscher `ldap/`-SPN → „Local error"; (3) `/etc/krb5.conf` mit `rdns=false`;

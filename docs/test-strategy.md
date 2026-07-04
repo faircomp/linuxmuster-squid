@@ -6,7 +6,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 # Teststrategie — linuxmuster-squid
 
 Zwei Tiers. Der **schnelle Tier** läuft lokal/CI; der **schwere Tier** (Docker +
-Kerberos) läuft auf **crabbox** (siehe `/test`-Skill). Aggregator:
+Kerberos) läuft auf einem **Linux-Host mit Docker**. Aggregator:
 `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]` — Summary
 `N passed, M failed, K skipped`, Exit ≠ 0 bei Fail, jeder Schritt dep-gated.
 `e2e`/`all` verweigern ohne `LMNSQUID_ALLOW_REAL=1`.
@@ -19,7 +19,7 @@ Kerberos) läuft auf **crabbox** (siehe `/test`-Skill). Aggregator:
 - **Squid-Config:** `squid -k parse` gegen gerenderte Templates (im Container;
   grün nur mit `squid-openssl`, sobald `ssl_bump` aktiv ist).
 
-## Schwerer Tier — Kerberos-E2E (crabbox)
+## Schwerer Tier — Kerberos-E2E (Docker)
 
 docker-compose-Stack: `samba-dc` + `squid` + `origin` + `test-client` (Details in
 der `/test`-Skill). **Kern-Beweis** (P1), Assertions auf `%{http_code}`:

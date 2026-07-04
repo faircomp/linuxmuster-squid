@@ -34,7 +34,7 @@ noch nicht — jede `lmnsquid create --image ghcr.io/…@sha256:<digest>`-Zeile 
   ein **gemergter Renovate-PR** (`automerge:false`), nie automatisch.
 - **`.deb` (Control-Plane-Tooling):** `sudo VERSION=<x.y.z> bash packaging/build-deb.sh`. Ein
   `apt install` des neuen `.deb` **startet den Dienst automatisch neu** (postinst `try-restart`),
-  sodass der neue Code wirklich geladen wird (crabbox-verifiziert via `deb_smoke.sh`). ⏸ Signierung:
+  sodass der neue Code wirklich geladen wird (E2E-verifiziert via `deb_smoke.sh`). ⏸ Signierung:
   siehe `packaging/build-deb.sh` (GPG-Key / lmn73-Repo-`Release`-Signatur).
 - **Git-Tag** `vX.Y.Z` erst, wenn die §0.1-Abnahmekriterien (ROADMAP) erfüllt sind.
 

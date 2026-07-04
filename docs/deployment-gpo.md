@@ -10,7 +10,7 @@ Kerberos-SSO — und es funktioniert. Vorlagen: [`deploy/clients/`](../deploy/cl
 
 **Sicherheitsmodell (verifiziert):** Die GPO legt nur fest, welchen Proxy ein Client
 als Default nutzt. Die **Lehrer/Schüler-Trennung erzwingt die AD-Gruppen-ACL am Proxy**
-(`ext_kerberos_ldap_group_acl`) — server-seitig, im crabbox-E2E bewiesen (Lehrer 200 /
+(`ext_kerberos_ldap_group_acl`) — server-seitig, im E2E-Test bewiesen (Lehrer 200 /
 Schüler 403 / Quer-Zugriff 403). Selbst wenn ein Schüler manuell den Lehrer-Proxy
 einträgt, wird er per Gruppe abgewiesen.
 
@@ -48,7 +48,7 @@ Techniken hebeln ihn aus — der Proxy allein kann das nicht auffangen, die OPNs
 ## Produktiv-Abnahme (Human-Gate — auf echten Windows-Clients)
 
 > Diese Schritte kann nur ein Mensch auf echten domänengejointen Clients ausführen.
-> Das **server-seitige Äquivalent ist im crabbox-E2E bereits automatisiert bewiesen.**
+> Das **server-seitige Äquivalent ist im E2E-Test bereits automatisiert bewiesen.**
 
 Protokolliere pro Client (Browser, Codes):
 

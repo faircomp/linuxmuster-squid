@@ -10,7 +10,7 @@ mit **Kerberos-SSO** gegen Samba Active Directory und **gruppenbasierten
 Zugriffsregeln** (Lehrer / Schüler), je **(Schule × Rolle)** eine isolierte
 Instanz — verwaltet über eine **REST-API + CLI**.
 
-> **Status:** **`v1.0.0-rc1` — code-complete & crabbox-verifiziert** (alle 11 Phasen
+> **Status:** **`v1.0.0-rc1` — code-complete & E2E-verifiziert** (alle 11 Phasen
 > P0–P10, `run.sh all` grün: Unit 41 + mypy + ruff + E2E 9/9 + docker-Integration +
 > `.deb`-Install/Upgrade; adversarialer Security-Review mit allen Befunden behoben —
 > siehe **[`CHANGELOG.md`](CHANGELOG.md)** / **[`ROADMAP.md`](ROADMAP.md)**). Vor dem
@@ -49,8 +49,8 @@ Details: [`docs/architecture.md`](docs/architecture.md).
 
 Der schnelle Tier (Lint/Unit) läuft lokal/CI. Der **schwere Tier** — der reale
 Kerberos-E2E (Samba-AD-DC + Squid + Client, der beweist *Lehrer→200 /
-Schüler→403 / gesperrt→403 / kein-Ticket→407*) — braucht echtes Linux mit Docker
-und läuft auf **crabbox** (siehe die `/test`-Skill). Aggregator:
+Schüler→403 / gesperrt→403 / kein-Ticket→407*) — braucht einen **Linux-Host mit
+Docker**. Aggregator:
 `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]`.
 
 ## Sicherheit (Kurz)
