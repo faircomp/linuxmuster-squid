@@ -1,3 +1,7 @@
-# Gesperrte Domains für den E2E (dstdomain — matcht Host bzw. CONNECT-Ziel).
-# Eine Domain pro Zeile.
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Blocked domains for the E2E (dstdomain — matches host or CONNECT target).
+# One domain per line.
 blocked.example.com

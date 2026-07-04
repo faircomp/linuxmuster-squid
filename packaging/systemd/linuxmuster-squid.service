@@ -15,7 +15,7 @@ Environment=LMNSQUID_CONFIG=/etc/linuxmuster-squid/config.yml
 Restart=on-failure
 RestartSec=3
 
-# --- Härtung (Docker-Socket-Zugriff bleibt root-äquivalent -> ergänzend Socket-Proxy) ---
+# --- Hardening (Docker socket access stays root-equivalent -> add a socket proxy) ---
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

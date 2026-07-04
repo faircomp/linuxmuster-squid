@@ -3,45 +3,45 @@ SPDX-FileCopyrightText: Kevin Stenzel
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Client-Vorlagen (GPO/WPAD)
+# Client Templates (GPO/WPAD)
 
-Vorlagen, um Clients per **Gruppenrichtlinie** ihren Proxy zuzuweisen und stilles
-Kerberos-SSO zu aktivieren. FQDNs/Subnetze an eure AD-DNS-Domain anpassen. Der
-vollständige Ablauf + die Abnahme-Checkliste stehen in
+Templates for assigning clients their proxy via **Group Policy** and enabling
+silent Kerberos SSO. Adjust the FQDNs/subnets to your AD DNS domain. The full
+procedure + the acceptance checklist are in
 [`docs/deployment-gpo.md`](../../docs/deployment-gpo.md).
 
-> **Merksatz (verifiziert):** Die GPO steuert nur den *Default*, welchen Proxy ein
-> Client nutzt. Die eigentliche **Lehrer/Schüler-Sicherheit erzwingt die AD-Gruppen-ACL
-> am Proxy** — ein Schüler am Lehrer-Proxy wird trotz gültigem Ticket abgewiesen (403).
+> **Key point (verified):** The GPO only controls the *default* of which proxy a
+> client uses. The actual **teacher/student security is enforced by the AD group ACL
+> at the proxy** — a student at the teacher proxy is rejected despite a valid ticket (403).
 
-## Edge / Chrome (per GPO / GPP-Registry, per-user, gefiltert auf die Gruppe)
+## Edge / Chrome (via GPO / GPP registry, per-user, filtered to the group)
 
-- **Expliziter Proxy** — Policy `ProxySettings` (REG_SZ, JSON) unter
+- **Explicit proxy** — policy `ProxySettings` (REG_SZ, JSON) under
   `HKCU\Software\Policies\Microsoft\Edge\ProxySettings` (Chrome:
   `…\Google\Chrome\ProxySettings`):
   ```json
   {"ProxyMode":"fixed_servers","ProxyServer":"proxy-teachers.linuxmuster.meineschule.de:3128","ProxyBypassList":"<local>;*.linuxmuster.meineschule.de;10.0.0.0/8"}
   ```
-  Für Schüler `proxy-students.*` verwenden.
-- **Stilles Kerberos-SSO** — eine Methode je FQDN wählen:
-  - `AuthServerAllowlist = "proxy-teachers.linuxmuster.meineschule.de,proxy-students.linuxmuster.meineschule.de"` (umgeht die Zonen), **oder**
-  - GPO *Site-to-Zone Assignment List* → Proxy-FQDN in Zone **1 (Lokales Intranet)**.
-  - Hinweis: Kerberos-**Delegation** funktioniert nicht für Proxy-Auth; einfaches Negotiate schon.
+  For students use `proxy-students.*`.
+- **Silent Kerberos SSO** — choose one method per FQDN:
+  - `AuthServerAllowlist = "proxy-teachers.linuxmuster.meineschule.de,proxy-students.linuxmuster.meineschule.de"` (bypasses the zones), **or**
+  - GPO *Site-to-Zone Assignment List* → proxy FQDN in zone **1 (Local Intranet)**.
+  - Note: Kerberos **delegation** does not work for proxy auth; plain Negotiate does.
 
 ## Firefox
 
-- [`firefox-policies.json`](firefox-policies.json) (nach `policies.json` bzw. per ADMX):
+- [`firefox-policies.json`](firefox-policies.json) (to `policies.json` or via ADMX):
   `Proxy` (Mode=manual, HTTPProxy/SSLProxy, Locked) + `Authentication.SPNEGO`
   (= `network.negotiate-auth.trusted-uris`) + `AllowProxies.SPNEGO=true`.
 
-## WPAD/PAC (optional, Fallback)
+## WPAD/PAC (optional, fallback)
 
-- [`wpad.dat`](wpad.dat) — WPAD kann **nicht** nach Rolle unterscheiden (nur Subnetz/Raum);
-  die Rollen-Trennung macht die Gruppen-ACL. **Kein `wpad`-PTR** (bricht Linux-SSO).
+- [`wpad.dat`](wpad.dat) — WPAD **cannot** distinguish by role (only subnet/room);
+  the group ACL does the role separation. **No `wpad` PTR** (breaks Linux SSO).
 
-## Pro-Rolle-Zuweisung
+## Per-role assignment
 
-Da die Proxy-Policy per-user (HKCU) ist, folgt sie dem angemeldeten Benutzer:
-- **GPO-Security-Filtering** — je eine GPO für `<schule>-teachers` / `<schule>-students`, oder
-- **GPP Item-Level-Targeting** (Reiter *Common*) auf die AD-Sicherheitsgruppe.
-- Alternativ nach **Raum/PC** via Loopback-Verarbeitung (Merge) auf der Computer-OU.
+Since the proxy policy is per-user (HKCU), it follows the logged-in user:
+- **GPO security filtering** — one GPO each for `<schule>-teachers` / `<schule>-students`, or
+- **GPP item-level targeting** (tab *Common*) to the AD security group.
+- Alternatively by **room/PC** via loopback processing (merge) on the computer OU.

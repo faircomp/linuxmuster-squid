@@ -5,62 +5,65 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # linuxmuster-squid
 
-Containerisierter, mehrinstanzfähiger **Squid-Proxy für [linuxmuster.net](https://linuxmuster.net) 7**
-mit **Kerberos-SSO** gegen Samba Active Directory und **gruppenbasierten
-Zugriffsregeln** (Lehrer / Schüler), je **(Schule × Rolle)** eine isolierte
-Instanz — verwaltet über eine **REST-API + CLI**.
+Containerized, multi-instance **Squid proxy for [linuxmuster.net](https://linuxmuster.net) 7**
+with **Kerberos SSO** against Samba Active Directory and **group-based
+access rules** (teachers / students), one isolated instance per
+**(school × role)** — managed via a **REST API + CLI**.
 
-> **Status:** **`v1.0.0-rc3` — code-complete & E2E-verifiziert** (alle 11 Phasen
-> P0–P11, `run.sh all` grün: Unit 47 + mypy + ruff + E2E 9/9 + docker-Integration +
-> `.deb`-Install/Upgrade + Klassen-Last 50/50; Security-Review mit allen Befunden behoben —
-> siehe **[`CHANGELOG.md`](CHANGELOG.md)** / **[`ROADMAP.md`](ROADMAP.md)**). Vor dem
-> Produktiveinsatz noch **menschliche Gates**: manuelle Windows-GPO-Abnahme
-> (**[`docs/deployment-gpo.md`](docs/deployment-gpo.md)**), GPG-Signierung des `.deb`
-> mit dem linuxmuster-Key, site-spezifische AD-Fakten (Realm/Base DN/Gruppen-DN).
+> **Status:** **`v1.0.0-rc3` — code-complete & E2E-verified** (all 11 phases
+> P0–P11, `run.sh all` green: Unit 47 + mypy + ruff + E2E 9/9 + docker integration +
+> `.deb` install/upgrade + class load 50/50; security review with all findings fixed —
+> see **[`CHANGELOG.md`](CHANGELOG.md)** / **[`ROADMAP.md`](ROADMAP.md)**). Before
+> production use, still **human gates**: manual Windows GPO acceptance
+> (**[`docs/deployment-gpo.md`](docs/deployment-gpo.md)**), GPG signing of the `.deb`
+> with the linuxmuster key, site-specific AD facts (Realm/Base DN/group DN).
 
-## Warum
+## Why
 
-linuxmuster.net 7 nutzt weiterhin Squid, aber **eingebaut in die OPNsense** — mit
-Kerberos-SSO über das Plugin **`os-web-proxy-sso`**, das **abgekündigt/unmaintained**
-ist (Entfernung ab OPNsense 26.1 vorgesehen). Gruppen-Policies (Lehrer/Schüler)
-hängen an einem fragilen Community-Plugin, **Multischool-Isolation gibt es nicht**,
-und der Proxy teilt sich Ressourcen mit Routing/NAT auf der Firewall.
+linuxmuster.net 7 still uses Squid, but **built into OPNsense** — with
+Kerberos SSO via the **`os-web-proxy-sso`** plugin, which is **deprecated/unmaintained**
+(removal planned from OPNsense 26.1). Group policies (teachers/students)
+hang on a fragile community plugin, **there is no multischool isolation**,
+and the proxy shares resources with routing/NAT on the firewall.
 
-`linuxmuster-squid` löst die Identitäts-/Filterschicht aus der Firewall heraus und
-liefert die zwei Dinge sauber nach, die der OPNsense-Weg nie hatte: **robuste
-Lehrer/Schüler-Gruppen-Policy** und **Multischool-Isolation** — bei Wiederverwendung
-derselben AD-/Kerberos-Infrastruktur, die die Schule schon betreibt.
+`linuxmuster-squid` extracts the identity/filter layer out of the firewall and
+cleanly delivers the two things the OPNsense approach never had: **robust
+teacher/student group policy** and **multischool isolation** — while reusing
+the same AD/Kerberos infrastructure the school already operates.
 
-## Architektur auf einen Blick
+## Architecture at a glance
 
-- **Data Plane:** N Squid-Container (je Schule × Rolle). Expliziter Forward-Proxy
-  (Kerberos-Proxy-Auth ist im transparenten Modus technisch unmöglich),
-  Authentifizierung via `negotiate_kerberos_auth`, Autorisierung via
-  `ext_kerberos_ldap_group_acl` gegen die AD-Gruppe der Instanz. HTTPS wird
-  **nicht entschlüsselt** (SNI-Peek/Splice bzw. CONNECT-`dstdomain`).
-- **Control Plane:** gehärteter systemd-Dienst mit **REST-API** (FastAPI) und
-  **CLI** (Typer, dünner Client) — legt Instanzen an, konfiguriert Policies und
-  **updatet digest-gepinnt mit Health-Check-Auto-Rollback**. Ausgeliefert als
-  signiertes `.deb`.
+- **Data Plane:** N Squid containers (one per school × role). Explicit forward proxy
+  (Kerberos proxy auth is technically impossible in transparent mode),
+  authentication via `negotiate_kerberos_auth`, authorization via
+  `ext_kerberos_ldap_group_acl` against the instance's AD group. HTTPS is
+  **not decrypted** (SNI peek/splice or CONNECT `dstdomain`).
+- **Control Plane:** hardened systemd service with **REST API** (FastAPI) and
+  **CLI** (Typer, thin client) — creates instances, configures policies, and
+  **updates digest-pinned with health-check auto-rollback**. Shipped as a
+  signed `.deb`.
 
 Details: [`docs/architecture.md`](docs/architecture.md).
 
-## Entwicklung & Tests
+## Development & Tests
 
-Der schnelle Tier (Lint/Unit) läuft lokal/CI. Der **schwere Tier** — der reale
-Kerberos-E2E (Samba-AD-DC + Squid + Client, der beweist *Lehrer→200 /
-Schüler→403 / gesperrt→403 / kein-Ticket→407*) — braucht einen **Linux-Host mit
+The fast tier (lint/unit) runs locally/CI. The **heavy tier** — the real
+Kerberos E2E (Samba AD DC + Squid + client, proving *teacher→200 /
+student→403 / blocked→403 / no-ticket→407*) — needs a **Linux host with
 Docker**. Aggregator:
 `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]`.
 
-## Sicherheit (Kurz)
+## Security (brief)
 
-Keytabs sind Domänen-Credentials (Secret/tmpfs, least-privilege). **Keine
-HTTPS-Entschlüsselung** (datenschutzfreundlich, kein Client-CA-Rollout). Der
-Control-Plane-Docker-Socket-Zugriff ist **root-äquivalent** — API nur an
-localhost/Mgmt-Netz, Token/TLS, hinter Socket-Proxy. Mehr:
+Keytabs are domain credentials (secret/tmpfs, least-privilege). **No
+HTTPS decryption** (privacy-friendly, no client CA rollout). Control-plane
+Docker socket access is **root-equivalent** — API only on
+localhost/mgmt network, token/TLS, behind a socket proxy. More:
 [`docs/threat-model.md`](docs/threat-model.md) · [`docs/keytab-and-dns.md`](docs/keytab-and-dns.md).
 
-## Lizenz
+## License
 
-`GPL-3.0-or-later` (angenommen — siehe `docs/decisions.md`). © Kevin Stenzel.
+**`GPL-3.0-or-later`** — consistent with the GPL ecosystem of linuxmuster.net.
+The project is [REUSE 3.3](https://reuse.software)-compliant: every file carries an
+SPDX header, license texts live in [`LICENSES/`](LICENSES/), and `reuse lint` is gated
+in CI. See [`docs/decisions.md`](docs/decisions.md) (ADR-000). © Kevin Stenzel.

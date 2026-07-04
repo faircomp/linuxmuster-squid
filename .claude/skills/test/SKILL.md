@@ -1,4 +1,8 @@
 ---
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 name: test
 description: Run linuxmuster-squid's real heavy-tier tests on a leased crabbox Linux box — the docker-compose Kerberos E2E (Samba AD DC + Squid + client) the dev box can't run. Use when asked to run integration/e2e/heavy tests, verify the Kerberos auth/group-ACL/filter flow on real Linux, or before a release.
 ---

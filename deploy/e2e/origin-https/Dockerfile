@@ -1,4 +1,8 @@
-# HTTPS-Origin für den E2E (self-signed). Liefert 200 auf https://secure.example.internal/.
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# HTTPS origin for the E2E (self-signed). Returns 200 on https://secure.example.internal/.
 FROM nginx:alpine
 RUN apk add --no-cache openssl \
  && openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \

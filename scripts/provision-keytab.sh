@@ -2,45 +2,45 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Erzeugt einen KINIT-fähigen HTTP-Keytab für eine Proxy-Instanz gegen Samba AD.
-# MANUELL vom AD-Admin auf dem DC auszuführen (braucht Domänen-Admin-Rechte).
-# Wird NICHT von der Control-Plane automatisch aufgerufen (ADR-009: least privilege).
+# Creates a KINIT-capable HTTP keytab for a proxy instance against Samba AD.
+# To be run MANUALLY by the AD admin on the DC (requires domain-admin privileges).
+# Is NOT called automatically by the control plane (ADR-009: least privilege).
 #
-# Der exportierte Keytab enthält den Account-Principal (kinit-fähig, für den
-# LDAP-Gruppen-Helper); derselbe Schlüssel entschlüsselt HTTP/<fqdn>-Tickets, weil
-# Squid mit -s GSS_C_NO_NAME arbeitet. Den Keytab dann als Secret <keytab_secret>
-# in secrets_dir der Control-Plane ablegen (siehe docs/keytab-and-dns.md).
+# The exported keytab contains the account principal (kinit-capable, for the
+# LDAP group helper); the same key decrypts HTTP/<fqdn> tickets, because
+# Squid works with -s GSS_C_NO_NAME. Then place the keytab as secret <keytab_secret>
+# in the control plane's secrets_dir (see docs/keytab-and-dns.md).
 set -euo pipefail
-umask 077                                    # Keytab entsteht mit 0600 (kein 0644-Fenster)
+umask 077                                    # Keytab is created with 0600 (no 0644 window)
 
 FQDN="${1:?Usage: provision-keytab.sh <proxy-fqdn> <service-account> <out.keytab>}"
-ACCOUNT="${2:?service account (kinit-fähig, existierend)}"
+ACCOUNT="${2:?service account (kinit-capable, existing)}"
 OUT="${3:?output keytab path}"
 
 SPN="HTTP/${FQDN}"
 SAM_LDB="${SAM_LDB:-/var/lib/samba/private/sam.ldb}"
 
-echo "== SPN ${SPN} prüfen/anhängen an ${ACCOUNT} =="
+echo "== check/append SPN ${SPN} to ${ACCOUNT} =="
 if samba-tool spn list "${ACCOUNT}" 2>/dev/null | grep -Fq "${SPN}"; then
-    echo "   ${SPN} ist bereits auf ${ACCOUNT} — überspringe (idempotent)."
+    echo "   ${SPN} is already on ${ACCOUNT} — skipping (idempotent)."
 else
-    # Duplicate-SPN früh erkennen: hängt der SPN schon auf einem ANDEREN Konto, bricht
-    # Kerberos später mit KRB_AP_ERR_MODIFIED (der KDC kann nicht disambiguieren).
+    # Detect duplicate SPN early: if the SPN is already on a DIFFERENT account, Kerberos
+    # breaks later with KRB_AP_ERR_MODIFIED (the KDC cannot disambiguate).
     if command -v ldbsearch >/dev/null 2>&1 && [ -r "${SAM_LDB}" ]; then
         OWNER=$(ldbsearch -H "${SAM_LDB}" "(servicePrincipalName=${SPN})" sAMAccountName \
             2>/dev/null | awk '/^sAMAccountName:/ {print $2}')
         if [ -n "${OWNER:-}" ]; then
-            echo "FATAL: ${SPN} existiert bereits auf Konto '${OWNER}' (duplicate SPN)." >&2
-            echo "       Erst dort entfernen: samba-tool spn delete ${SPN} ${OWNER}" >&2
+            echo "FATAL: ${SPN} already exists on account '${OWNER}' (duplicate SPN)." >&2
+            echo "       Remove it there first: samba-tool spn delete ${SPN} ${OWNER}" >&2
             exit 1
         fi
     fi
     samba-tool spn add "${SPN}" "${ACCOUNT}"
 fi
 
-echo "== Keytab für ${ACCOUNT} exportieren -> ${OUT} =="
-rm -f "${OUT}"                                # frischer Keytab (exportkeytab APPENDET sonst)
+echo "== export keytab for ${ACCOUNT} -> ${OUT} =="
+rm -f "${OUT}"                                # fresh keytab (exportkeytab APPENDS otherwise)
 samba-tool domain exportkeytab "${OUT}" --principal="${ACCOUNT}"
 chmod 0600 "${OUT}"
 
-echo "== fertig. ${OUT} als Secret in secrets_dir der Control-Plane ablegen. =="
+echo "== done. Place ${OUT} as secret in the control plane's secrets_dir. =="

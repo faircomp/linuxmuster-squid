@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Beispiel-Instanz: Lehrer der default-school (Gruppe UNPRÄFIXIERT).
+# Example instance: teachers of the default-school (group UNPREFIXED).
 school: default-school
 role: teachers
 ad_group: teachers

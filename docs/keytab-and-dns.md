@@ -3,70 +3,70 @@ SPDX-FileCopyrightText: Kevin Stenzel
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Keytab- & DNS-Anforderungen
+# Keytab & DNS Requirements
 
-Der Proxy authentifiziert Clients per Kerberos und braucht dafür einen **Keytab**
-mit dem Service-Principal `HTTP/<proxy-fqdn>`. Verifiziert (P1-E2E, [ADR-007](decisions.md)):
-Der Keytab muss **einen kinit-fähigen Account-Principal** enthalten (nicht nur den
-HTTP-SPN-Alias), weil der Gruppen-Helper `ext_kerberos_ldap_group_acl` sich damit
-per GSSAPI am LDAP anmeldet. Negotiate läuft mit `-s GSS_C_NO_NAME` und entschlüsselt
-die `HTTP/<fqdn>`-Tickets über denselben Account-Schlüssel.
+The proxy authenticates clients via Kerberos and needs a **keytab** for that,
+containing the service principal `HTTP/<proxy-fqdn>`. Verified (P1 E2E, [ADR-007](decisions.md)):
+The keytab must contain **a kinit-capable account principal** (not just the
+HTTP SPN alias), because the group helper `ext_kerberos_ldap_group_acl` uses it
+to authenticate to LDAP via GSSAPI. Negotiate runs with `-s GSS_C_NO_NAME` and decrypts
+the `HTTP/<fqdn>` tickets using the same account key.
 
-## Keytab erzeugen (durch den AD-Admin)
+## Creating the keytab (by the AD admin)
 
-**Standard (ADR-009): KEIN Domänen-Join.** Weder der Proxy-Host noch die Container treten
-der Domäne bei. Der AD-Admin erzeugt den Keytab **einmalig auf dem DC** und liefert die
-Datei; die Control-Plane provisioniert **nicht** selbst (least privilege).
+**Default (ADR-009): NO domain join.** Neither the proxy host nor the containers join
+the domain. The AD admin creates the keytab **once on the DC** and delivers the
+file; the control plane does **not** provision it itself (least privilege).
 
-1. **Empfohlen — Service-Account + `samba-tool` auf dem DC (join-frei, wie im E2E bewiesen).**
-   Ein kinit-fähiges Dienstkonto anlegen (existiert nur als AD-Objekt — kein Join), den
-   `HTTP/<proxy-fqdn>`-SPN anhängen, dessen Keytab exportieren → Datei ins `secrets_dir`.
-   Siehe `scripts/provision-keytab.sh` (prüft Duplicate-SPN, idempotent).
-2. *(Alternative, nur falls der Proxy-Host ohnehin Domänenmitglied ist.)* `net ads keytab`
-   bzw. `msktutil` (mit `--auto-update` gegen Passwort-Rotation) nutzt den Maschinenkonto-
-   Keytab. Für das reine Container-Modell **nicht nötig** — und ein Join pro Instanz wäre
-   sogar kontraproduktiv (Maschinenkonto-Rotation macht Keytabs stale).
+1. **Recommended — service account + `samba-tool` on the DC (join-free, as proven in the E2E).**
+   Create a kinit-capable service account (exists only as an AD object — no join), attach the
+   `HTTP/<proxy-fqdn>` SPN to it, export its keytab → file into `secrets_dir`.
+   See `scripts/provision-keytab.sh` (checks for duplicate SPNs, idempotent).
+2. *(Alternative, only if the proxy host is a domain member anyway.)* `net ads keytab`
+   or `msktutil` (with `--auto-update` against password rotation) uses the machine-account
+   keytab. **Not needed** for the pure container model — and a join per instance would even
+   be counterproductive (machine-account rotation makes keytabs stale).
 
-## Keytab an die Instanz geben
+## Handing the keytab to the instance
 
-- Als **Docker-Secret** ablegen: Datei in `secrets_dir` (Default
-  `/etc/linuxmuster-squid/secrets`), Dateiname == `keytab_secret` der Instanz.
-  Die Control-Plane mountet sie **read-only** unter `/run/secrets/<keytab_secret>`
-  (= `KEYTAB` im Container).
-- **Rechte:** `0600` auf dem Host, read-only gemountet. Der Container-Entrypoint (als
-  root, mit `DAC_OVERRIDE`) kopiert den Keytab einmalig nach `/run/lmnsquid/keytab`
-  (proxy-lesbar, `0600`), damit der als `proxy` laufende Squid ihn lesen kann — der
-  gemountete Keytab bleibt `0600`. **Nie ins Env/Log.**
-- **Pro Instanz getrennt** — kein geteilter Keytab über Schulen hinweg.
-- **Rotation:** `net ads`-Keytabs werden durch Maschinenpasswort-Rotation ungültig
-  → `msktutil --auto-update` oder neu exportieren; Service-Account-Keytabs bei
-  Passwortwechsel neu exportieren. Nach Rotation Instanz neu erstellen (Secret neu
-  mounten) bzw. `restart`.
+- Store it as a **Docker secret**: file in `secrets_dir` (default
+  `/etc/linuxmuster-squid/secrets`), filename == the instance's `keytab_secret`.
+  The control plane mounts it **read-only** under `/run/secrets/<keytab_secret>`
+  (= `KEYTAB` in the container).
+- **Permissions:** `0600` on the host, mounted read-only. The container entrypoint (as
+  root, with `DAC_OVERRIDE`) copies the keytab once to `/run/lmnsquid/keytab`
+  (proxy-readable, `0600`), so that Squid, running as `proxy`, can read it — the
+  mounted keytab stays `0600`. **Never into the env/log.**
+- **Separate per instance** — no shared keytab across schools.
+- **Rotation:** `net ads` keytabs become invalid through machine-password rotation
+  → `msktutil --auto-update` or re-export; re-export service-account keytabs on a
+  password change. After rotation, recreate the instance (re-mount the secret) or
+  `restart` it.
 
-## KVNO- & SPN-Fallstricke (verifiziert)
+## KVNO & SPN pitfalls (verified)
 
-- **Keytab mehrfach exportieren ist harmlos** — `samba-tool domain exportkeytab` schreibt
-  die *aktuellen* Schlüssel, ändert **kein** Passwort und **bumpt die KVNO nicht**. ABER es
-  **hängt an** eine bestehende Datei an → deshalb macht `provision-keytab.sh` `rm -f` vor dem
-  Export (sonst sammeln sich veraltete KVNO-Einträge und Squid greift evtl. den falschen).
-- **Passwort-Reset / Neu-Join (gleicher Name) macht alte Keytabs ungültig** — jeder Reset
-  erhöht die KVNO (`msDS-KeyVersionNumber`); alte Keytabs werden stale (`KRB_AP_ERR_MODIFIED`
-  bzw. „matching key not found in keytab"). → Keytab **neu exportieren** und Instanz neu
-  mounten/`restart`.
-- **Derselbe SPN auf zwei Konten = Bruch** — ein SPN (`HTTP/<fqdn>`) muss domänenweit
-  **eindeutig** sein, sonst kann der KDC nicht disambiguieren (`KRB_AP_ERR_MODIFIED`, oft
-  NTLM-Fallback). `provision-keytab.sh` prüft das vorab (`ldbsearch`) und ist idempotent;
-  manuell prüfen: `setspn -X` (Windows) bzw.
+- **Exporting the keytab multiple times is harmless** — `samba-tool domain exportkeytab` writes
+  the *current* keys, changes **no** password and does **not** bump the KVNO. BUT it
+  **appends to** an existing file → which is why `provision-keytab.sh` does `rm -f` before the
+  export (otherwise stale KVNO entries accumulate and Squid may pick the wrong one).
+- **Password reset / re-join (same name) invalidates old keytabs** — every reset
+  increments the KVNO (`msDS-KeyVersionNumber`); old keytabs go stale (`KRB_AP_ERR_MODIFIED`
+  or "matching key not found in keytab"). → **Re-export** the keytab and re-mount/`restart`
+  the instance.
+- **The same SPN on two accounts = breakage** — an SPN (`HTTP/<fqdn>`) must be
+  **unique** domain-wide, otherwise the KDC cannot disambiguate (`KRB_AP_ERR_MODIFIED`, often
+  NTLM fallback). `provision-keytab.sh` checks this beforehand (`ldbsearch`) and is idempotent;
+  to check manually: `setspn -X` (Windows) or
   `ldbsearch -H .../sam.ldb '(servicePrincipalName=HTTP/<fqdn>)' sAMAccountName` (Samba).
 
-## DNS- & Zeit-Anforderungen (hart)
+## DNS & time requirements (hard)
 
-- **A-Record** für jeden Proxy-FQDN (`visible_hostname`).
-- **Vorwärts+Rückwärts-DNS** ODER `rdns = false` — das Image generiert bereits
-  `/etc/krb5.conf` mit `rdns=false` + `/etc/ldap/ldap.conf` `SASL_NOCANON on`, sodass
-  der `ldap/`-SPN aus dem literalen DC-Namen gebildet wird (nicht per PTR).
-- **Kein `wpad`-PTR** — bricht SSO für Firefox/Chromium auf Linux.
-- **NTP** synchron zum DC (Kerberos-Skew < 5 min).
-- Clients müssen den Proxy per **FQDN**, nie per IP erreichen (sonst kein Kerberos).
+- **A record** for every proxy FQDN (`visible_hostname`).
+- **Forward + reverse DNS** OR `rdns = false` — the image already generates
+  `/etc/krb5.conf` with `rdns=false` + `/etc/ldap/ldap.conf` `SASL_NOCANON on`, so that
+  the `ldap/` SPN is formed from the literal DC name (not via PTR).
+- **No `wpad` PTR** — breaks SSO for Firefox/Chromium on Linux.
+- **NTP** in sync with the DC (Kerberos skew < 5 min).
+- Clients must reach the proxy via **FQDN**, never via IP (otherwise no Kerberos).
 
-Siehe auch: [`architecture.md`](architecture.md), [`decisions.md`](decisions.md) (ADR-007/008/009).
+See also: [`architecture.md`](architecture.md), [`decisions.md`](decisions.md) (ADR-007/008/009).

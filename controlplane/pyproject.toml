@@ -24,6 +24,11 @@ dependencies = [
     "httpx",
 ]
 
+[project.urls]
+Homepage = "https://github.com/faircomp/linuxmuster-squid"
+Repository = "https://github.com/faircomp/linuxmuster-squid"
+Issues = "https://github.com/faircomp/linuxmuster-squid/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest",

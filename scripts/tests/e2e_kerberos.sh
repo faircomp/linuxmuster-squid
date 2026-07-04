@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Orchestriert den Kerberos-E2E: Samba-AD-DC hochfahren, Fixtures anlegen
-# (Users/Gruppe/SPN/Keytab/DNS), Squid + origin starten, Assertions fahren.
-# Exit-Code = Anzahl fehlgeschlagener Assertions (0 = grün). Braucht Docker.
+# Orchestrates the Kerberos E2E: bring up the Samba AD DC, create fixtures
+# (users/group/SPN/keytab/DNS), start Squid + origin, run assertions.
+# Exit code = number of failed assertions (0 = green). Requires Docker.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CF="$ROOT/deploy/e2e/docker-compose.yml"
-# Docker direkt oder via sudo (crabbox-User ist evtl. nicht in der docker-Gruppe)
+# Docker directly or via sudo (the crabbox user may not be in the docker group)
 DOCKER="docker"; docker info >/dev/null 2>&1 || DOCKER="sudo docker"
 DC="$DOCKER compose -f $CF"
 DLC="example.internal"
@@ -18,7 +18,7 @@ SQUID_IP="172.28.0.10"
 ORIGIN_IP="172.28.0.20"
 
 log(){ printf '\n== %s ==\n' "$1"; }
-dcx(){ $DC exec -T samba-dc "$@"; }        # exec im DC, kein TTY
+dcx(){ $DC exec -T samba-dc "$@"; }        # exec in the DC, no TTY
 
 cleanup(){ $DC down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -38,7 +38,7 @@ for _ in $(seq 1 60); do
   if dcx samba-tool user list >/dev/null 2>&1; then ready=1; break; fi
   sleep 3
 done
-if [ "$ready" != 1 ]; then echo "DC nicht bereit"; $DC logs samba-dc 2>/dev/null | tail -40; exit 1; fi
+if [ "$ready" != 1 ]; then echo "DC not ready"; $DC logs samba-dc 2>/dev/null | tail -40; exit 1; fi
 
 log "fixtures: users, group, SPN, keytab, DNS"
 dcx samba-tool user  create teacher1 "$PW"          >/dev/null 2>&1 || true
@@ -47,15 +47,15 @@ dcx samba-tool user  create squidsvc "$PW"          >/dev/null 2>&1 || true
 dcx samba-tool group add teachers                   >/dev/null 2>&1 || true
 dcx samba-tool group addmembers teachers teacher1   >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid.$DLC" squidsvc >/dev/null 2>&1 || true
-# Keytab für den KINIT-fähigen Account-Principal (squidsvc), nicht nur den HTTP-SPN:
-# der Gruppen-Helper meldet sich damit am LDAP an. Der HTTP/squid-SPN nutzt denselben
-# Account-Schlüssel, daher entschlüsselt Negotiate (-s GSS_C_NO_NAME) die Client-Tickets.
-dcx samba-tool domain exportkeytab /shared/squid.keytab --principal=squidsvc || { echo "keytab-Export fehlgeschlagen"; exit 1; }
-dcx chmod 0600 /shared/squid.keytab   # 0600: testet den Produktions-Keytab-Pfad (proxy-Kopie im Entrypoint)
+# Keytab for the KINIT-capable account principal (squidsvc), not just the HTTP SPN:
+# the group helper uses it to authenticate against LDAP. The HTTP/squid SPN uses the same
+# account key, so Negotiate (-s GSS_C_NO_NAME) decrypts the client tickets.
+dcx samba-tool domain exportkeytab /shared/squid.keytab --principal=squidsvc || { echo "keytab export failed"; exit 1; }
+dcx chmod 0600 /shared/squid.keytab   # 0600: tests the production keytab path (proxy copy in the entrypoint)
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid  A "$SQUID_IP"  -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" origin A "$ORIGIN_IP"   -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" secure A 172.28.0.21    -U "Administrator%$PW" >/dev/null 2>&1 || true
-# Multischool-Fixtures: 2. Schule "schule2" mit präfixierter Gruppe + eigenem Lehrer
+# Multischool fixtures: 2nd school "schule2" with prefixed group + its own teacher
 dcx samba-tool user  create teacher2 "$PW"                      >/dev/null 2>&1 || true
 dcx samba-tool group add schule2-teachers                      >/dev/null 2>&1 || true
 dcx samba-tool group addmembers schule2-teachers teacher2      >/dev/null 2>&1 || true
@@ -73,7 +73,7 @@ wait_healthy() {
     if [ "$st" = healthy ]; then ready=1; break; fi
     sleep 3
   done
-  if [ "$ready" != 1 ]; then echo "$svc nicht healthy (status=$st)"; $DC logs "$svc" 2>/dev/null | tail -60; return 1; fi
+  if [ "$ready" != 1 ]; then echo "$svc not healthy (status=$st)"; $DC logs "$svc" 2>/dev/null | tail -60; return 1; fi
 }
 log "wait for squid + squid2 healthy"
 wait_healthy squid  || exit 1
@@ -83,11 +83,11 @@ log "run assertions (test-client)"
 $DC run --rm test-client
 rc=$?
 
-log "squid access.log (Auszug)"
+log "squid access.log (excerpt)"
 $DC exec -T squid sh -c 'tail -20 /var/log/squid/access.log' 2>/dev/null \
   || $DC logs squid 2>/dev/null | tail -20 || true
 
-log "squid cache.log (letzte Zeilen, bei Fehler nützlich)"
+log "squid cache.log (last lines, useful on error)"
 $DC exec -T squid sh -c 'tail -25 /var/log/squid/cache.log' 2>/dev/null || true
 
 exit "$rc"

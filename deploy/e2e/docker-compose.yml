@@ -1,7 +1,11 @@
-# Kerberos-E2E-Stack für linuxmuster-squid (heavy tier / crabbox).
-# Beweist: Lehrer->200, Schueler->403, gesperrte Domain->403, kein Ticket->407.
-# Orchestriert von scripts/tests/e2e_kerberos.sh (bringt Dienste geordnet hoch,
-# legt Fixtures an und fährt die Assertions). Realm/Domain: EXAMPLE.INTERNAL.
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Kerberos E2E stack for linuxmuster-squid (heavy tier / crabbox).
+# Proves: teacher->200, student->403, blocked domain->403, no ticket->407.
+# Orchestrated by scripts/tests/e2e_kerberos.sh (brings services up in order,
+# creates fixtures and runs the assertions). Realm/domain: EXAMPLE.INTERNAL.
 name: lmnsquid-e2e
 
 networks:
@@ -12,10 +16,10 @@ networks:
         - subnet: 172.28.0.0/24
 
 volumes:
-  shared: {}          # DC exportiert hier den Keytab, Squid liest ihn (ro)
+  shared: {}          # DC exports the Keytab here, Squid reads it (ro)
 
 services:
-  # KDC + AD-LDAP + interner DNS. Legt die Domain beim ersten Start an.
+  # KDC + AD-LDAP + internal DNS. Creates the domain on first start.
   samba-dc:
     image: nowsci/samba-domain
     hostname: dc
@@ -32,7 +36,7 @@ services:
     volumes:
       - shared:/shared
 
-  # Das Image unter Test.
+  # The image under test.
   squid:
     build: ../../image
     image: linuxmuster-squid:dev
@@ -43,10 +47,10 @@ services:
       VISIBLE_HOSTNAME: "squid.example.internal"
       REALM: "EXAMPLE.INTERNAL"
       AD_GROUP: "teachers"
-      SCHOOL_SUBNETS: "0.0.0.0/0"      # Subnetz-Scope wird in P3 getestet
+      SCHOOL_SUBNETS: "0.0.0.0/0"      # Subnet scope is tested in P3
       KEYTAB: "/shared/squid.keytab"
       CACHE_SIZE_MB: "200"
-    dns: ["172.28.0.2"]               # AD-DNS: löst SRV/_ldap._tcp + origin-A auf
+    dns: ["172.28.0.2"]               # AD-DNS: resolves SRV/_ldap._tcp + origin A-record
     networks:
       e2e:
         ipv4_address: 172.28.0.10
@@ -59,8 +63,8 @@ services:
     cap_add: ["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"]
     security_opt: ["no-new-privileges:true"]
 
-  # 2. Schule (Multischool): DIESELBE Image, andere Gruppe/FQDN — beweist Isolation
-  # + Präfix-Regel (default-school unpräfixiert, andere Schulen "<schule>-...").
+  # 2nd school (Multischool): the SAME image, different group/FQDN — proves isolation
+  # + prefix rule (default-school unprefixed, other schools "<schule>-...").
   squid2:
     image: linuxmuster-squid:dev
     hostname: squid2.example.internal
@@ -86,7 +90,7 @@ services:
     cap_add: ["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"]
     security_opt: ["no-new-privileges:true"]
 
-  # Erlaubtes Ziel (liefert 200).
+  # Allowed target (returns 200).
   origin:
     image: nginx:alpine
     hostname: origin.example.internal
@@ -94,7 +98,7 @@ services:
       e2e:
         ipv4_address: 172.28.0.20
 
-  # Erlaubtes HTTPS-Ziel (self-signed) — für den splice-Test.
+  # Allowed HTTPS target (self-signed) — for the splice test.
   origin-https:
     build: ./origin-https
     hostname: secure.example.internal
@@ -102,7 +106,7 @@ services:
       e2e:
         ipv4_address: 172.28.0.21
 
-  # Kerberos-Client, der die vier Assertions fährt (ENTRYPOINT = /assert.sh).
+  # Kerberos client that runs the four assertions (ENTRYPOINT = /assert.sh).
   test-client:
     build: ./client
     depends_on: [squid]

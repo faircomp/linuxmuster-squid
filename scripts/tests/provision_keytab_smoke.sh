@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Smoke gegen den E2E-Samba-DC: provision-keytab.sh ist idempotent und bricht bei
-# einem Duplicate-SPN (gleicher SPN auf einem anderen Konto) sauber ab. Braucht Docker.
+# Smoke against the E2E Samba DC: provision-keytab.sh is idempotent and aborts cleanly on
+# a duplicate SPN (same SPN on a different account). Needs Docker.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -26,25 +26,25 @@ $DC build samba-dc >/dev/null 2>&1 || true
 $DC up -d samba-dc || exit 1
 ready=0
 for _ in $(seq 1 60); do dcx samba-tool user list >/dev/null 2>&1 && { ready=1; break; }; sleep 3; done
-[ "$ready" = 1 ] || { echo "DC nicht bereit"; exit 1; }
+[ "$ready" = 1 ] || { echo "DC not ready"; exit 1; }
 
-echo "== fixtures: zwei Dienstkonten =="
+echo "== fixtures: two service accounts =="
 dcx samba-tool user create ktsvc1 "$PW" >/dev/null 2>&1 || true
 dcx samba-tool user create ktsvc2 "$PW" >/dev/null 2>&1 || true
 
-echo "== provision-keytab.sh in den DC kopieren =="
+echo "== copy provision-keytab.sh into the DC =="
 CID="$($DC ps -q samba-dc)"
 $DOCKER cp "$ROOT/scripts/provision-keytab.sh" "$CID:/tmp/pk.sh"
 
-echo "== A: erster Lauf (ktsvc1) =="
-if dcx bash /tmp/pk.sh "$FQDN" ktsvc1 /tmp/kt1.keytab; then pass "erster Lauf erfolgreich"; else bad "erster Lauf"; fi
-if dcx test -s /tmp/kt1.keytab; then pass "keytab erzeugt"; else bad "keytab fehlt"; fi
+echo "== A: first run (ktsvc1) =="
+if dcx bash /tmp/pk.sh "$FQDN" ktsvc1 /tmp/kt1.keytab; then pass "first run succeeded"; else bad "first run"; fi
+if dcx test -s /tmp/kt1.keytab; then pass "keytab created"; else bad "keytab missing"; fi
 
-echo "== B: zweiter Lauf (ktsvc1) -> idempotent =="
-if dcx bash /tmp/pk.sh "$FQDN" ktsvc1 /tmp/kt1b.keytab; then pass "zweiter Lauf idempotent (exit 0)"; else bad "zweiter Lauf nicht idempotent"; fi
+echo "== B: second run (ktsvc1) -> idempotent =="
+if dcx bash /tmp/pk.sh "$FQDN" ktsvc1 /tmp/kt1b.keytab; then pass "second run idempotent (exit 0)"; else bad "second run not idempotent"; fi
 
-echo "== C: gleicher SPN auf ktsvc2 -> Duplicate-SPN-Abbruch =="
-if dcx bash /tmp/pk.sh "$FQDN" ktsvc2 /tmp/kt2.keytab; then bad "duplicate SPN NICHT abgebrochen"; else pass "duplicate SPN bricht ab (exit != 0)"; fi
+echo "== C: same SPN on ktsvc2 -> duplicate SPN abort =="
+if dcx bash /tmp/pk.sh "$FQDN" ktsvc2 /tmp/kt2.keytab; then bad "duplicate SPN NOT aborted"; else pass "duplicate SPN aborts (exit != 0)"; fi
 
-echo "== provision-keytab smoke: $fail Fehler =="
+echo "== provision-keytab smoke: $fail errors =="
 exit "$fail"

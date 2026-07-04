@@ -124,8 +124,8 @@ class DockerService:
             cap_drop=["ALL"],
             cap_add=["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"],
             security_opt=["no-new-privileges:true"],
-            # Docker-json-log gedeckelt (nur der Live-Blick); die dauerhafte, gzip-rotierte
-            # Historie liegt im persistenten Log-Volume (logrotate, LOG_RETENTION_DAYS).
+            # Docker json-log is capped (only the live view); the durable, gzip-rotated
+            # history lives in the persistent log volume (logrotate, LOG_RETENTION_DAYS).
             log_config=LogConfig(
                 type="json-file",
                 config={"max-size": self.log_max_size, "max-file": str(self.log_max_file)},

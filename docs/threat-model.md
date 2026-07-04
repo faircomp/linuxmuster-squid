@@ -3,42 +3,42 @@ SPDX-FileCopyrightText: Kevin Stenzel
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Bedrohungsmodell — linuxmuster-squid
+# Threat Model — linuxmuster-squid
 
-Risiken + Gegenmaßnahmen. Wächst pro Roadmap-Phase; die Negativtests dazu stehen in
-`docs/test-strategy.md` und sind Teil der jeweiligen Definition of Done.
+Risks + countermeasures. Grows per roadmap phase; the negative tests for it live in
+`docs/test-strategy.md` and are part of the respective Definition of Done.
 
-## Schutzgüter
+## Assets
 
-- **Keytabs** (Kerberos-Service-Credentials) — Diebstahl = Impersonation des
-  Proxy-Dienstes in der Domäne.
-- **Control-Plane-API + Docker-Socket** — Kompromittierung = **Host-Root**.
-- **Filter-/Auth-Integrität** — Umgehung = ungefilterter/unautorisierter
-  Internetzugriff für Schüler.
-- **Nutzer-Privatsphäre** (Minderjährige) — kein unnötiges Mitlesen von HTTPS-Inhalten.
+- **Keytabs** (Kerberos service credentials) — theft = impersonation of the
+  proxy service in the domain.
+- **Control-plane API + Docker socket** — compromise = **host root**.
+- **Filter/auth integrity** — bypass = unfiltered/unauthorized
+  internet access for students.
+- **User privacy** (minors) — no unnecessary interception of HTTPS content.
 
-## Risiken & Gegenmaßnahmen
+## Risks & Countermeasures
 
-| # | Risiko | Gegenmaßnahme | Verifikation |
+| # | Risk | Countermeasure | Verification |
 |---|---|---|---|
-| T1 | **Keytab-Diebstahl** | Secret (tmpfs, `:ro`), `0600` Host, lesbar nur `proxy`, pro Instanz getrennt, nie ins Env/Log; Compose-File-Secrets nicht at-rest verschlüsselt → Host härten | Perms-Test; kein Keytab in `docker inspect`/Logs |
-| T2 | **Proxy-Bypass** (nicht-inline) | OPNsense blockt direkten 80/443-Egress (force-proxy); Client-Subnetze = `SCHOOL_SUBNETS` | E2E + Firewall-Review |
-| T3 | **Autorisierungs-Umgehung** (Schüler am Lehrer-Proxy, falsche Gruppen-Zuordnung) | Gruppen-ACL server-seitig erzwungen; GPO-Gruppen == ACL-Gruppen; Präfix-Regel korrekt | E2E: Schüler→403; Multischool-Matrix |
-| T4 | **HTTPS-Privatsphäre** | kein SSL-Bump-MITM; nur SNI-Splice/CONNECT; Peek-CA nie verteilt | `squid.conf`-Review; kein `bump`-Verdikt |
-| T5 | **Control-Plane-RCE = Host-Root** (Docker-Socket) | API **nur `127.0.0.1`** + Token (`compare_digest`), gehärteter systemd-Dienst, Audit-Log. Der Socket-Proxy reduziert die Endpunkt-Fläche, **downgradet aber NICHT unter Host-Root** (`container create` mit Host-Bind ist inhärent root-äquivalent) → echte Antwort ist **rootless Docker**. In-App-TLS nicht implementiert; off-host nur via betreiber-eigenen TLS-Reverse-Proxy (`main.py` warnt bei non-loopback-Bind) | API 401/403-Tests; Bind-Check ≠ 0.0.0.0 |
-| T6 | **Auth-all-or-nothing / SSO-Ausfall** | Auth nie global abschaltbar per Default; Fallback Kerberos→Basic/LDAP (kein NTLM); SSO-Health überwachen | E2E: kein-Ticket→407 |
-| T7 | **DNS/SPN-Fehlkonfig** (stiller Kerberos-Fail) | fwd+rev DNS bzw. `rdns=false`; FQDN==SPN==`VISIBLE_HOSTNAME`; NTP<5min; AES-Enctypes | E2E-Kanonikalisierung; `klist -k` |
-| T8 | **Blocklisten-Rot** (Supply-Chain) | eigener UT-Capitole-Refresh (Sidecar/Cron); Ausfall sichtbar machen | Refresh-Job-Test |
-| T9 | **Unbeaufsichtigtes Bad-Update → tote Schule** | Digest-Pin, human-merge (Renovate `automerge:false`), Health-gated Update + Auto-Rollback, Known-Good persistiert | E2E: Bad-Image → Rollback |
-| T10 | **DC/LDAP-Ausfall staut jede Anfrage** | externe-ACL `ttl/negative_ttl/grace` + Helfer-Concurrency tunen | Lasttest P10 |
-| T11 | **Container-Escape/Privileg** | `read_only`-Rootfs + tmpfs, `cap_drop: ALL` (minimal Caps), non-root `proxy`, Manager-ACL localhost | Härtungs-Review P10 |
-| T12 | **Exam-Mode** | `<user>-exam` in keiner teachers/students-Gruppe → ACL verweigert; lmn7 deaktiviert Proxy im Prüfungsmodus | Doku + optionaler Test |
-| T13 | **Access-Logs = personenbezogen** (Surfverhalten, DSGVO) | Aufbewahrung = `log_retention_days` (dokumentierte Löschfrist, Default 30), gzip-rotiert; Access-Logging pro Instanz abschaltbar (`access_log_enabled:false`); Log-Zugriff nur per API-Token, Abfragen ins Audit-Log; keine Secrets im Log | Retention-/Rotation-Smoke; `access_log none`-Render-Test |
-| T14 | **SNI-Filter-Umgehung: ECH / QUIC / DoH** | **ECH** (Encrypted Client Hello) verschlüsselt die SNI → Splice-Filter blind; **QUIC/HTTP3** läuft über **UDP 443** am TCP-Forward-Proxy vorbei; **DoH** umgeht die DNS-Sicht. Grenze des namensbasierten Filters — der Proxy allein schließt das nicht. **Am Netzrand mitigieren:** OPNsense **UDP 443 blocken** (erzwingt TCP/443 durch den Proxy), bekannte DoH-Resolver + `use-application-dns.net` blocken (Canary schaltet Firefox-DoH ab); ECH-Verbreitung beobachten. Für echte Vollständigkeit bräuchte es SSL-Interception (bewusstes Nicht-Ziel, ADR-002). | Firewall-Review am Standort; dokumentierte Grenze |
+| T1 | **Keytab theft** | Secret (tmpfs, `:ro`), `0600` host, readable only by `proxy`, isolated per instance, never in env/log; Compose file secrets not encrypted at rest → harden the host | perms test; no keytab in `docker inspect`/logs |
+| T2 | **Proxy bypass** (non-inline) | OPNsense blocks direct 80/443 egress (force-proxy); client subnets = `SCHOOL_SUBNETS` | E2E + firewall review |
+| T3 | **Authorization bypass** (student on the teacher proxy, wrong group assignment) | group ACL enforced server-side; GPO groups == ACL groups; prefix rule correct | E2E: student→403; multischool matrix |
+| T4 | **HTTPS privacy** | no SSL-bump MITM; only SNI-splice/CONNECT; peek CA never distributed | `squid.conf` review; no `bump` verdict |
+| T5 | **Control-plane RCE = host root** (Docker socket) | API **only `127.0.0.1`** + token (`compare_digest`), hardened systemd service, audit log. The socket proxy reduces the endpoint surface, **but does NOT downgrade below host root** (`container create` with host bind is inherently root-equivalent) → the real answer is **rootless Docker**. In-app TLS not implemented; off-host only via an operator-provided TLS reverse proxy (`main.py` warns on non-loopback bind) | API 401/403 tests; bind check ≠ 0.0.0.0 |
+| T6 | **Auth all-or-nothing / SSO outage** | auth never globally disableable by default; fallback Kerberos→Basic/LDAP (no NTLM); monitor SSO health | E2E: no ticket→407 |
+| T7 | **DNS/SPN misconfig** (silent Kerberos fail) | fwd+rev DNS resp. `rdns=false`; FQDN==SPN==`VISIBLE_HOSTNAME`; NTP<5min; AES enctypes | E2E canonicalization; `klist -k` |
+| T8 | **Blocklist rot** (supply chain) | own UT-Capitole refresh (sidecar/cron); make outage visible | refresh-job test |
+| T9 | **Unattended bad update → dead school** | digest pin, human-merge (Renovate `automerge:false`), health-gated update + auto-rollback, known-good persisted | E2E: bad image → rollback |
+| T10 | **DC/LDAP outage stalls every request** | external ACL `ttl/negative_ttl/grace` + tune helper concurrency | load test P10 |
+| T11 | **Container escape/privilege** | `read_only` rootfs + tmpfs, `cap_drop: ALL` (minimal caps), non-root `proxy`, manager ACL localhost | hardening review P10 |
+| T12 | **Exam mode** | `<user>-exam` in no teachers/students group → ACL denies; lmn7 disables the proxy in exam mode | docs + optional test |
+| T13 | **Access logs = personal data** (browsing behavior, GDPR) | retention = `log_retention_days` (documented deletion period, default 30), gzip-rotated; access logging disableable per instance (`access_log_enabled:false`); log access only via API token, queries into the audit log; no secrets in the log | retention/rotation smoke; `access_log none` render test |
+| T14 | **SNI filter bypass: ECH / QUIC / DoH** | **ECH** (Encrypted Client Hello) encrypts the SNI → splice filter blind; **QUIC/HTTP3** runs over **UDP 443**, bypassing the TCP forward proxy; **DoH** circumvents the DNS view. Limit of name-based filtering — the proxy alone does not close this. **Mitigate at the network edge:** OPNsense **block UDP 443** (forces TCP/443 through the proxy), block known DoH resolvers + `use-application-dns.net` (canary disables Firefox DoH); observe ECH adoption. For real completeness you would need SSL interception (a deliberate non-goal, ADR-002). | firewall review at the site; documented limit |
 
-## Nicht-Ziele (bewusst)
+## Non-goals (deliberate)
 
-- Kein Deep-Content-Filtering von HTTPS (keine Entschlüsselung) — Domain-Ebene genügt.
-- Keine Absicherung gegen einen böswilligen Domänen-Administrator (AD ist Trust-Anker).
-- Keine Fleet-Verwaltung hunderter Sites in 1.0 (CLI+git skaliert auf Dutzende;
-  GitOps/Komodo später erwägen).
+- No deep content filtering of HTTPS (no decryption) — domain level suffices.
+- No protection against a malicious domain administrator (AD is the trust anchor).
+- No fleet management of hundreds of sites in 1.0 (CLI+git scales to dozens;
+  consider GitOps/Komodo later).

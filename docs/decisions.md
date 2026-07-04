@@ -3,126 +3,127 @@ SPDX-FileCopyrightText: Kevin Stenzel
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Entscheidungen (ADRs) — linuxmuster-squid
+# Decisions (ADRs) — linuxmuster-squid
 
-Kurze Architecture Decision Records. Neue Entscheidung = neuer Eintrag; wird eine
-Entscheidung revidiert, den alten Eintrag auf `Superseded by ADR-XXX` setzen statt
-löschen. Status: `Accepted` (bestätigt) · `Assumed` (Default, noch zu bestätigen) ·
+Short Architecture Decision Records. New decision = new entry; if a decision is
+revised, set the old entry to `Superseded by ADR-XXX` instead of deleting it.
+Status: `Accepted` (confirmed) · `Assumed` (default, still to be confirmed) ·
 `Proposed` · `Superseded`.
 
 ---
 
-### ADR-000 — Lizenz & SPDX
-**Status:** Accepted (Default 2026-07-02; jederzeit änderbar). **Entscheidung:** `GPL-3.0-or-later`, © Kevin Stenzel; jede
-Quelldatei mit REUSE/SPDX-Header. **Warum:** konsistent mit dem übrigen Stack des
-Autors und dem GPL-Ökosystem von linuxmuster.net. **Offen:** vom Nutzer bestätigen
-(Org/Brand: „faircomp" vs. „Admin Cave").
+### ADR-000 — License & SPDX
+**Status:** Accepted (confirmed 2026-07-04). **Decision:** `GPL-3.0-or-later`, © Kevin Stenzel; every
+file carries a REUSE/SPDX header. The project is REUSE 3.3-compliant (`reuse lint` green, 77/77,
+gated in CI); license texts live in `LICENSES/`, non-comment files use `.license` sidecars.
+**Why:** consistent with the author's rest of the stack and the GPL ecosystem of linuxmuster.net.
+**Org/brand:** `faircomp` — canonical repository `github.com/faircomp/linuxmuster-squid`.
 
-### ADR-001 — Expliziter Forward-Proxy, kein transparent/intercept
-**Status:** Accepted (verifiziert). **Entscheidung:** Ausschließlich expliziter
-Forward-Proxy. **Warum:** Squid kann im Intercept-Modus keine Proxy-Auth (HTTP 407);
-Negotiate/NTLM-State hängt an der TCP-Verbindung. Benutzer-/Gruppen-Policy erfordert
-zwingend explizit. **Quelle:** Squid-Wiki Features/Authentication.
+### ADR-001 — Explicit forward proxy, no transparent/intercept
+**Status:** Accepted (verified). **Decision:** Exclusively explicit
+forward proxy. **Why:** In intercept mode Squid cannot do proxy auth (HTTP 407);
+Negotiate/NTLM state is tied to the TCP connection. User/group policy strictly
+requires explicit mode. **Source:** Squid wiki Features/Authentication.
 
-### ADR-002 — HTTPS: Filtern ohne Entschlüsselung
-**Status:** Accepted (Nutzerentscheidung). **Entscheidung:** SNI peek+splice bzw.
-CONNECT-`dstdomain`; **kein** SSL-Bump-MITM. Peek-CA wird nie an Clients verteilt.
-**Warum:** datenschutzfreundlich, kein Client-CA-Rollout, kein Bruch von
-Cert-Pinning; SSL-bumpter Traffic könnte keine Kerberos-Identität mehr tragen.
+### ADR-002 — HTTPS: filter without decryption
+**Status:** Accepted (user decision). **Decision:** SNI peek+splice or
+CONNECT `dstdomain`; **no** SSL-bump MITM. The peek CA is never distributed to clients.
+**Why:** privacy-friendly, no client CA rollout, no breaking of
+cert pinning; SSL-bumped traffic could no longer carry Kerberos identity.
 
-### ADR-003 — Eine Instanz je (Schule × Rolle)
-**Status:** Accepted (Nutzerentscheidung). **Entscheidung:** getrennte Squid-Container
-je Rolle/Schule mit eigener Policy/Port/Log. **Warum:** maximale Isolation und
-unterschiedliche Configs; Blast-Radius-Begrenzung.
+### ADR-003 — One instance per (school × role)
+**Status:** Accepted (user decision). **Decision:** separate Squid containers
+per role/school with their own policy/port/log. **Why:** maximum isolation and
+different configs; blast-radius containment.
 
-### ADR-004 — Verwaltung über REST-API + CLI
-**Status:** Accepted (Nutzerentscheidung). **Entscheidung:** eine Kern-Engine,
-REST-API als Interface, CLI als dünner Client. **Warum:** kein doppelter Code, ein
-auditierter Pfad; deckt Lifecycle + sicheres, digest-gepinntes Update ab.
+### ADR-004 — Management via REST API + CLI
+**Status:** Accepted (user decision). **Decision:** one core engine,
+REST API as the interface, CLI as a thin client. **Why:** no duplicated code, one
+audited path; covers lifecycle + secure, digest-pinned update.
 
 ### ADR-005 — Stack Python/FastAPI + Typer
-**Status:** Accepted (Default 2026-07-02; jederzeit änderbar). **Entscheidung:** Control Plane = FastAPI/uvicorn, CLI = Typer;
-Docker via **docker-py (`docker`≥7)**, nicht stdout-Parsing von `docker compose`.
-**Warum:** linuxmuster-api7/webui7 sind FastAPI/Python (Ökosystem-Nähe); docker-py
-liefert strukturierte Lifecycle-/Health-/Digest-APIs. **Alternative:** Go
-(Einzel-Binary) — abgewogen, zurückgestellt.
+**Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:** control plane = FastAPI/uvicorn, CLI = Typer;
+Docker via **docker-py (`docker`≥7)**, not stdout parsing of `docker compose`.
+**Why:** linuxmuster-api7/webui7 are FastAPI/Python (ecosystem proximity); docker-py
+provides structured lifecycle/health/digest APIs. **Alternative:** Go
+(single binary) — weighed, deferred.
 
-### ADR-006 — Image aus `squid-openssl` (nicht `squid`)
-**Status:** Accepted (verifiziert). **Entscheidung:** `squid-openssl` + `squidclient`
-installieren. **Warum:** Auf Ubuntu 24.04 ist `squid` **ohne** OpenSSL gebaut →
-`ssl_bump`/peek-splice unmöglich; `squid-openssl` (6.14) enthält SSL **und** alle
-Kerberos/LDAP-Helfer. `squidclient` ist ein eigenes Paket; `ntlm_auth` käme aus
-`winbind` (nur falls NTLM-Fallback nötig). **Quelle:** packages.ubuntu.com noble
+### ADR-006 — Image from `squid-openssl` (not `squid`)
+**Status:** Accepted (verified). **Decision:** install `squid-openssl` + `squidclient`.
+**Why:** On Ubuntu 24.04 `squid` is built **without** OpenSSL →
+`ssl_bump`/peek-splice impossible; `squid-openssl` (6.14) contains SSL **and** all
+Kerberos/LDAP helpers. `squidclient` is a separate package; `ntlm_auth` would come from
+`winbind` (only if NTLM fallback is needed). **Source:** packages.ubuntu.com noble
 filelists.
 
-### ADR-007 — Autorisierung via `ext_kerberos_ldap_group_acl`
-**Status:** Accepted (verifiziert). **Entscheidung:** Gruppenprüfung bevorzugt mit
-`ext_kerberos_ldap_group_acl` (nutzt das Kerberos-Ticket, kein Bind-PW in der
-Config, rekursive Gruppen, DC-Discovery via SRV); `ext_ldap_group_acl` als
-Alternative mit explizitem Bind/GC. **Offen (P0):** `%u` vs. `%v`-Platzhalter und
-exakter Gruppen-DN am realen DC verifizieren.
-**Verifiziert (P1, E2E 4/4):** Der Helper funktioniert im Container nur mit
-(1) Paket `libsasl2-modules-gssapi-mit`; (2) `/etc/ldap/ldap.conf` mit
-`SASL_NOCANON on` — libldap kanonikalisiert den SASL-Host sonst per Reverse-DNS →
-falscher `ldap/`-SPN → „Local error"; (3) `/etc/krb5.conf` mit `rdns=false`;
-(4) einem **kinit-fähigen** Principal im Keytab (echter Account, nicht nur der
-HTTP-SPN-Alias); (5) Negotiate `-s GSS_C_NO_NAME`. In Produktion (domänengejointer
-Proxy mit Maschinenkonto-Keytab) sind (4)/(5) automatisch erfüllt.
+### ADR-007 — Authorization via `ext_kerberos_ldap_group_acl`
+**Status:** Accepted (verified). **Decision:** group check preferably with
+`ext_kerberos_ldap_group_acl` (uses the Kerberos ticket, no bind password in the
+config, recursive groups, DC discovery via SRV); `ext_ldap_group_acl` as
+alternative with explicit bind/GC. **Open (P0):** verify `%u` vs. `%v` placeholder and
+exact group DN against the real DC.
+**Verified (P1, E2E 4/4):** The helper only works in the container with
+(1) package `libsasl2-modules-gssapi-mit`; (2) `/etc/ldap/ldap.conf` with
+`SASL_NOCANON on` — otherwise libldap canonicalizes the SASL host via reverse DNS →
+wrong `ldap/` SPN → "Local error"; (3) `/etc/krb5.conf` with `rdns=false`;
+(4) a **kinit-capable** principal in the keytab (a real account, not just the
+HTTP SPN alias); (5) Negotiate `-s GSS_C_NO_NAME`. In production (domain-joined
+proxy with a machine-account keytab) (4)/(5) are satisfied automatically.
 
-### ADR-008 — Netzmodell: port-basiert, ein Host-Keytab (Default)
-**Status:** Accepted (Default 2026-07-02; jederzeit änderbar). **Entscheidung:** Instanzen unterscheiden sich über Port +
-Gruppen-Policy; ein Host-FQDN/Keytab (SPN ist portunabhängig). **Warum:**
-einfachste DNS/Keytab-Pflege; jede Instanz erzwingt trotzdem ihre Gruppe.
-**Alternative:** macvlan mit eigener IP/FQDN/Keytab je Instanz (max. Isolation +
-Firewall-Trennung) — bei Bedarf.
+### ADR-008 — Network model: port-based, one host keytab (default)
+**Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:** instances differ by port +
+group policy; one host FQDN/keytab (the SPN is port-independent). **Why:**
+simplest DNS/keytab maintenance; each instance still enforces its group.
+**Alternative:** macvlan with its own IP/FQDN/keytab per instance (max. isolation +
+firewall separation) — on demand.
 
-### ADR-009 — Keytabs vom AD-Admin geliefert (Default)
-**Status:** Accepted (Default 2026-07-02; jederzeit änderbar). **Entscheidung:** Control Plane konsumiert extern gelieferte
-Keytabs (Secret-Mount). Auto-Provisionierung (`msktutil`/`samba-tool`) bleibt
-**abgeschaltetes** Optional-Feature. **Warum:** weniger Rechte/Angriffsfläche,
-sicherer MVP.
+### ADR-009 — Keytabs supplied by the AD admin (default)
+**Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:** the control plane consumes externally supplied
+keytabs (secret mount). Auto-provisioning (`msktutil`/`samba-tool`) remains a
+**disabled** optional feature. **Why:** fewer privileges/attack surface,
+safer MVP.
 
-### ADR-010 — Updates: Digest-Pin + Renovate + Health-Rollback, kein Watchtower
-**Status:** Accepted (verifiziert). **Entscheidung:** git als Source of Truth,
-`image@sha256:`-Pin, Renovate (`automerge:false`, Merge = Go/No-Go), kontrolliertes
-`pull`+`up` mit Health-Check-Auto-Rollback; Tooling als signiertes `.deb`.
-**Warum:** Watchtower ist archiviert (2025-12-17), ohne Rollback, wendet Breaking
-Changes blind an, braucht Root-Socket.
+### ADR-010 — Updates: digest pin + Renovate + health rollback, no Watchtower
+**Status:** Accepted (verified). **Decision:** git as source of truth,
+`image@sha256:` pin, Renovate (`automerge:false`, merge = go/no-go), controlled
+`pull`+`up` with health-check auto-rollback; tooling as a signed `.deb`.
+**Why:** Watchtower is archived (2025-12-17), has no rollback, applies breaking
+changes blindly, needs a root socket.
 
 ### ADR-011 — Packaging via dh-virtualenv
-**Status:** Proposed. **Entscheidung:** `.deb` mit hermetischem venv zur Build-Zeit
-(dh-virtualenv), **kein** pip-in-postinst. **Warum:** reproduzierbar/signierbar,
-kein Netz/pip-als-root bei Installation (Verbesserung ggü. webui7/api7); Layout
-sonst an linuxmuster angelehnt. **Achtung:** Build- und Ziel-Python-Minor müssen
-übereinstimmen.
+**Status:** Proposed. **Decision:** `.deb` with a hermetic venv at build time
+(dh-virtualenv), **no** pip-in-postinst. **Why:** reproducible/signable,
+no network/pip-as-root at install time (improvement over webui7/api7); layout
+otherwise modeled on linuxmuster. **Note:** build and target Python minor must
+match.
 
-### ADR-012 — Docker-Socket hinter Proxy (root-äquivalent behandeln)
-**Status:** Accepted (verifiziert). **Entscheidung:** API strikt an **`127.0.0.1`** +
-Token; Zugriff auf den Socket via `docker-socket-proxy` (nur nötige Endpunkte) oder
-rootless Docker. **Warum:** Schreibzugriff auf `docker.sock` = passwortloses Root auf
-dem Host; das untergräbt sonst die systemd-Härtung.
-**Ehrliche Grenze (P11.4):** Der Socket-Proxy braucht `CONTAINERS`+`VOLUMES`+`POST`, um
-Instanzen zu fahren — damit kann ein kompromittierter Aufrufer einen Container **mit
-Host-Bind-Mount** erzeugen = weiterhin Host-Root. Der Proxy **verkleinert die Fläche,
-downgradet aber nicht unter Root**; die echte Antwort ist **rootless Docker**. Zudem
-lauscht der Proxy auf `127.0.0.1:2375` ohne Auth → jeder lokale Prozess hat denselben
-Zugriff (wie die `docker`-Gruppe beim Direkt-Socket). In-App-TLS ist NICHT implementiert;
-off-host nur über einen betreiber-eigenen TLS-Reverse-Proxy. Der Host ist die
-Vertrauensgrenze. **Nebeneffekt:** `access-logs` (historisch) nutzt `docker exec` →
-funktioniert **nicht** hinter dem Proxy mit `EXEC:0`; der Live-`logs`-Pfad (container.logs)
-schon.
-### ADR-013 — Image-Registry: GHCR (Default)
-**Status:** Accepted (Default 2026-07-02; jederzeit änderbar). **Entscheidung:**
-Das Data-Plane-Image wird nach **GHCR (ghcr.io)** publiziert; Renovate pinnt den
-Digest. **Warum:** kostenlos, integriert sich sauber mit GitHub-CI + Renovate-
-Digest-Pinning. **Alternativen:** Docker Hub (Pull-Rate-Limits) oder selbst
-gehostete/linuxmuster-Registry (mehr Infrastruktur).
+### ADR-012 — Docker socket behind a proxy (treat as root-equivalent)
+**Status:** Accepted (verified). **Decision:** API strictly bound to **`127.0.0.1`** +
+token; access to the socket via `docker-socket-proxy` (only the required endpoints) or
+rootless Docker. **Why:** write access to `docker.sock` = passwordless root on
+the host; otherwise this undermines the systemd hardening.
+**Honest limit (P11.4):** The socket proxy needs `CONTAINERS`+`VOLUMES`+`POST` to
+run instances — with that a compromised caller can create a container **with a
+host bind mount** = still host root. The proxy **reduces the surface,
+but does not downgrade below root**; the real answer is **rootless Docker**. Moreover
+the proxy listens on `127.0.0.1:2375` without auth → any local process has the same
+access (like the `docker` group with the direct socket). In-app TLS is NOT implemented;
+off-host only via an operator-owned TLS reverse proxy. The host is the
+trust boundary. **Side effect:** `access-logs` (historical) uses `docker exec` →
+does **not** work behind the proxy with `EXEC:0`; the live `logs` path (container.logs)
+does.
+### ADR-013 — Image registry: GHCR (default)
+**Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:**
+The data-plane image is published to **GHCR (ghcr.io)**; Renovate pins the
+digest. **Why:** free, integrates cleanly with GitHub CI + Renovate
+digest pinning. **Alternatives:** Docker Hub (pull rate limits) or self-
+hosted/linuxmuster registry (more infrastructure).
 
 ---
 
-## Zu verifizierende Site-Fakten (P0, mit Quelle/Datum eintragen)
+## Site facts to be verified (P0, enter with source/date)
 
-- Reales `REALM` + Base DN/DC-Suffix der Zielumgebung.
-- Exakter Gruppen-DN (`ldbsearch '(sAMAccountName=teachers)' dn`), Präfix-Regel bestätigt.
-- LDAP-Helfer-Platzhalter `%u` vs. `%v` (empirisch).
-- Subnetz→Schule-Zuordnung; Verhältnis zum bestehenden OPNsense-Proxy (ablösen/parallel).
+- Real `REALM` + base DN/DC suffix of the target environment.
+- Exact group DN (`ldbsearch '(sAMAccountName=teachers)' dn`), prefix rule confirmed.
+- LDAP helper placeholder `%u` vs. `%v` (empirical).
+- Subnet→school mapping; relationship to the existing OPNsense proxy (replace/parallel).

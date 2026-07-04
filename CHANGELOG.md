@@ -7,75 +7,91 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
-## [1.0.0-rc3] - 2026-07-03
+## [Unreleased]
 
-Gap-Review-Backlog (ROADMAP P11) abgearbeitet — Deployment-Realität,
-Betrieb, Ehrlichkeit. Alle Punkte automatisiert getestet.
-
-### Fixed
-- **`.deb`-Upgrade startet den Dienst neu** (postinst `try-restart`; `prerm` stoppt nur bei
-  `remove`) → neuer Code wird wirklich geladen. `deb_smoke` prüft den MainPID-Wechsel.
+### Changed
+- **Project language switched to English** across all docs, code comments, and scripts
+  (README, `docs/`, ROADMAP, `CLAUDE.md`, shell/YAML/Dockerfile comments). Only
+  maintainer↔user conversation stays German.
 
 ### Added
-- **reconcile/restore:** `POST /v1/reconcile` + `lmnsquid reconcile`; Restore-/DR-Runbook;
-  `instances_dir` als git-Repo (Change-Log).
-- **dockerd-down → 503** (statt rohem 500); Alerting/Auth-Health-Doku (ohne Monitoring-Stack).
-- **Blocklist fail-closed** (Sanity-Floor) gegen manipulierte/abgeschnittene Downloads.
-- **Bind-Warnung** bei non-loopback (Token-Klartext); `RELEASE.md` (GHCR-Bootstrap).
+- **REUSE 3.3 license compliance** (`reuse lint` green, 77/77): `LICENSES/GPL-3.0-or-later.txt`,
+  SPDX headers on every file, `.license` sidecars for non-comment files (JSON, Debian control).
+  `reuse lint` added as a CI gate; `[project.urls]` in `pyproject.toml`.
 
-### Docs / Ehrlichkeit
-- **ECH/QUIC/DoH** als bekannte SNI-Filter-Grenze dokumentiert + OPNsense-Mitigation (Threat-Model **T14**).
-- TLS nur loopback (In-App-TLS nicht implementiert); Socket-Proxy **kein** Root-Downgrade
-  (rootless Docker = echte Antwort); GPG-Signierung via reprepro-`Release` statt per-`.deb`.
-- Socket-Proxy auf `:v0.4.2` gepinnt.
+### Fixed
+- **CI shellcheck** was failing on pre-existing info-level findings; pinned to
+  `--severity=warning` in `run.sh` and CI, and fixed a real `SC2164` (`cd … || exit`).
+
+## [1.0.0-rc3] - 2026-07-03
+
+Gap-review backlog (ROADMAP P11) worked off — deployment reality,
+operations, honesty. All items tested automatically.
+
+### Fixed
+- **`.deb` upgrade restarts the service** (postinst `try-restart`; `prerm` stops only on
+  `remove`) → new code is actually loaded. `deb_smoke` checks the MainPID change.
+
+### Added
+- **reconcile/restore:** `POST /v1/reconcile` + `lmnsquid reconcile`; restore/DR runbook;
+  `instances_dir` as a git repo (change log).
+- **dockerd down → 503** (instead of raw 500); alerting/auth-health docs (without monitoring stack).
+- **Blocklist fail-closed** (sanity floor) against tampered/truncated downloads.
+- **Bind warning** on non-loopback (token cleartext); `RELEASE.md` (GHCR bootstrap).
+
+### Docs / Honesty
+- **ECH/QUIC/DoH** documented as a known SNI-filter limit + OPNsense mitigation (threat model **T14**).
+- TLS loopback only (in-app TLS not implemented); socket proxy is **not** a root downgrade
+  (rootless Docker = the real answer); GPG signing via reprepro `Release` instead of per-`.deb`.
+- Socket proxy pinned to `:v0.4.2`.
 
 ### Pending (human gates)
-- Image bei GHCR publizieren; GPG-Key/Signierung; Windows-GPO-Abnahme; reale AD-Fakten.
+- Publish image on GHCR; GPG key/signing; Windows GPO acceptance; real AD facts.
 
 ## [1.0.0-rc2] - 2026-07-03
 
 ### Added
-- **Log-Aufbewahrung & -Abfrage:** Access-Log auf `docker/lmnsquid logs` gespiegelt; dauerhafte
-  **gzip-rotierte Historie** im persistenten Log-Volume (`logrotate`, `log_retention_days`,
-  Default 30, bis 3650). Docker-json-log gedeckelt (`log_max_size/log_max_file`).
-- **API/CLI-Abfrage:** `GET /logs?since=&until=&grep=` (live) + neu `GET /logs/access` (historisch,
-  durchsucht die `.gz`-Tagesdateien injection-sicher); CLI `logs`/`access-logs`.
-- **Datenschutz:** `access_log_enabled` pro Instanz (Requests komplett abschaltbar); Retention =
-  dokumentierte Löschfrist (Threat-Model T13).
+- **Log retention & query:** access log mirrored to `docker/lmnsquid logs`; persistent
+  **gzip-rotated history** in the persistent log volume (`logrotate`, `log_retention_days`,
+  default 30, up to 3650). Docker json log capped (`log_max_size/log_max_file`).
+- **API/CLI query:** `GET /logs?since=&until=&grep=` (live) + new `GET /logs/access` (historical,
+  searches the daily `.gz` files injection-safely); CLI `logs`/`access-logs`.
+- **Data protection:** `access_log_enabled` per instance (requests can be switched off entirely); retention =
+  documented deletion deadline (threat model T13).
 
 ## [1.0.0-rc1] - 2026-07-03
 
-Erste vollständige, E2E-verifizierte Fassung. Alle automatisiert testbaren
-Abnahmekriterien sind grün; offene Punkte sind ausschließlich menschliche Gates
-(reale Windows-GPO-Abnahme, GPG-Signierung mit dem linuxmuster-Key, site-spezifische
-AD-Fakten).
+First complete, E2E-verified version. All automatically testable
+acceptance criteria are green; open items are exclusively human gates
+(real Windows GPO acceptance, GPG signing with the linuxmuster key, site-specific
+AD facts).
 
 ### Added
-- **Data-Plane-Image** (`squid-openssl`): expliziter Forward-Proxy, **Kerberos-SSO**
-  gegen Samba AD (`negotiate_kerberos_auth`), **AD-Gruppen-Autorisierung**
-  (`ext_kerberos_ldap_group_acl`), je **(Schule × Rolle)** ein Container.
-- **HTTPS-Filter ohne Entschlüsselung** (SNI peek/splice + CONNECT-`dstdomain`);
-  UT-Capitole-Blocklisten-Refresh.
-- **Multischool-Isolation** mit Präfix-Regel; deklarative `deploy/instances/*.yaml`.
-- **Control-Plane**: FastAPI-REST-API + **Typer-CLI** (dünner Client), docker-py-
-  Lifecycle, git-State-Store, Reconciler, Bearer-Auth.
-- **Digest-gepinnte Updates mit Health-Auto-Rollback**; Renovate; GHCR-CI.
-- **Härtung**: read-only-Rootfs + `cap_drop: ALL` + `no-new-privileges` für die
-  Proxy-Container; gehärteter systemd-Dienst.
-- **Packaging**: signierbares `.deb` (hermetisches venv) + systemd-Unit; Keytab/DNS-
-  und GPO-Deployment-Leitfäden; gefilterter Docker-Socket-Proxy.
+- **Data-plane image** (`squid-openssl`): explicit forward proxy, **Kerberos SSO**
+  against Samba AD (`negotiate_kerberos_auth`), **AD group authorization**
+  (`ext_kerberos_ldap_group_acl`), one container per **(school × role)**.
+- **HTTPS filtering without decryption** (SNI peek/splice + CONNECT `dstdomain`);
+  UT-Capitole blocklist refresh.
+- **Multischool isolation** with prefix rule; declarative `deploy/instances/*.yaml`.
+- **Control plane**: FastAPI REST API + **Typer CLI** (thin client), docker-py
+  lifecycle, git state store, reconciler, bearer auth.
+- **Digest-pinned updates with health auto-rollback**; Renovate; GHCR CI.
+- **Hardening**: read-only rootfs + `cap_drop: ALL` + `no-new-privileges` for the
+  proxy containers; hardened systemd service.
+- **Packaging**: signable `.deb` (hermetic venv) + systemd unit; Keytab/DNS
+  and GPO deployment guides; filtered Docker socket proxy.
 
 ### Security
-- Strikte Feldvalidierung aller Instanzfelder (Abwehr von Path-Traversal & Injection),
-  Image muss `:tag`/`@sha256:` tragen (kein pull-all-tags-DoS), IP-Literal-CONNECT-Deny,
-  Token-TOCTOU-Fix, konstant-zeitiger Token-Vergleich, Docker-Socket-Proxy.
-  **Alle Befunde eines Security-Reviews behoben.**
+- Strict field validation of all instance fields (defense against path traversal & injection),
+  image must carry `:tag`/`@sha256:` (no pull-all-tags DoS), IP-literal CONNECT deny,
+  token TOCTOU fix, constant-time token comparison, Docker socket proxy.
+  **All findings of a security review fixed.**
 
 ### Verified (E2E)
-- E2E: Lehrer 200 / Schüler 403 / gesperrt 403 / kein-Ticket 407; HTTPS splice/block;
-  Multischool-Isolation; echter docker-py-Container-Lifecycle + Auto-Rollback;
-  `.deb`-Install/Upgrade. Unit 41 + mypy + ruff grün.
+- E2E: teacher 200 / student 403 / blocked 403 / no-ticket 407; HTTPS splice/block;
+  multischool isolation; real docker-py container lifecycle + auto-rollback;
+  `.deb` install/upgrade. Unit 41 + mypy + ruff green.
 
 ### Pending (human gates)
-- Manuelle Windows-GPO-Abnahme auf echten domänengejointen Clients (`docs/deployment-gpo.md`).
-- GPG-Signierung mit dem linuxmuster-Key; reale AD-Fakten (Realm/Base DN/Gruppen-DN).
+- Manual Windows GPO acceptance on real domain-joined clients (`docs/deployment-gpo.md`).
+- GPG signing with the linuxmuster key; real AD facts (realm/base DN/group DN).

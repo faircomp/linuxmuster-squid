@@ -3,60 +3,60 @@ SPDX-FileCopyrightText: Kevin Stenzel
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Produktiv-Deployment: Client-Steuerung per GPO & Abnahme
+# Production Deployment: Client Control via GPO & Acceptance
 
-Ziel: Lehrer und Schüler bekommen per **Gruppenrichtlinie** ihren Proxy mit stillem
-Kerberos-SSO — und es funktioniert. Vorlagen: [`deploy/clients/`](../deploy/clients/).
+Goal: teachers and students get their proxy via **Group Policy** with silent
+Kerberos SSO — and it works. Templates: [`deploy/clients/`](../deploy/clients/).
 
-**Sicherheitsmodell (verifiziert):** Die GPO legt nur fest, welchen Proxy ein Client
-als Default nutzt. Die **Lehrer/Schüler-Trennung erzwingt die AD-Gruppen-ACL am Proxy**
-(`ext_kerberos_ldap_group_acl`) — server-seitig, im E2E-Test bewiesen (Lehrer 200 /
-Schüler 403 / Quer-Zugriff 403). Selbst wenn ein Schüler manuell den Lehrer-Proxy
-einträgt, wird er per Gruppe abgewiesen.
+**Security model (verified):** The GPO only defines which proxy a client uses
+as its default. The **teacher/student separation is enforced by the AD group ACL at the proxy**
+(`ext_kerberos_ldap_group_acl`) — server-side, proven in the E2E test (teacher 200 /
+student 403 / cross-access 403). Even if a student manually enters the teacher proxy,
+they are rejected by group.
 
-## Rezept (Schul-Admin)
+## Recipe (School Admin)
 
-1. **Pro Instanz** einen stabilen Proxy-FQDN + Kerberos-SPN + Keytab bereitstellen
-   (siehe [`keytab-and-dns.md`](keytab-and-dns.md)); DNS-A-Record setzen; **kein `wpad`-PTR**.
-2. **Expliziten Proxy per GPO** zuweisen (per-user, gefiltert auf die Gruppe):
-   - Edge/Chrome: Policy `ProxySettings = {ProxyMode: fixed_servers, ProxyServer:
-     proxy-<rolle>.<schule>:3128, ProxyBypassList: <local>;interne Hosts}`.
+1. **Per instance**, provide a stable proxy FQDN + Kerberos SPN + Keytab
+   (see [`keytab-and-dns.md`](keytab-and-dns.md)); set a DNS A record; **no `wpad` PTR**.
+2. **Assign an explicit proxy via GPO** (per-user, filtered to the group):
+   - Edge/Chrome: policy `ProxySettings = {ProxyMode: fixed_servers, ProxyServer:
+     proxy-<rolle>.<schule>:3128, ProxyBypassList: <local>;internal hosts}`.
    - Firefox: [`firefox-policies.json`](../deploy/clients/firefox-policies.json).
-3. **Stilles SSO** aktivieren (eine Methode je FQDN): `AuthServerAllowlist` = die
-   Proxy-FQDNs, **oder** *Site-to-Zone* → Lokales Intranet. Firefox: `Authentication.SPNEGO`.
-4. **Pro-Rolle** zuweisen: GPO-Security-Filtering auf `<schule>-teachers`/`-students`
-   oder GPP-Item-Level-Targeting; optional Loopback für Raum-/PC-basierte Steuerung.
-5. **Bypass-Liste** (LDAP/LINBO/WebUI/interne Dienste) in jede Proxy-Config; sicherstellen,
-   dass die Client-Subnetze zur `SCHOOL_SUBNETS` der jeweiligen Instanz passen.
-6. **Force-Proxy** auf der OPNsense (direkten 80/443-**TCP**-Egress blocken), sonst umgehen
-   Clients den nicht-inline Proxy. **Zusätzlich UDP 443 blocken** (siehe Filter-Grenzen).
-7. **Prüfungsmodus:** `<user>-exam` ist in keiner teachers/students-Gruppe → der Proxy
-   verweigert ohnehin; lmn7 deaktiviert im Prüfungsmodus zusätzlich den Proxy.
+3. Enable **silent SSO** (one method per FQDN): `AuthServerAllowlist` = the
+   proxy FQDNs, **or** *Site-to-Zone* → Local Intranet. Firefox: `Authentication.SPNEGO`.
+4. **Assign per role**: GPO security filtering on `<schule>-teachers`/`-students`
+   or GPP item-level targeting; optionally loopback for room-/PC-based control.
+5. **Bypass list** (LDAP/LINBO/WebUI/internal services) in every proxy config; ensure
+   that the client subnets match the `SCHOOL_SUBNETS` of the respective instance.
+6. **Force proxy** on the OPNsense (block direct 80/443 **TCP** egress), otherwise clients
+   bypass the non-inline proxy. **Additionally block UDP 443** (see Filter Limits).
+7. **Exam mode:** `<user>-exam` is in no teachers/students group → the proxy
+   denies it anyway; lmn7 additionally disables the proxy in exam mode.
 
-## Filter-Grenzen (ECH/QUIC/DoH) — am Netzrand schließen
+## Filter Limits (ECH/QUIC/DoH) — close at the network edge
 
-Der HTTPS-Filter ist **namensbasiert** (SNI/CONNECT, keine Entschlüsselung). Drei moderne
-Techniken hebeln ihn aus — der Proxy allein kann das nicht auffangen, die OPNsense schon:
-- **QUIC / HTTP-3** läuft über **UDP 443** komplett am TCP-Proxy vorbei → **UDP 443 blocken**
-  (Browser fallen dann auf TCP/443 durch den Proxy zurück).
-- **DoH** (DNS-over-HTTPS) umgeht die DNS-Sicht → bekannte DoH-Resolver blocken **und**
-  `use-application-dns.net` per DNS auf NXDOMAIN setzen (Canary → Firefox lässt DoH aus).
-- **ECH** (Encrypted Client Hello) verschlüsselt die SNI → der Splice-Filter sieht den Host
-  nicht mehr. Verbreitung noch gering; beobachten. Vollständig lösbar nur mit SSL-Interception
-  (bewusstes **Nicht-Ziel**, [ADR-002](decisions.md)). Bedrohungsmodell: **T14**.
+The HTTPS filter is **name-based** (SNI/CONNECT, no decryption). Three modern
+techniques defeat it — the proxy alone cannot catch this, but the OPNsense can:
+- **QUIC / HTTP-3** runs over **UDP 443** entirely past the TCP proxy → **block UDP 443**
+  (browsers then fall back to TCP/443 through the proxy).
+- **DoH** (DNS-over-HTTPS) bypasses the DNS view → block known DoH resolvers **and**
+  set `use-application-dns.net` to NXDOMAIN via DNS (canary → Firefox disables DoH).
+- **ECH** (Encrypted Client Hello) encrypts the SNI → the splice filter no longer sees the
+  host. Adoption still low; monitor. Fully solvable only with SSL interception
+  (a deliberate **non-goal**, [ADR-002](decisions.md)). Threat model: **T14**.
 
-## Produktiv-Abnahme (Human-Gate — auf echten Windows-Clients)
+## Production Acceptance (human gate — on real Windows clients)
 
-> Diese Schritte kann nur ein Mensch auf echten domänengejointen Clients ausführen.
-> Das **server-seitige Äquivalent ist im E2E-Test bereits automatisiert bewiesen.**
+> Only a human can perform these steps on real domain-joined clients.
+> The **server-side equivalent is already automatically proven in the E2E test.**
 
-Protokolliere pro Client (Browser, Codes):
+Log per client (browser, codes):
 
-- [ ] Angemeldeter **Lehrer** → Lehrer-Proxy liefert Internet, **kein** Login-Popup (SSO).
-- [ ] Angemeldeter **Schüler** → Schüler-Proxy liefert (gefiltertes) Internet.
-- [ ] **Schüler** trägt manuell den **Lehrer-Proxy** ein → **403** (Gruppen-ACL greift).
-- [ ] Gesperrte Domain (Lehrer/Schüler) → geblockt.
-- [ ] `Squid access.log` zeigt den Kerberos-Benutzernamen + ACL-Verdikt.
+- [ ] Logged-in **teacher** → teacher proxy delivers internet, **no** login popup (SSO).
+- [ ] Logged-in **student** → student proxy delivers (filtered) internet.
+- [ ] **Student** manually enters the **teacher proxy** → **403** (group ACL applies).
+- [ ] Blocked domain (teacher/student) → blocked.
+- [ ] `Squid access.log` shows the Kerberos username + ACL verdict.
 
-Ergebnis (Client/Browser/Codes) hier oder im Ticket dokumentieren. Erst danach gilt
-P8 als produktiv abgenommen.
+Document the result (client/browser/codes) here or in the ticket. Only then is
+P8 considered accepted for production.

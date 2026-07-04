@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Smoke gegen den E2E-Samba-DC: discover-ad-facts.sh findet die Rollen-Gruppen
-# (unpräfixiert + präfixiert) und erzeugt die passenden create-Skelette. Braucht Docker.
+# Smoke against the E2E Samba DC: discover-ad-facts.sh finds the role groups
+# (unprefixed + prefixed) and generates the matching create skeletons. Requires Docker.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -24,24 +24,24 @@ $DC build samba-dc >/dev/null 2>&1 || true
 $DC up -d samba-dc || exit 1
 ready=0
 for _ in $(seq 1 60); do dcx samba-tool user list >/dev/null 2>&1 && { ready=1; break; }; sleep 3; done
-[ "$ready" = 1 ] || { echo "DC nicht bereit"; exit 1; }
+[ "$ready" = 1 ] || { echo "DC not ready"; exit 1; }
 
-echo "== fixtures: teachers + students (default) + schule2-teachers (präfixiert) =="
+echo "== fixtures: teachers + students (default) + schule2-teachers (prefixed) =="
 dcx samba-tool group add teachers          >/dev/null 2>&1 || true
 dcx samba-tool group add students          >/dev/null 2>&1 || true
 dcx samba-tool group add schule2-teachers  >/dev/null 2>&1 || true
-sleep 5   # Settle: frisch angelegte Gruppen sind indiziert (Test-Artefakt; real existieren sie längst)
+sleep 5   # Settle: freshly created groups are indexed (test artifact; in reality they exist already)
 
-echo "== discover-ad-facts.sh im DC ausführen (REALM=EXAMPLE.INTERNAL) =="
+echo "== run discover-ad-facts.sh inside the DC (REALM=EXAMPLE.INTERNAL) =="
 CID="$($DC ps -q samba-dc)"
 $DOCKER cp "$ROOT/scripts/discover-ad-facts.sh" "$CID:/tmp/disc.sh"
 dcx env REALM=EXAMPLE.INTERNAL bash /tmp/disc.sh | tee /tmp/disc_out.txt
 
 echo "== Assertions =="
-grep -qE '^  - teachers$'          /tmp/disc_out.txt && pass "Gruppe teachers"          || bad "teachers fehlt"
-grep -qE '^  - schule2-teachers$'  /tmp/disc_out.txt && pass "Gruppe schule2-teachers"  || bad "schule2-teachers fehlt"
-grep -q 'create --school default-school --role teachers --ad-group teachers' /tmp/disc_out.txt && pass "create-Vorlage default-school" || bad "create default-school"
-grep -q 'create --school schule2 --role teachers --ad-group schule2-teachers' /tmp/disc_out.txt && pass "create-Vorlage schule2"       || bad "create schule2"
+grep -qE '^  - teachers$'          /tmp/disc_out.txt && pass "group teachers"           || bad "teachers missing"
+grep -qE '^  - schule2-teachers$'  /tmp/disc_out.txt && pass "group schule2-teachers"   || bad "schule2-teachers missing"
+grep -q 'create --school default-school --role teachers --ad-group teachers' /tmp/disc_out.txt && pass "create template default-school" || bad "create default-school"
+grep -q 'create --school schule2 --role teachers --ad-group schule2-teachers' /tmp/disc_out.txt && pass "create template schule2"       || bad "create schule2"
 
-echo "== discover-ad-facts smoke: $fail Fehler =="
+echo "== discover-ad-facts smoke: $fail errors =="
 exit "$fail"

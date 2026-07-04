@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # linuxmuster-squid — data-plane image
 # One generic image, driven entirely by env + mounted secrets. N instances
 # (one per school x role) are just N containers of this image.

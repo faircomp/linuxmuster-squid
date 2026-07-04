@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Kerberos-Test-Client: kinit + curl --proxy-negotiate.
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive

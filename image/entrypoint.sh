@@ -1,6 +1,11 @@
 #!/bin/sh
-# linuxmuster-squid entrypoint. Read-only-rootfs-freundlich: ALLE generierten Dateien
-# liegen unter /run/lmnsquid (tmpfs). Squid läuft im Vordergrund.
+
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# linuxmuster-squid entrypoint. Read-only-rootfs-friendly: ALL generated files
+# live under /run/lmnsquid (tmpfs). Squid runs in the foreground.
 set -eu
 
 # ---- required per-instance configuration ----
@@ -14,10 +19,10 @@ set -eu
 : "${CACHE_SIZE_MB:=1000}"
 : "${KEYTAB:=/run/secrets/squid_keytab}"
 : "${SCHOOL_SUBNETS:=0.0.0.0/0}"          # school is identified by source subnet(s)
-: "${LOG_RETENTION_DAYS:=30}"             # Access-Log-Aufbewahrung in Tagen (logrotate)
-: "${ACCESS_LOG_ENABLED:=1}"              # 1=Access-Log an, 0=aus (Datenschutz)
+: "${LOG_RETENTION_DAYS:=30}"             # access-log retention in days (logrotate)
+: "${ACCESS_LOG_ENABLED:=1}"              # 1=access log on, 0=off (data privacy)
 
-# Access-Log an/aus (Datenschutz): bei 0 protokolliert Squid keine Requests.
+# Access log on/off (data privacy): with 0, Squid logs no requests.
 if [ "${ACCESS_LOG_ENABLED}" = "0" ]; then
     ACCESS_LOG_DIRECTIVE="access_log none"
 else
@@ -27,37 +32,37 @@ fi
 RUN=/run/lmnsquid
 mkdir -p "${RUN}/ssl"
 chown -R proxy:proxy "${RUN}"
-# Schreibbare Pfade (bei read-only als tmpfs/Volume gemountet -> für proxy chownen).
+# Writable paths (mounted as tmpfs/volume when read-only -> chown to proxy).
 mkdir -p /var/log/squid /var/spool/squid
 chown proxy:proxy /var/log/squid /var/spool/squid 2>/dev/null || true
 
-# Keytab in einen proxy-lesbaren Pfad kopieren: der gemountete Keytab ist typ. 0600 und
-# gehört einem fremden uid; der Entrypoint (root, mit DAC_OVERRIDE) kopiert ihn nach /run
-# (proxy, 0600), damit die als 'proxy' laufenden Helfer ihn lesen können.
+# Copy the keytab to a proxy-readable path: the mounted keytab is typically 0600 and
+# owned by a foreign uid; the entrypoint (root, with DAC_OVERRIDE) copies it to /run
+# (proxy, 0600) so that the helpers running as 'proxy' can read it.
 if [ ! -r "${KEYTAB}" ]; then
     echo "FATAL: keytab '${KEYTAB}' is missing or not readable (mount it as a secret)." >&2
     exit 1
 fi
 cp "${KEYTAB}" "${RUN}/keytab"
-chmod 600 "${RUN}/keytab"                 # chmod VOR chown (root ohne CAP_FOWNER kann fremd-owned nicht chmodden)
+chmod 600 "${RUN}/keytab"                 # chmod BEFORE chown (root without CAP_FOWNER cannot chmod foreign-owned files)
 chown proxy:proxy "${RUN}/keytab"
 KEYTAB="${RUN}/keytab"
 
-# Kerberos: Helfer lesen den Keytab via KRB5_KTNAME; FILE-ccache (kein Kernel-Keyring).
-# krb5.conf/ldap.conf unter /run, damit /etc read-only bleiben kann.
+# Kerberos: helpers read the keytab via KRB5_KTNAME; FILE ccache (no kernel keyring).
+# krb5.conf/ldap.conf under /run so that /etc can stay read-only.
 export KRB5_KTNAME="${KEYTAB}"
 export KRB5CCNAME="FILE:${RUN}/krb5cc_${INSTANCE}"
-# GSSAPI-Replay-Cache in einen schreibbaren Pfad (Default /var/tmp ist bei
-# read-only-Rootfs nicht beschreibbar -> "Read-only file system" -> Auth BH/407).
+# GSSAPI replay cache into a writable path (the default /var/tmp is not writable
+# on a read-only rootfs -> "Read-only file system" -> auth BH/407).
 export KRB5RCACHEDIR="${RUN}"
 export KRB5_CONFIG="${RUN}/krb5.conf"
 export LDAPCONF="${RUN}/ldap.conf"
-# envsubst ersetzt nur EXPORTIERTE Variablen (sonst "http_port " => FATAL).
+# envsubst substitutes only EXPORTED variables (otherwise "http_port " => FATAL).
 export INSTANCE HTTP_PORT CACHE_SIZE_MB KEYTAB REALM AD_GROUP VISIBLE_HOSTNAME SCHOOL_SUBNETS
 export ACCESS_LOG_DIRECTIVE
 
-# krb5.conf: rdns/canonicalize=false, damit der ldap/-SPN aus dem literalen DC-Namen
-# (via SRV) gebildet wird und NICHT per Reverse-DNS (-> SASL "Local error").
+# krb5.conf: rdns/canonicalize=false so that the ldap/ SPN is built from the literal DC name
+# (via SRV) and NOT via reverse DNS (-> SASL "Local error").
 cat > "${KRB5_CONFIG}" <<EOF
 [libdefaults]
     default_realm = ${REALM}
@@ -67,10 +72,10 @@ cat > "${KRB5_CONFIG}" <<EOF
     dns_canonicalize_hostname = false
     forwardable = true
 EOF
-# OpenLDAP-Client: SASL-Host NICHT per Reverse-DNS kanonikalisieren.
+# OpenLDAP client: do NOT canonicalize the SASL host via reverse DNS.
 printf 'SASL_NOCANON on\n' > "${LDAPCONF}"
 
-# TLS-Bump-Infrastruktur für SNI peek/splice (KEIN MITM, CA wird NIE verteilt).
+# TLS-bump infrastructure for SNI peek/splice (NO MITM, the CA is NEVER distributed).
 if [ ! -f "${RUN}/ssl/bump.pem" ]; then
     openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
         -subj "/CN=linuxmuster-squid-bump" \
@@ -99,15 +104,15 @@ squid -k parse -f "${CONF}"
 squid -N -f "${CONF}" -z || true
 
 if [ "${ACCESS_LOG_ENABLED}" != "0" ]; then
-    # Access-Log auf Container-stdout spiegeln, damit `docker logs` / `lmnsquid logs` ihn zeigen.
-    # Squid kann nach dem setuid auf 'proxy' nicht auf /dev/stdout schreiben (Datei + Tailer).
-    # tail -F folgt über Rotation hinweg; stdbuf -oL erzwingt Zeilen-Pufferung (sonst block-
-    # buffert tail auf die Pipe -> Zeilen erscheinen erst spät/nie).
+    # Mirror the access log to the container stdout so that `docker logs` / `lmnsquid logs` show it.
+    # After the setuid to 'proxy', Squid cannot write to /dev/stdout (file + tailer).
+    # tail -F follows across rotation; stdbuf -oL forces line buffering (otherwise tail block-
+    # buffers to the pipe -> lines appear late/never).
     stdbuf -oL tail -F /var/log/squid/access.log 2>/dev/null &
 
-    # logrotate: access.log/cache.log täglich bzw. wöchentlich rotieren + gzip, LOG_RETENTION_DAYS
-    # behalten. State-Datei auf dem PERSISTENTEN Volume, damit "daily" auch über Neustarts stimmt.
-    # copytruncate: kein squid-Signal nötig, tail -F folgt der Truncation. Retention = Löschfrist.
+    # logrotate: rotate access.log/cache.log daily resp. weekly + gzip, keep LOG_RETENTION_DAYS.
+    # State file on the PERSISTENT volume so that "daily" is correct across restarts too.
+    # copytruncate: no squid signal needed, tail -F follows the truncation. Retention = deletion deadline.
     cat > "${RUN}/logrotate.conf" <<EOF
 /var/log/squid/access.log {
     daily

@@ -5,7 +5,7 @@ set -e
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
 fi
-# Config/State + venv absichtlich NICHT bei remove löschen (nur bei purge).
+# Deliberately do NOT delete config/state + venv on remove (only on purge).
 if [ "$1" = "purge" ]; then
     rm -rf /opt/linuxmuster-squid
     rm -rf /etc/linuxmuster-squid /var/lib/linuxmuster-squid

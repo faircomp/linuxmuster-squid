@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Beispiel-Instanz: Schüler der Schule "schuleB" (Gruppe PRÄFIXIERT).
+# Example instance: students of school "schuleB" (group PREFIXED).
 school: schuleB
 role: students
 ad_group: schuleB-students

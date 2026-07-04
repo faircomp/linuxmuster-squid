@@ -1,176 +1,182 @@
+<!--
+SPDX-FileCopyrightText: Kevin Stenzel
+
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
 # CLAUDE.md
 
-## Projekt-Überblick
+## Project overview
 
-**linuxmuster-squid** ist ein containerisierter, mehrinstanzfähiger
-**Squid-Proxy für linuxmuster.net 7** (Ubuntu 24.04 / Samba AD): expliziter
-Forward-Proxy mit **Kerberos-SSO** und **AD-Gruppen-ACLs** (Lehrer/Schüler),
-je **(Schule × Rolle)** eine isolierte Instanz, verwaltet über eine
-**REST-API + CLI**. Der detaillierte Plan lebt in [`ROADMAP.md`](ROADMAP.md),
-die Architektur in [`docs/architecture.md`](docs/architecture.md), Sicherheits-
-annahmen in [`docs/threat-model.md`](docs/threat-model.md), Entscheidungen in
-[`docs/decisions.md`](docs/decisions.md), die Teststrategie in
+**linuxmuster-squid** is a containerized, multi-instance-capable
+**Squid proxy for linuxmuster.net 7** (Ubuntu 24.04 / Samba AD): an explicit
+forward proxy with **Kerberos SSO** and **AD group ACLs** (teachers/students),
+one isolated instance per **(school × role)**, managed via a
+**REST API + CLI**. The detailed plan lives in [`ROADMAP.md`](ROADMAP.md),
+the architecture in [`docs/architecture.md`](docs/architecture.md), the security
+assumptions in [`docs/threat-model.md`](docs/threat-model.md), the decisions in
+[`docs/decisions.md`](docs/decisions.md), the test strategy in
 [`docs/test-strategy.md`](docs/test-strategy.md).
 
-| Komponente | Pfad | Stack |
+| Component | Path | Stack |
 |---|---|---|
-| Data-Plane-Image (Squid) | `image/` | Ubuntu 24.04 · **`squid-openssl`** · Kerberos/LDAP-Helfer · envsubst-Entrypoint |
-| Control Plane (REST-API) | `controlplane/` | Python · FastAPI · uvicorn · **docker-py** (Container-Lifecycle) |
-| CLI | `cli/` | Python · Typer · httpx (dünner Client der REST-API) |
-| E2E / Deploy | `deploy/` | docker-compose (Samba-AD-DC + Squid + Client), Instanz-Definitionen |
-| Packaging | `packaging/debian/` | `.deb` via dh-virtualenv, gehärteter systemd-Dienst (lmn73-Layout) |
-| Tests | `scripts/tests/` | `run.sh`-Aggregator; heavy tier auf **crabbox** |
+| Data-plane image (Squid) | `image/` | Ubuntu 24.04 · **`squid-openssl`** · Kerberos/LDAP helpers · envsubst entrypoint |
+| Control plane (REST API) | `controlplane/` | Python · FastAPI · uvicorn · **docker-py** (container lifecycle) |
+| CLI | `cli/` | Python · Typer · httpx (thin client of the REST API) |
+| E2E / Deploy | `deploy/` | docker-compose (Samba AD DC + Squid + client), instance definitions |
+| Packaging | `packaging/debian/` | `.deb` via dh-virtualenv, hardened systemd service (lmn73 layout) |
+| Tests | `scripts/tests/` | `run.sh` aggregator; heavy tier on **crabbox** |
 
-> **Stack ist bewusst Python** (linuxmuster-api7/webui7 sind ebenfalls FastAPI/
-> Python) — als Default gesetzt, überschreibbar (siehe ADR in `docs/decisions.md`).
+> **The stack is deliberately Python** (linuxmuster-api7/webui7 are likewise FastAPI/
+> Python) — set as the default, overridable (see the ADR in `docs/decisions.md`).
 
-**Sicherheits-Stolperfallen (aus dem Threat Model — nicht verletzen):**
+**Security pitfalls (from the threat model — do not violate):**
 
-- **Expliziter Forward-Proxy, niemals transparent/intercept.** Squid kann im
-  Intercept-Modus **keine** Proxy-Auth (HTTP 407) — Kerberos/Negotiate hängt an
-  der TCP-Verbindung. Wer Identität/Gruppen-Policy will, muss explizit sein.
-- **Keine HTTPS-Entschlüsselung.** Nur SNI-Peek/**Splice** oder CONNECT-
-  `dstdomain`. Die Peek-CA wird **nie** an Clients verteilt. Kein MITM/SSL-Bump
-  ohne ausdrückliche, datenschutzrechtlich abgesegnete Entscheidung.
-- **Keytab = Domänen-Credential.** Als Secret (tmpfs, `:ro`), lesbar nur für
-  `cache_effective_user proxy`, `0600` auf dem Host, pro Instanz getrennt, nie
-  ins Env, nie ins Log.
-- **Sicherheit erzwingt die Gruppen-ACL, nicht die GPO.** GPO steuert nur, welchen
-  Proxy ein Client als Default nutzt; ein Schüler am Lehrer-Proxy wird trotz
-  gültigem Ticket per `ext_kerberos_ldap_group_acl` abgewiesen (403). Steuerung
-  und Erzwingung müssen dieselben Gruppennamen benutzen.
-- **Multischool-Präfixregel:** default-school-Gruppen sind unpräfixiert
-  (`teachers`), alle anderen `<schule>-teachers`. Nie hartkodieren — Realm,
-  Base DN, Gruppennamen, Subnetze, Ports, Image-Digest sind **parametrisiert**.
-- **Docker-Socket-Zugriff = root-äquivalent.** Die Control-Plane niemals über
-  localhost/Mgmt-Netz hinaus exponieren; hinter Socket-Proxy/rootless Docker;
-  Token/TLS; kein `0.0.0.0`-Bind.
+- **Explicit forward proxy, never transparent/intercept.** In intercept mode Squid
+  can do **no** proxy auth (HTTP 407) — Kerberos/Negotiate is tied to the
+  TCP connection. Whoever wants identity/group policy must be explicit.
+- **No HTTPS decryption.** Only SNI peek/**splice** or CONNECT
+  `dstdomain`. The peek CA is **never** distributed to clients. No MITM/SSL bump
+  without an explicit, data-protection-approved decision.
+- **Keytab = domain credential.** As a secret (tmpfs, `:ro`), readable only by
+  `cache_effective_user proxy`, `0600` on the host, separated per instance, never
+  in the env, never in the log.
+- **Security is enforced by the group ACL, not the GPO.** The GPO only controls which
+  proxy a client uses by default; a student at the teacher proxy is rejected (403)
+  by `ext_kerberos_ldap_group_acl` despite a valid ticket. Steering
+  and enforcement must use the same group names.
+- **Multischool prefix rule:** default-school groups are unprefixed
+  (`teachers`), all others `<school>-teachers`. Never hardcode — realm,
+  base DN, group names, subnets, ports, image digest are **parameterized**.
+- **Docker socket access = root-equivalent.** Never expose the control plane beyond
+  localhost/the mgmt network; behind a socket proxy/rootless Docker;
+  token/TLS; no `0.0.0.0` bind.
 
 ---
 
-## 1. Arbeitsweise & Mindset
+## 1. Way of working & mindset
 
-Verhalte dich wie eine Senior-Software-Engineerin mit 15+ Jahren Erfahrung in
-Python, Linux-Netzwerkdiensten, Squid/Proxying, Active Directory/Kerberos,
-Docker und dem sicheren Betrieb von Schul-/Netzinfrastruktur.
+Behave like a senior software engineer with 15+ years of experience in
+Python, Linux network services, Squid/proxying, Active Directory/Kerberos,
+Docker, and the secure operation of school/network infrastructure.
 
-### Vor dem Code
+### Before the code
 
-- **Erst denken, dann coden.** Bei nicht-trivialen Änderungen Plan vorlegen,
-  Annahmen explizit machen, Trade-offs nennen, auf Bestätigung warten.
-  Tippfehler/Style-Fixes brauchen das nicht.
-- **Mehrdeutigkeit ansprechen, nicht still entscheiden.** Mehrere plausible
-  Interpretationen → alle nennen, nicht heimlich eine wählen.
-- **Root-Cause vor Symptom.** Keine Workarounds, die das Problem verschieben.
-- **YAGNI rigoros.** Keine prophylaktischen Abstraktionen. Die dünne, wartbare
-  Version bauen. Test: Würde ein Senior das „overengineered" nennen? Dann vereinfachen.
-- **Validierung nur an Boundaries.** Upload/Requests, Tokens, LDAP-Antworten,
-  Env/Config validieren; interne Funktionsaufrufe nicht.
+- **Think first, then code.** For non-trivial changes, present a plan,
+  make assumptions explicit, name trade-offs, wait for confirmation.
+  Typos/style fixes do not need this.
+- **Raise ambiguity, do not decide silently.** Several plausible
+  interpretations → name them all, do not secretly pick one.
+- **Root cause before symptom.** No workarounds that merely shift the problem.
+- **YAGNI rigorously.** No prophylactic abstractions. Build the thin, maintainable
+  version. Test: would a senior call it "overengineered"? Then simplify.
+- **Validation only at boundaries.** Validate uploads/requests, tokens, LDAP responses,
+  env/config; internal function calls not.
 
-### Bei der Implementierung (Surgical Changes)
+### During implementation (surgical changes)
 
-- **Nur anfassen, was nötig ist.** Angrenzenden Code/Kommentare/Formatierung
-  nicht „verbessern". Nicht refactoren, was nicht kaputt ist. Bestehenden Stil matchen.
-- **Orphans aufräumen, die DEINE Änderung erzeugt** (unbenutzte Imports/Variablen).
-  Pre-existing dead code nur auf Ansage entfernen — sonst erwähnen, nicht löschen.
-- **Jede geänderte Zeile muss sich auf den Auftrag zurückführen lassen.**
+- **Only touch what is necessary.** Do not "improve" adjacent code/comments/formatting.
+  Do not refactor what is not broken. Match the existing style.
+- **Clean up orphans that YOUR change creates** (unused imports/variables).
+  Remove pre-existing dead code only when told to — otherwise mention it, do not delete it.
+- **Every changed line must be traceable to the task.**
 
-### Bei externen APIs, Formaten und Doku — VERIFIZIEREN
+### For external APIs, formats, and docs — VERIFY
 
-- **Verifizieren statt fabulieren.** Was nicht zu 100 % in der offiziellen Doku
-  belegt ist, ausdrücklich als „nicht verifiziert" kennzeichnen. Konkret: bevor
-  du ein Squid-/Kerberos-/LDAP-/Config-Verhalten implementierst, mit `WebFetch`
-  die aktuelle Doku ziehen — v. a. **Squid-Wiki** (`negotiate_kerberos_auth`,
+- **Verify instead of fabricate.** Whatever is not 100% backed by the official docs,
+  mark explicitly as "not verified". Concretely: before you
+  implement any Squid/Kerberos/LDAP/config behavior, pull the current docs with `WebFetch`
+  — above all the **Squid wiki** (`negotiate_kerberos_auth`,
   `ext_kerberos_ldap_group_acl`, `ssl_bump`/peek-splice, `external_acl_type`),
-  **Samba-Wiki** (Keytab-Export, `samba-tool spn/exportkeytab`, GC-Ports),
-  **docs.linuxmuster.net** (Sophomorix-Rollen/-Gruppen, Multischool, Prüfungsmodus),
-  **MIT-Kerberos** (SPN/DNS-Kanonikalisierung, `rdns`), **Microsoft/Mozilla**
-  (GPO-Proxy/Zonen, Firefox-Policies) — auch wenn dieselbe Info hier oder im Code
-  zu stehen scheint. Bereits geprüfte Fakten samt Quellen stehen in
+  the **Samba wiki** (keytab export, `samba-tool spn/exportkeytab`, GC ports),
+  **docs.linuxmuster.net** (Sophomorix roles/groups, multischool, exam mode),
+  **MIT Kerberos** (SPN/DNS canonicalization, `rdns`), **Microsoft/Mozilla**
+  (GPO proxy/zones, Firefox policies) — even if the same info appears to be here or in the code.
+  Already-checked facts, including their sources, are in
   `docs/references.md`.
-- **Drittquellen (Blogs/Foren) sind Hinweis, kein Ersatz** für offizielle Doku.
+- **Third-party sources (blogs/forums) are a hint, not a substitute** for the official docs.
 
-### Ziele, Tests & Definition of Done
+### Goals, tests & definition of done
 
-- **Jede Aufgabe in ein verifizierbares Ziel übersetzen** („Validierung hinzufügen"
-  → „Test für invalide Inputs, dann grün"; „Bug fixen" → „reproduzierender Test,
-  dann grün").
-- **Neue Funktion/neuer Flow ⇒ Test dazu (Pflicht).** Reine Logik → Unit-Test
-  (`pytest`); eine neue/geänderte **Auth-/Filter-/Lifecycle-Journey** → E2E auf
-  crabbox (echter Kerberos-`curl --proxy-negotiate` durch den Container). Kein
-  „teste ich später".
-- **Negativtests sind Pflicht.** Der Katalog in `docs/test-strategy.md` wächst pro
-  Roadmap-Phase (407 ohne Ticket, 403 Schüler/gesperrt, Bypass, Traversal,
-  ACL-Fehlkonfig, Keytab-Perms, Auth-off, API 401/403).
-- **Bei Multi-Step-Tasks kurzen Plan _Schritt → Verifikation_ zeigen.**
-- **Vor „fertig" alle Checks real ausführen** (nur was es gibt):
+- **Translate every task into a verifiable goal** ("add validation"
+  → "test for invalid inputs, then green"; "fix bug" → "reproducing test,
+  then green").
+- **New function/new flow ⇒ a test for it (mandatory).** Pure logic → unit test
+  (`pytest`); a new/changed **auth/filter/lifecycle journey** → E2E on
+  crabbox (real Kerberos `curl --proxy-negotiate` through the container). No
+  "I'll test it later".
+- **Negative tests are mandatory.** The catalog in `docs/test-strategy.md` grows per
+  roadmap phase (407 without ticket, 403 student/blocked, bypass, traversal,
+  ACL misconfig, keytab perms, auth-off, API 401/403).
+- **For multi-step tasks, show a short plan _step → verification_.**
+- **Before "done", run all checks for real** (only what exists):
   - **Python (`controlplane/`, `cli/`):** `ruff check`, `ruff format --check`,
-    `mypy`, `pytest`. Sammel-Target: `bash scripts/tests/run.sh quick`.
+    `mypy`, `pytest`. Aggregate target: `bash scripts/tests/run.sh quick`.
   - **Shell (`image/*.sh`, `scripts/`):** `shellcheck`.
-  - **Squid-Config:** `squid -k parse` (im Container; grün nur mit `squid-openssl`
-    bei aktivem `ssl_bump`).
-  - **Heavy Tier / E2E:** auf **crabbox** (Docker nötig) — siehe unten.
-- **Relevante Tests routinemäßig ausführen, nicht behaupten.** Der Docker-/
-  Kerberos-E2E läuft auf **crabbox** (die Dev-Box hat kein Docker): Box warm
-  halten, nach Änderungen an Image/Auth/Filter/Lifecycle
-  `LMNSQUID_ALLOW_REAL=1 bash scripts/tests/run.sh e2e` dort fahren und die
-  Summary berichten.
-- **CI nach dem Auslösen überwachen** (`gh run watch`), Ergebnis berichten,
-  transiente Fehler gezielt re-runnen. Nicht „fertig", solange CI läuft/rot ist.
+  - **Squid config:** `squid -k parse` (in the container; green only with `squid-openssl`
+    when `ssl_bump` is active).
+  - **Heavy tier / E2E:** on **crabbox** (Docker required) — see below.
+- **Run relevant tests routinely, do not claim them.** The Docker/
+  Kerberos E2E runs on **crabbox** (the dev box has no Docker): keep the box warm,
+  after changes to image/auth/filter/lifecycle run
+  `LMNSQUID_ALLOW_REAL=1 bash scripts/tests/run.sh e2e` there and report the
+  summary.
+- **Monitor CI after triggering it** (`gh run watch`), report the result,
+  re-run transient failures deliberately. Not "done" while CI is running/red.
 
-### Kommunikation
+### Communication
 
-- **Direkt und kurz.** Ehrlich über Grenzen („nicht verifiziert", „Vermutung").
-- **Push back, wenn nötig** (Scope-Creep, Unterlaufen einer ADR).
-- **Nutzer-Spracheingaben charitable interpretieren** (Diktat-Erkennungsfehler →
-  auf Intent reagieren).
-- **Empfehlungen mit Begründung** („Empfehlung X, weil Y; Trade-off Z").
-- **Sprache: Deutsch**, technische Begriffe und Code-Bezeichner im Original.
+- **Direct and short.** Honest about limits ("not verified", "assumption").
+- **Push back when necessary** (scope creep, undermining an ADR).
+- **Interpret user voice input charitably** (dictation recognition errors →
+  respond to the intent).
+- **Recommendations with rationale** ("recommendation X, because Y; trade-off Z").
+- **Language: German**, technical terms and code identifiers in the original.
 
-### Code-Konventionen
+### Code conventions
 
 - **Conventional Commits** (`feat:`/`fix:`/`chore:`/`refactor:`/`docs:`/`test:`/
-  `perf:`), ein Commit pro logischem Schritt; Messages auf Englisch; Tags `vX.Y.Z`.
-- **Python:** `ruff` (Lint+Format) + `mypy` sauber; Typannotationen an öffentlichen
-  Grenzen; `pydantic` für Modelle/Config; keine stillen `except:`.
-- **Sicherheit im Code:** Secrets/Tokens/Keytabs **nie loggen**; Token-Vergleiche
-  konstant-zeitig (`hmac.compare_digest`); `HTTPBearer(auto_error=False)`; Docker
-  nur über den einen auditierten Service-Pfad (docker-py), nie aus der CLI direkt.
-- **SPDX-Header & Lizenz:** `GPL-3.0-or-later`, © Kevin Stenzel. Jede neue
-  Quelldatei bekommt den REUSE-Header (`# ` für Python/Shell/YAML, `<!-- -->` für
-  Markdown) — z. B. `reuse annotate --copyright "Kevin Stenzel" --license GPL-3.0-or-later <datei>`.
-- **Kommentare nur, wenn das Warum nicht offensichtlich ist** (versteckte
-  Constraints, Kerberos-/DNS-Fallstricke, Workarounds). Das WAS steht im Code.
+  `perf:`), one commit per logical step; messages in English; tags `vX.Y.Z`.
+- **Python:** `ruff` (lint+format) + `mypy` clean; type annotations at public
+  boundaries; `pydantic` for models/config; no silent `except:`.
+- **Security in the code:** **never log** secrets/tokens/keytabs; token comparisons
+  constant-time (`hmac.compare_digest`); `HTTPBearer(auto_error=False)`; Docker
+  only via the one audited service path (docker-py), never directly from the CLI.
+- **SPDX header & license:** `GPL-3.0-or-later`, © Kevin Stenzel. Every new
+  source file gets the REUSE header (`# ` for Python/Shell/YAML, `<!-- -->` for
+  Markdown) — e.g. `reuse annotate --copyright "Kevin Stenzel" --license GPL-3.0-or-later <file>`.
+- **Comments only when the why is not obvious** (hidden
+  constraints, Kerberos/DNS pitfalls, workarounds). The WHAT is in the code.
 
-### Doku-Pflege
+### Docs maintenance
 
-Code-Änderung ohne passendes Doku-Update gilt als unvollständig. Vor „fertig" prüfen:
+A code change without a matching docs update counts as incomplete. Before "done", check:
 `docs/architecture.md`, `docs/threat-model.md`, `docs/test-strategy.md`,
-`docs/decisions.md` (ADRs), **`ROADMAP.md`** (Phasen-Fortschritt + „Aktueller
-Stand"-Zeile), `README.md`, `CHANGELOG.md` (ab erster Version). Doku-Update gehört
-in **denselben Commit** wie die Code-Änderung. Falsche Doku ist ein Bug —
-korrigieren, auch wenn nicht direkt Teil der Änderung.
+`docs/decisions.md` (ADRs), **`ROADMAP.md`** (phase progress + "current
+status" line), `README.md`, `CHANGELOG.md` (from the first version onward). The docs update belongs
+in **the same commit** as the code change. Wrong docs are a bug —
+fix them, even if not directly part of the change.
 
-## 2. Testing auf crabbox (schwerer Tier)
+## 2. Testing on crabbox (heavy tier)
 
-Die Dev-Box editiert + orchestriert nur — sie hat **kein Docker**. Der schnelle
-Tier (ruff/mypy/pytest/shellcheck) läuft lokal/CI. Der **schwere Tier** — der
-reale docker-compose-Kerberos-E2E (**Samba-AD-DC + Squid + Client**), der beweist
-*Lehrer→200 / Schüler→403 / gesperrt→403 / kein-Ticket→407*, sowie Multischool-,
-Update-/Rollback- und `.deb`-Installtests — braucht echtes Linux mit **Docker**.
-**crabbox** least dafür eine ephemere Proxmox-VM (Provider in
-`.claude/settings.json`, Token nur im gitignored `.claude/settings.local.json`;
-`crabbox doctor`). Regeln/Details: die `/test`-Skill (`.claude/skills/test/SKILL.md`).
+The dev box only edits + orchestrates — it has **no Docker**. The fast
+tier (ruff/mypy/pytest/shellcheck) runs locally/in CI. The **heavy tier** — the
+real docker-compose Kerberos E2E (**Samba AD DC + Squid + client**) that proves
+*teacher→200 / student→403 / blocked→403 / no-ticket→407*, as well as multischool,
+update/rollback, and `.deb` install tests — needs real Linux with **Docker**.
+**crabbox** leases an ephemeral Proxmox VM for this (provider in
+`.claude/settings.json`, token only in the gitignored `.claude/settings.local.json`;
+`crabbox doctor`). Rules/details: the `/test` skill (`.claude/skills/test/SKILL.md`).
 
-- **Ein Sammel-Runner:** `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]`
-  (angelegt in P0/P1). `quick` (Default) = lint + unit; `e2e`/`all` fahren die
-  Docker-Suiten und **verweigern ohne `LMNSQUID_ALLOW_REAL=1`**. Summary:
-  `N passed, M failed, K skipped` (Exit ≠ 0 bei Fail); Schritte dep-gated.
-- **Box-Lifecycle:** `crabbox warmup` → `crabbox run --id <slug> -- 'bash scripts/tests/crabbox_bootstrap.sh'`
+- **One aggregate runner:** `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]`
+  (created in P0/P1). `quick` (default) = lint + unit; `e2e`/`all` run the
+  Docker suites and **refuse without `LMNSQUID_ALLOW_REAL=1`**. Summary:
+  `N passed, M failed, K skipped` (exit ≠ 0 on failure); steps dep-gated.
+- **Box lifecycle:** `crabbox warmup` → `crabbox run --id <slug> -- 'bash scripts/tests/crabbox_bootstrap.sh'`
   → `crabbox run --id <slug> -- 'LMNSQUID_ALLOW_REAL=1 bash scripts/tests/run.sh e2e'`
   → `crabbox stop --id <slug>`.
-- **Nie „grün" melden, ohne dass die Suite real bestanden hat** — die
-  `run.sh`-Summary zählt; SKIP heißt „nicht verifiziert", nicht „ok".
+- **Never report "green" without the suite having really passed** — the
+  `run.sh` summary is what counts; SKIP means "not verified", not "ok".
 - `crabbox warmup`/`run`/`status`/`list`/`connect`/`ssh`/`doctor`/`stop`/`cleanup`
-  sind vorab erlaubt; `prewarm`/`job` provisionieren/kosten → vorher fragen.
-- Immer `crabbox stop <slug>` (oder 30-min-Idle-Timeout), damit keine VMs hängen.
+  are pre-approved; `prewarm`/`job` provision/cost → ask first.
+- Always `crabbox stop <slug>` (or the 30-min idle timeout), so that no VMs linger.

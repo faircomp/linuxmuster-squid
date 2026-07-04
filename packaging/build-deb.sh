@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Baut das linuxmuster-squid .deb mit einem hermetischen Python-venv unter
-# /opt/linuxmuster-squid/venv (am Ziel-Pfad gebaut, damit die Shebangs stimmen)
-# + systemd-Unit + Maintainer-Skripte. ALS ROOT ausführen. VERSION per Env.
+# Builds the linuxmuster-squid .deb with a hermetic Python venv under
+# /opt/linuxmuster-squid/venv (built at the target path so the shebangs are correct)
+# + systemd unit + maintainer scripts. RUN AS ROOT. VERSION via env.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,8 +39,8 @@ echo "== dpkg-deb -> $OUT =="
 dpkg-deb --build --root-owner-group "$STAGE" "$OUT"
 echo "== built $OUT =="
 
-# Signierung (Produktion): apt verifiziert NICHT einzelne .deb-Signaturen, sondern die
-# signierte Repo-`Release` (InRelease / Release.gpg). Also das .deb ins lmn73-**reprepro**-
-# Repo (deb.linuxmuster.net) einhängen; reprepro signiert die `Release` mit dem linuxmuster-
-# GPG-Key (reprepro `SignWith`). KEIN `dpkg-sig` je Paket. Braucht den echten Key + Repo-Zugang
-# (Human-Gate). Verifiziert gegen wiki.debian.org/DebianRepository/SetupWithReprepro + deb.linuxmuster.net.
+# Signing (production): apt does NOT verify individual .deb signatures, but rather the
+# signed repo `Release` (InRelease / Release.gpg). So add the .deb into the lmn73 **reprepro**
+# repo (deb.linuxmuster.net); reprepro signs the `Release` with the linuxmuster
+# GPG key (reprepro `SignWith`). NO `dpkg-sig` per package. Requires the real key + repo access
+# (human gate). Verified against wiki.debian.org/DebianRepository/SetupWithReprepro + deb.linuxmuster.net.

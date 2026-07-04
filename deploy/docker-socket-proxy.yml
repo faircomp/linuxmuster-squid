@@ -1,23 +1,23 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Gefilterter Docker-Socket-Proxy. Der direkte /var/run/docker.sock ist root-äquivalent;
-# stattdessen exponiert dieser Proxy NUR die Endpunkte, die die Control-Plane braucht,
-# an tcp://127.0.0.1:2375. Danach in /etc/linuxmuster-squid/config.yml setzen:
+# Filtered Docker socket proxy. The direct /var/run/docker.sock is root-equivalent;
+# instead this proxy exposes ONLY the endpoints the control plane needs,
+# at tcp://127.0.0.1:2375. Then set in /etc/linuxmuster-squid/config.yml:
 #   docker_host: "tcp://127.0.0.1:2375"
-# und den Dienst neu starten. (ADR-012.)
+# and restart the service. (ADR-012.)
 services:
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:v0.4.2   # feste Version statt :latest (Renovate pinnt den @sha256-Digest)
+    image: tecnativa/docker-socket-proxy:v0.4.2   # fixed version instead of :latest (Renovate pins the @sha256 digest)
     environment:
       CONTAINERS: "1"   # create/inspect/start/stop/remove/logs
       IMAGES: "1"       # pull
-      VOLUMES: "1"      # cache-Volumes
-      POST: "1"         # mutierende Aufrufe erlauben
+      VOLUMES: "1"      # cache volumes
+      POST: "1"         # allow mutating calls
       INFO: "1"
-      # Rest explizit aus (Angriffsfläche minimieren):
-      EXEC: "0"          # HINWEIS: deaktiviert `lmnsquid access-logs` (Historie via docker exec);
-                         # der Live-`logs`-Pfad (container.logs) läuft weiter. Siehe ADR-012.
+      # Everything else explicitly off (minimize attack surface):
+      EXEC: "0"          # NOTE: disables `lmnsquid access-logs` (history via docker exec);
+                         # the live `logs` path (container.logs) keeps working. See ADR-012.
       NETWORKS: "0"
       AUTH: "0"
       SECRETS: "0"

@@ -3,57 +3,57 @@ SPDX-FileCopyrightText: Kevin Stenzel
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Teststrategie — linuxmuster-squid
+# Test Strategy — linuxmuster-squid
 
-Zwei Tiers. Der **schnelle Tier** läuft lokal/CI; der **schwere Tier** (Docker +
-Kerberos) läuft auf einem **Linux-Host mit Docker**. Aggregator:
-`bash scripts/tests/run.sh [lint|unit|quick|e2e|all]` — Summary
-`N passed, M failed, K skipped`, Exit ≠ 0 bei Fail, jeder Schritt dep-gated.
-`e2e`/`all` verweigern ohne `LMNSQUID_ALLOW_REAL=1`.
+Two tiers. The **fast tier** runs locally/in CI; the **heavy tier** (Docker +
+Kerberos) runs on a **Linux host with Docker**. Aggregator:
+`bash scripts/tests/run.sh [lint|unit|quick|e2e|all]` — summary
+`N passed, M failed, K skipped`, exit ≠ 0 on failure, every step dep-gated.
+`e2e`/`all` refuse to run without `LMNSQUID_ALLOW_REAL=1`.
 
-## Schneller Tier (überall)
+## Fast tier (everywhere)
 
 - **Python:** `ruff check`, `ruff format --check`, `mypy`, `pytest`
-  (Control-Plane-Logik, API-Handler mit httpx-TestClient, CLI-Client).
-- **Shell:** `shellcheck` für `image/*.sh`, `scripts/**`.
-- **Squid-Config:** `squid -k parse` gegen gerenderte Templates (im Container;
-  grün nur mit `squid-openssl`, sobald `ssl_bump` aktiv ist).
+  (control-plane logic, API handlers with the httpx TestClient, CLI client).
+- **Shell:** `shellcheck` for `image/*.sh`, `scripts/**`.
+- **Squid config:** `squid -k parse` against rendered templates (in the container;
+  green only with `squid-openssl` once `ssl_bump` is active).
 
-## Schwerer Tier — Kerberos-E2E (Docker)
+## Heavy tier — Kerberos E2E (Docker)
 
-docker-compose-Stack: `samba-dc` + `squid` + `origin` + `test-client` (Details in
-der `/test`-Skill). **Kern-Beweis** (P1), Assertions auf `%{http_code}`:
+docker-compose stack: `samba-dc` + `squid` + `origin` + `test-client` (details in
+the `/test` skill). **Core proof** (P1), assertions on `%{http_code}`:
 
-| Fall | Aktion | Erwartung |
+| Case | Action | Expectation |
 |---|---|---|
-| Lehrer erlaubt | `kinit teacher1`; via Lehrer-Instanz | **200** |
-| Schüler abgelehnt (authN ok, authZ fail) | `kinit student1`; via Lehrer-Instanz | **403** (nicht 407) |
-| Gesperrte Domain | Lehrer → Eintrag aus `blocked.domains` | **403** |
-| Kein Ticket | `kdestroy`; Anfrage | **407** |
+| Teacher allowed | `kinit teacher1`; via teacher instance | **200** |
+| Student denied (authN ok, authZ fail) | `kinit student1`; via teacher instance | **403** (not 407) |
+| Blocked domain | Teacher → entry from `blocked.domains` | **403** |
+| No ticket | `kdestroy`; request | **407** |
 
-Der 403-vs-407-Split ist der eigentliche Beweis (authentifiziert-aber-unautorisiert
-vs. nicht-authentifiziert).
+The 403-vs-407 split is the actual proof (authenticated-but-unauthorized
+vs. not-authenticated).
 
-## Negativ-/Sicherheitskatalog (wächst pro Phase; Teil der DoD)
+## Negative/security catalog (grows per phase; part of the DoD)
 
-- **P1:** kein-Ticket→407; Schüler→403; SPN-Mismatch/FQDN-als-IP → kein 200.
-- **P2:** gesperrte HTTPS-Domain (SNI/CONNECT)→403 **ohne** Client-CA; erlaubte→200;
-  Verhalten bei fehlendem SNI definiert.
-- **P3:** Lehrer-Schule-A über Schule-B-Instanz→403; präfixierte Gruppennamen greifen;
-  Subnetz-Scope greift.
-- **P4:** API ohne Token→401, falscher Token→403; ungültige Instanz-Definition
-  abgelehnt; Reconcile idempotent.
-- **P5:** Update auf kaputtes Image→Auto-Rollback, Dienst bleibt verfügbar;
-  `rollback` deterministisch.
-- **P9:** `.deb`-Install→systemd `active`, API/CLI-Smoke; Upgrade/Rollback des Pakets.
-- **P10:** Keytab-Perms; Manager-ACL nicht extern erreichbar; API-Bind ≠ 0.0.0.0;
-  Bypass/Traversal; DC-Ausfall staut nicht (ttl/grace).
+- **P1:** no ticket→407; student→403; SPN mismatch/FQDN-as-IP → no 200.
+- **P2:** blocked HTTPS domain (SNI/CONNECT)→403 **without** client CA; allowed→200;
+  behavior on missing SNI defined.
+- **P3:** teacher of school A via school-B instance→403; prefixed group names take effect;
+  subnet scope takes effect.
+- **P4:** API without token→401, wrong token→403; invalid instance definition
+  rejected; reconcile idempotent.
+- **P5:** update to a broken image→auto-rollback, service stays available;
+  `rollback` deterministic.
+- **P9:** `.deb` install→systemd `active`, API/CLI smoke; package upgrade/rollback.
+- **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;
+  bypass/traversal; DC outage does not stall (ttl/grace).
 
-## Regeln
+## Rules
 
-- **Neue/geänderte Auth-/Filter-/Lifecycle-Journey ⇒ E2E-Fall dazu** (Pflicht,
-  Teil von „fertig").
-- **Nie „grün" behaupten ohne realen Lauf** — `run.sh`-Summary zitieren; SKIP =
-  „nicht verifiziert".
-- Assertions auf Plain-HTTP-Ziele (Proxy-Status inline in `%{http_code}` sichtbar);
-  für HTTPS-CONNECT-Fälle Exit-/Header-Semantik beachten.
+- **New/changed auth/filter/lifecycle journey ⇒ add an E2E case** (mandatory,
+  part of "done").
+- **Never claim "green" without a real run** — cite the `run.sh` summary; SKIP =
+  "not verified".
+- Assertions on plain-HTTP targets (proxy status visible inline in `%{http_code}`);
+  for HTTPS CONNECT cases, mind the exit-code/header semantics.

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -e
 
-# System-User (in docker-Gruppe für den Socket-Zugriff)
+# System user (in the docker group for socket access)
 if ! getent passwd lmnsquid >/dev/null 2>&1; then
     adduser --system --group --no-create-home \
         --home /var/lib/linuxmuster-squid lmnsquid
@@ -14,11 +14,11 @@ fi
 
 mkdir -p /etc/linuxmuster-squid/secrets /var/lib/linuxmuster-squid/instances
 
-# Config mit zufälligem API-Token (nur, wenn noch nicht vorhanden)
+# Config with a random API token (only if it does not exist yet)
 CFG=/etc/linuxmuster-squid/config.yml
 if [ ! -f "$CFG" ]; then
     TOKEN="$(openssl rand -hex 32)"
-    # umask 077 -> Datei entsteht mit 0600 (kein 0644-Fenster für den API-Token).
+    # umask 077 -> file is created with 0600 (no 0644 window for the API token).
     ( umask 077
       cat > "$CFG" <<EOF
 api_token: "$TOKEN"
@@ -35,8 +35,8 @@ fi
 chown -R lmnsquid:lmnsquid /etc/linuxmuster-squid /var/lib/linuxmuster-squid
 chmod 700 /etc/linuxmuster-squid/secrets
 
-# instances_dir als git-Repo initialisieren -> Store-Änderungen werden als Change-Log
-# committet (Store._git ist best-effort und braucht ein Repo + Identität).
+# Initialize instances_dir as a git repo -> Store changes are committed as a change log
+# (Store._git is best-effort and needs a repo + identity).
 INST_DIR=/var/lib/linuxmuster-squid/instances
 if command -v git >/dev/null 2>&1 && [ ! -d "$INST_DIR/.git" ]; then
     git -C "$INST_DIR" init -q || true
@@ -48,9 +48,9 @@ fi
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
     systemctl enable linuxmuster-squid.service || true
-    # Frisch-Installation ($2 leer) -> start; Upgrade ($2 = Vorversion) -> try-restart,
-    # damit der laufende Dienst den neuen Code aus dem venv WIRKLICH lädt (enable --now
-    # wäre auf einem bereits laufenden Dienst ein No-op -> alter Code bliebe aktiv).
+    # Fresh install ($2 empty) -> start; upgrade ($2 = previous version) -> try-restart,
+    # so the running service REALLY loads the new code from the venv (enable --now
+    # would be a no-op on an already-running service -> old code would stay active).
     if [ -n "${2:-}" ]; then
         systemctl try-restart linuxmuster-squid.service || true
     else

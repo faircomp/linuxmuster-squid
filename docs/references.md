@@ -3,106 +3,106 @@ SPDX-FileCopyrightText: Kevin Stenzel
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Referenzen & verifizierte Fakten
+# References & verified facts
 
-Belegte Grundlagen samt Quellen. Vor dem Implementieren eines Formats/Verhaltens
-die jeweilige **offizielle** Quelle erneut ziehen (siehe `CLAUDE.md`). Erhebung per
-Recherche-Workflows am **2026-07-02** (Confidence in Klammern).
+Documented foundations together with sources. Before implementing a format/behavior,
+pull the respective **official** source again (see `CLAUDE.md`). Collected via
+research workflows on **2026-07-02** (confidence in parentheses).
 
-## linuxmuster.net 7 — Architektur & Identität
+## linuxmuster.net 7 — architecture & identity
 
-- Aktuell **7.3** (09/2025, Ubuntu 24.04); Samba AD DC + OPNsense + Sophomorix. (high)
+- Currently **7.3** (09/2025, Ubuntu 24.04); Samba AD DC + OPNsense + Sophomorix. (high)
   — https://www.linuxmuster.net/de/2025/09/15/linuxmuster-net-7-3-release-verbesserte-skalierbarkeit-und-modularisierung/
-- Multischool: OUs unter `OU=SCHOOLS`; `default-school` unpräfixiert; Bind-User unter
+- Multischool: OUs under `OU=SCHOOLS`; `default-school` unprefixed; bind user under
   `OU=Management,OU=GLOBAL`. (high)
   — https://docs.linuxmuster.net/de/latest/external-services/nextcloud/authentication.html
-- Rollen im Attribut `sophomorixRole`; Gruppe `teachers` / `<schule>-teachers`
-  (default-school ohne Präfix). (high)
+- Roles in the `sophomorixRole` attribute; group `teachers` / `<schule>-teachers`
+  (default-school without prefix). (high)
   — https://github.com/linuxmuster/sophomorix4/wiki/objectClasses
-- Netz `10.0.0.0/16`, Server `10.0.0.1`, OPNsense-Gateway `10.0.0.254`; Subnetze in
+- Network `10.0.0.0/16`, server `10.0.0.1`, OPNsense gateway `10.0.0.254`; subnets in
   `/etc/linuxmuster/subnets.csv`. (high)
   — https://docs.linuxmuster.net/de/latest/systemadministration/network/networksegmentation/networksegmentation.html
-- Prüfungsmodus: `<user>-exam`-Konto, Proxy deaktiviert. (high)
+- Exam mode: `<user>-exam` account, proxy disabled. (high)
   — https://docs.linuxmuster.net/de/latest/classroom/exam-and-transfer.html
 
-## Bestehender Proxy (Lücke)
+## Existing proxy (gap)
 
-- v7-Proxy = Squid **in OPNsense**, Kerberos-SSO via `os-web-proxy-sso` — abgekündigt
-  ab OPNsense 26.1, unmaintained; Gruppen-Policy nur über Community-Plugin; keine
-  Multischool-Isolation. (high)
+- v7 proxy = Squid **in OPNsense**, Kerberos SSO via `os-web-proxy-sso` — deprecated
+  as of OPNsense 26.1, unmaintained; group policy only via community plugin; no
+  multischool isolation. (high)
   — https://ask.linuxmuster.net/t/frage-zu-os-web-proxy-sso-plugin-veraltet-ab-opnsense-26-1-abgekuendigt/11250
   — https://wiki.linuxmuster.net/community/anwenderwiki:firewall_lmn7:squidproxy:start
 
 ## Squid — Kerberos/GSSAPI (Negotiate)
 
-- `negotiate_kerberos_auth` (-k Keytab, -s SPN/`GSS_C_NO_NAME`); Keytab via
+- `negotiate_kerberos_auth` (-k keytab, -s SPN/`GSS_C_NO_NAME`); keytab via
   `KRB5_KTNAME`. (high)
   — https://wiki.squid-cache.org/ConfigExamples/Authenticate/Kerberos
-- SPN `HTTP/<fqdn>@REALM` (Realm UPPERCASE); fwd+rev DNS + NTP<5min Pflicht;
-  FQDN statt IP. (high)
+- SPN `HTTP/<fqdn>@REALM` (realm UPPERCASE); fwd+rev DNS + NTP<5min mandatory;
+  FQDN instead of IP. (high)
   — https://wiki.squid-cache.org/ConfigExamples/Authenticate/WindowsActiveDirectory
-- **Proxy-Auth im Intercept-Modus unmöglich** → expliziter Forward-Proxy. (high)
+- **Proxy auth impossible in intercept mode** → explicit forward proxy. (high)
   — https://wiki.squid-cache.org/Features/Authentication
-- Client-`krb5.conf` `rdns=false` + `dns_canonicalize_hostname=false` umgeht
-  PTR-Zwang. (high) — https://web.mit.edu/kerberos/krb5-devel/doc/admin/princ_dns.html
+- Client `krb5.conf` `rdns=false` + `dns_canonicalize_hostname=false` bypasses
+  the PTR requirement. (high) — https://web.mit.edu/kerberos/krb5-devel/doc/admin/princ_dns.html
 
-## Squid — Gruppen-Autorisierung (AD)
+## Squid — group authorization (AD)
 
-- `ext_kerberos_ldap_group_acl` (nutzt Ticket, `-g Group@Realm`, rekursiv `-m`,
-  DC-Discovery via SRV) bzw. `ext_ldap_group_acl` (expliziter Bind, GC 3268). (high)
+- `ext_kerberos_ldap_group_acl` (uses the ticket, `-g Group@Realm`, recursive `-m`,
+  DC discovery via SRV) resp. `ext_ldap_group_acl` (explicit bind, GC 3268). (high)
   — https://manpages.opensuse.org/Tumbleweed/squid/ext_kerberos_ldap_group_acl.8
   — https://manpages.ubuntu.com/manpages/jammy/man8/ext_ldap_group_acl.8.html
-- Externe-ACL-Caching `ttl/negative_ttl/grace`. (high)
+- External-ACL caching `ttl/negative_ttl/grace`. (high)
   — https://www.squid-cache.org/Doc/config/external_acl_type/
-- ⚠️ `%u` vs. `%v`-Platzhalter build-abhängig → am realen Helper testen.
+- ⚠️ `%u` vs. `%v` placeholder is build-dependent → test against the real helper.
 
-## Squid — Paketierung (Ubuntu 24.04)
+## Squid — packaging (Ubuntu 24.04)
 
-- **SSL/`ssl_bump`/peek-splice nur in `squid-openssl`**, NICHT im Paket `squid`
-  (kein `security_file_certgen`). Beide enthalten die Kerberos/LDAP-Helfer. (high)
+- **SSL/`ssl_bump`/peek-splice only in `squid-openssl`**, NOT in the `squid` package
+  (no `security_file_certgen`). Both contain the Kerberos/LDAP helpers. (high)
   — https://packages.ubuntu.com/noble/amd64/squid/filelist
   — https://packages.ubuntu.com/noble/amd64/squid-openssl/filelist
-- `squidclient` = eigenes Paket; `ntlm_auth` kommt aus `winbind` (`/usr/bin/ntlm_auth`,
-  NICHT `/usr/lib/squid/`). (high)
+- `squidclient` = separate package; `ntlm_auth` comes from `winbind` (`/usr/bin/ntlm_auth`,
+  NOT `/usr/lib/squid/`). (high)
   — https://packages.ubuntu.com/noble/squidclient
-- SNI peek+splice ohne Entschlüsselung; Wegwerf-CA für den Peek-Schritt, nie an
-  Clients verteilt. (high / medium bzgl. strikter cert-Pflicht bei splice-only)
+- SNI peek+splice without decryption; throwaway CA for the peek step, never distributed
+  to clients. (high / medium regarding strict cert requirement with splice-only)
   — https://wiki.squid-cache.org/Features/SslPeekAndSplice
-- Fallback CONNECT-`dstdomain` (kein SSL nötig). (high)
+- Fallback CONNECT `dstdomain` (no SSL needed). (high)
   — https://wiki.squid-cache.org/SquidFaq/SquidAcl
 
-## Kerberos-E2E im Container (Test)
+## Kerberos E2E in the container (test)
 
-- Samba-AD-DC via `samba-tool domain provision` bzw. `nowsci/samba-domain`
+- Samba AD DC via `samba-tool domain provision` resp. `nowsci/samba-domain`
   (`NOCOMPLEXITY=true`). (high) — https://ubuntu.com/server/docs/how-to/samba/provision-samba-ad-controller/
-- Keytab DC-seitig: `samba-tool spn add HTTP/<fqdn> <acct>` +
+- Keytab on the DC side: `samba-tool spn add HTTP/<fqdn> <acct>` +
   `samba-tool domain exportkeytab --principal=HTTP/<fqdn>`. (high)
   — https://wiki.samba.org/index.php/Generating_Keytabs
-- Client treibt Negotiate: `curl --proxy http://<fqdn>:3128 --proxy-negotiate -U : <url>`
-  nach `kinit`; Beweis über Codes 200/403/403/407. (high)
+- Client drives Negotiate: `curl --proxy http://<fqdn>:3128 --proxy-negotiate -U : <url>`
+  after `kinit`; proof via codes 200/403/403/407. (high)
   — https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/networking_guide/setting-up-squid-as-a-caching-proxy-with-kerberos-authentication
 
-## Client-Steuerung (GPO)
+## Client control (GPO)
 
 - Edge/Chrome `ProxySettings=fixed_servers`; Firefox `policies.json`
   `Proxy`+`Authentication.SPNEGO`. (high)
   — https://learn.microsoft.com/en-us/deployedge/microsoft-edge-browser-policies/proxysettings
   — https://mozilla.github.io/policy-templates/
-- Stilles SSO: Proxy-FQDN in Local-Intranet-Zone (Site-to-Zone) oder
-  `AuthServerAllowlist`; per-Rolle via Security-Filtering/GPP-Item-Level-Targeting.
-  Kerberos-Delegation geht nicht für Proxy-Auth. (high)
+- Silent SSO: proxy FQDN in the Local Intranet zone (Site-to-Zone) or
+  `AuthServerAllowlist`; per role via security filtering/GPP item-level targeting.
+  Kerberos delegation does not work for proxy auth. (high)
   — https://learn.microsoft.com/en-us/deployedge/per-site-configuration-by-policy
-- Kein `wpad`-PTR (bricht Linux-SSO). (high)
+- No `wpad` PTR (breaks Linux SSO). (high)
   — https://wiki.linuxmuster.net/community/anwenderwiki:firewall_lmn7:squidproxy:start
 
-## Control-Plane & Updates
+## Control plane & updates
 
-- linuxmuster-api7 ist selbst FastAPI/uvicorn (Ökosystem-Nähe). (high)
+- linuxmuster-api7 is itself FastAPI/uvicorn (ecosystem proximity). (high)
   — https://github.com/linuxmuster/linuxmuster-api
-- Docker-Lifecycle via docker-py (`docker`≥7), pull-by-Digest; Socket = root-äquivalent.
+- Docker lifecycle via docker-py (`docker`≥7), pull-by-digest; socket = root-equivalent.
   (high) — https://docker-py.readthedocs.io/ · https://docs.docker.com/engine/install/linux-postinstall/
-- Watchtower **archiviert 2025-12-17** (kein Rollback) → nicht nutzen; Renovate pinnt
-  Digests in Compose. (high)
+- Watchtower **archived 2025-12-17** (no rollback) → do not use; Renovate pins
+  digests in Compose. (high)
   — https://github.com/containrrr/watchtower · https://docs.renovatebot.com/docker/
-- `.deb` reproduzierbar via dh-virtualenv (kein pip-in-postinst). (high)
+- `.deb` reproducible via dh-virtualenv (no pip-in-postinst). (high)
   — https://dh-virtualenv.readthedocs.io/en/latest/

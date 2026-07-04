@@ -1,14 +1,4 @@
 {
-  "env": {
-    "CRABBOX_PROVIDER": "proxmox",
-    "CRABBOX_PROXMOX_API_URL": "https://proxmox.example.internal:8006",
-    "CRABBOX_PROXMOX_TOKEN_ID": "ci-token@REALM",
-    "CRABBOX_PROXMOX_NODE": "node",
-    "CRABBOX_PROXMOX_TEMPLATE_ID": "9400",
-    "CRABBOX_PROXMOX_STORAGE": "storage",
-    "CRABBOX_PROXMOX_BRIDGE": "bridge",
-    "CRABBOX_PROXMOX_INSECURE_TLS": "1"
-  },
   "permissions": {
     "allow": [
       "Bash(crabbox run:*)",

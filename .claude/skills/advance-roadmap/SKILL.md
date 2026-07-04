@@ -1,99 +1,103 @@
 ---
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 name: advance-roadmap
 description: Advance ROADMAP.md by exactly one iteration — implement the next open task(s) of the current phase up to the next verification gate, verify for real, check off, update the status pointer, and commit. Built to be run under /loop for an autonomous, resumable buildout of linuxmuster-squid. State lives in ROADMAP.md + git, so it survives context resets. Pauses at human gates instead of guessing.
 ---
 
-# /advance-roadmap — eine Roadmap-Iteration
+# /advance-roadmap — one roadmap iteration
 
-Führt **genau eine Iteration** der `ROADMAP.md` aus. Gedacht für `/loop
-/advance-roadmap`: bei jedem Aufruf ein Chunk Arbeit bis zum nächsten
-Verifikations-Gate — kein Häkchen ohne realen Test, Pause an jedem menschlichen Gate.
+Runs **exactly one iteration** of `ROADMAP.md`. Intended for `/loop
+/advance-roadmap`: on each invocation, one chunk of work up to the next
+verification gate — no checkmark without a real test, pause at every human gate.
 
-**Single Source of Truth ist das Repo, nicht dieser Chat:** die Checkboxen
-(`[ ]`/`[x]`) in `ROADMAP.md`, die „**Aktueller Stand**"-Zeile oben, die git-History.
-Jede Iteration liest den Stand frisch aus `ROADMAP.md`. So ist Fortsetzen nach
-Unterbrechung/Context-Reset trivial.
+**The single source of truth is the repo, not this chat:** the checkboxes
+(`[ ]`/`[x]`) in `ROADMAP.md`, the "**Current status**" line at the top, the git history.
+Each iteration reads the state fresh from `ROADMAP.md`. This makes resuming after an
+interruption/context reset trivial.
 
-## 0 · Vorbedingungen (nur beim allerersten Lauf prüfen)
+## 0 · Preconditions (check only on the very first run)
 
-- Ist `.` ein git-Repo? Falls nein: `git init`, Arbeitsbranch anlegen
-  (`git switch -c build/roadmap`), Erstzustand committen. **Nie auf `main` bauen.**
-- Sind die `Assumed`/offenen ADRs in `docs/decisions.md` entschieden? Falls ein
-  **blockierender** Fork offen ist (Stack, Netzmodell, Keytab-Quelle, Registry,
-  Lizenz) → **PAUSE**, den Nutzer fragen, erst dann weiter.
-- `CLAUDE.md` gelesen (Arbeitsweise, Sicherheits-Stolperfallen)?
+- Is `.` a git repo? If not: `git init`, create a working branch
+  (`git switch -c build/roadmap`), commit the initial state. **Never build on `main`.**
+- Are the `Assumed`/open ADRs in `docs/decisions.md` decided? If a
+  **blocking** fork is open (stack, network model, keytab source, registry,
+  license) → **PAUSE**, ask the user, only then continue.
+- Has `CLAUDE.md` been read (way of working, security pitfalls)?
 
-## 1 · Zustand lesen
+## 1 · Read the state
 
-`ROADMAP.md` öffnen. Aus der „Aktueller Stand"-Zeile die **aktuelle Phase**
-bestimmen; darin die **erste offene Aufgabe** `[ ]` wählen. Phasen-Reihenfolge
-strikt einhalten — nie vorgreifen.
+Open `ROADMAP.md`. From the "Current status" line, determine the **current phase**;
+within it, pick the **first open task** `[ ]`. Keep the phase order
+strict — never jump ahead.
 
-## 2 · Umsetzen (chirurgisch)
+## 2 · Implement (surgical)
 
-Die Aufgabe umsetzen, nur was sie verlangt (siehe `CLAUDE.md` → Surgical Changes).
-Bei nicht-trivialen/mehrdeutigen Aufgaben zuerst kurz `Schritt → Verifikation`
-skizzieren. Verifizieren statt raten: vor Squid-/Kerberos-/LDAP-/GPO-Config die
-offizielle Doku ziehen.
+Implement the task, only what it requires (see `CLAUDE.md` → Surgical Changes).
+For non-trivial/ambiguous tasks, first briefly sketch `Step → Verification`.
+Verify instead of guessing: before any Squid/Kerberos/LDAP/GPO config, pull the
+official documentation.
 
-## 3 · Verifizieren — schneller Tier (jede Aufgabe, lokal)
+## 3 · Verify — fast tier (every task, local)
 
-Nur ausführen, was real existiert:
+Run only what actually exists:
 - Python: `ruff check`, `ruff format --check`, `mypy`, `pytest`
 - Shell: `shellcheck`
-- Squid-Config: `squid -k parse` (im Container)
+- Squid config: `squid -k parse` (in the container)
 
-Sammel: `bash scripts/tests/run.sh quick`. **Rot → fixen, NICHT abhaken.**
+Aggregate: `bash scripts/tests/run.sh quick`. **Red → fix, do NOT check off.**
 
-## 4 · Abhaken & committen
+## 4 · Check off & commit
 
-Erst wenn der schnelle Tier grün ist: Häkchen `[x]` setzen, betroffene Doku im
-**selben Commit** pflegen (`docs/`, `README.md`, ADRs), Conventional-Commit
-(`feat:`/`fix:`/`test:`/`docs:` …), ein Commit pro logischem Schritt.
+Only once the fast tier is green: set the checkmark `[x]`, maintain the affected docs in
+the **same commit** (`docs/`, `README.md`, ADRs), Conventional Commit
+(`feat:`/`fix:`/`test:`/`docs:` …), one commit per logical step.
 
-Weitere offene Aufgaben in der Phase? → zurück zu Schritt 2.
+More open tasks in the phase? → back to step 2.
 
-## 5 · Phasen-Gate — schwerer Tier (crabbox), nur wenn Phase leer
+## 5 · Phase gate — heavy tier (crabbox), only when the phase is empty
 
-Sind **alle** Aufgaben der Phase `[x]`, die **Definition of Done** der Phase über
-den schweren Tier beweisen (Kerberos-E2E etc.) — siehe die **`/test`-Skill**:
-- Box **warm-once**, Slug in `.crabbox/active-slug` (gitignored) merken und
-  wiederverwenden; nicht pro Iteration warm/stop.
-- E2E als **Hintergrund-Job** starten (Warmup+Bootstrap+E2E dauern Minuten) →
-  Wiederaufruf bei Fertigstellung; als Fallback einen langen `ScheduleWakeup`
-  (~1200 s) setzen, falls der Lauf hängt.
-- **Grün** (`run.sh`-Summary `N passed, 0 failed`)? → „Aktueller Stand"-Zeile auf
-  die **nächste Phase** setzen, committen.
-- **Rot?** → Fehler beheben (in dieser Phase bleiben), **nicht** vorrücken.
-- Am Ende/Idle `crabbox stop`. `prewarm`/`job` kosten → vorher fragen.
+Once **all** tasks of the phase are `[x]`, prove the phase's **Definition of Done**
+via the heavy tier (Kerberos E2E etc.) — see the **`/test` skill**:
+- Bring the box up **warm-once**, remember the slug in `.crabbox/active-slug` (gitignored) and
+  reuse it; do not warm/stop per iteration.
+- Start the E2E as a **background job** (warmup+bootstrap+E2E take minutes) →
+  re-invoke on completion; as a fallback, set a long `ScheduleWakeup`
+  (~1200 s) in case the run hangs.
+- **Green** (`run.sh` summary `N passed, 0 failed`)? → set the "Current status" line to
+  the **next phase**, commit.
+- **Red?** → fix the errors (stay in this phase), do **not** advance.
+- At the end/idle, `crabbox stop`. `prewarm`/`job` cost money → ask first.
 
-## 6 · Menschliche Gates → PAUSE + fragen (nicht raten, nicht faken)
+## 6 · Human gates → PAUSE + ask (don't guess, don't fake)
 
-Hier anhalten und den Nutzer einbeziehen:
-- offene/`Assumed`-ADRs, die eine Aufgabe blockieren;
-- **P0-Verifikation am echten DC** (reales Realm/Base DN, Gruppen-DN via
-  `ldbsearch`, `%u`/`%v`) — echte Site-Daten;
-- **P8-Produktiv-Abnahme** auf echten Windows-Clients (nicht automatisierbar →
-  Vorlagen + Checkliste bereitstellen und „bereit zur Abnahme" melden);
-- **Renovate-PR-Merge** (Update-Go/No-Go), **Release-Push/Tag**;
-- alles, was echte Zugangsdaten/Infrastruktur außerhalb des Repos braucht.
+Stop here and involve the user:
+- open/`Assumed` ADRs that block a task;
+- **P0 verification against the real DC** (real realm/base DN, group DN via
+  `ldbsearch`, `%u`/`%v`) — real site data;
+- **P8 production acceptance** on real Windows clients (not automatable →
+  provide templates + checklist and report "ready for acceptance");
+- **Renovate PR merge** (update go/no-go), **release push/tag**;
+- anything that needs real credentials/infrastructure outside the repo.
 
-## 7 · Fortsetzen oder beenden
+## 7 · Continue or finish
 
-- Menschliches Gate erreicht → **PAUSE**, klar berichten was ansteht.
-- Alle Phasen bis **P10** `[x]` **und** alle Abnahmekriterien in `ROADMAP.md`
-  §0.1 real bewiesen → **Loop beenden** (Release `v1.0.0`).
-- Sonst → nächste Iteration (der `/loop`-Rahmen ruft erneut auf).
+- Human gate reached → **PAUSE**, report clearly what is pending.
+- All phases through **P10** `[x]` **and** all acceptance criteria in `ROADMAP.md`
+  §0.1 really proven → **end the loop** (release `v1.0.0`).
+- Otherwise → next iteration (the `/loop` framework invokes again).
 
-## Guardrails (nicht verhandelbar)
+## Guardrails (non-negotiable)
 
-- **Kein `[x]` ohne bestandenen realen Test.** „SKIP" heißt „nicht verifiziert",
-  nicht „ok". Test-Summaries zitieren, nie behaupten.
-- **Bei Blockade/Mehrdeutigkeit: PAUSE + fragen**, nicht heimlich entscheiden.
-- **Verifikation nach 2–3 Fixversuchen weiter rot → stoppen und berichten**, nicht
-  im Kreis drehen.
-- Sicherheits-Stolperfallen aus `CLAUDE.md`/`docs/threat-model.md` nie verletzen
-  (expliziter Proxy, keine HTTPS-Entschlüsselung, Keytab-Handling, ACL erzwingt
-  Sicherheit, Docker-Socket = root-äquivalent, nichts hartkodieren).
-- Nach jeder Iteration eine kurze Status-Zeile ausgeben (Phase, erledigte Aufgabe,
-  Testergebnis, nächster Schritt).
+- **No `[x]` without a passing real test.** "SKIP" means "not verified",
+  not "ok". Quote test summaries, never claim them.
+- **On a blocker/ambiguity: PAUSE + ask**, do not decide covertly.
+- **Verification still red after 2–3 fix attempts → stop and report**, do not
+  spin in circles.
+- Never violate the security pitfalls from `CLAUDE.md`/`docs/threat-model.md`
+  (explicit proxy, no HTTPS decryption, keytab handling, ACL enforces
+  security, Docker socket = root-equivalent, hardcode nothing).
+- After each iteration, print a short status line (phase, completed task,
+  test result, next step).

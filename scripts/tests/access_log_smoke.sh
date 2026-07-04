@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Smoke: der Entrypoint spiegelt den Squid-Access-Log via Tailer auf Container-stdout,
-# sodass `docker logs` — und damit die Control-Plane (`lmnsquid logs` über docker-py) —
-# ihn zeigt. Nutzt `docker run` (= derselbe Pfad, den die Control-Plane per docker-py
-# fährt; NICHT docker-compose). Braucht Docker.
+# Smoke: the entrypoint mirrors the Squid access log via a tailer onto the container stdout,
+# so that `docker logs` — and thus the control plane (`lmnsquid logs` via docker-py) —
+# shows it. Uses `docker run` (= the same path the control plane drives via docker-py;
+# NOT docker-compose). Needs Docker.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -24,7 +24,7 @@ $D build -t linuxmuster-squid:alsmoke "$ROOT/image" >/dev/null 2>&1 \
 printf 'dummy-keytab-content' > "$KT"; chmod 600 "$KT"
 $D rm -f "$NAME" >/dev/null 2>&1 || true
 
-echo "== run container (read-only, gehärtet — wie im Produktions-Pfad) =="
+echo "== run container (read-only, hardened — like in the production path) =="
 $D run -d --name "$NAME" \
     --read-only --tmpfs /run --tmpfs /tmp --tmpfs /var/log/squid --tmpfs /var/spool/squid \
     --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add DAC_OVERRIDE --cap-add CHOWN \
@@ -35,9 +35,9 @@ $D run -d --name "$NAME" \
     linuxmuster-squid:alsmoke >/dev/null
 sleep 8
 
-echo "== Request anstoßen + auf Access-Log in docker logs warten (Poll, bis 25s) =="
-# Poll statt fixem sleep: der Weg Tailer -> Pipe -> dockerd -> json-log hat eine variable
-# Latenz; jede Runde einen Request erzeugen und docker logs prüfen.
+echo "== trigger request + wait for access log in docker logs (poll, up to 25s) =="
+# Poll instead of a fixed sleep: the path tailer -> pipe -> dockerd -> json-log has a variable
+# latency; each round generate a request and check docker logs.
 ok=0
 for _ in $(seq 1 25); do
     $D exec "$NAME" squidclient -h 127.0.0.1 -p 3128 http://probe.invalid/ >/dev/null 2>&1 || true
@@ -45,11 +45,11 @@ for _ in $(seq 1 25); do
     sleep 1
 done
 if [ "$ok" = 1 ]; then
-    echo "  [PASS] Squid-Access-Log erscheint in docker logs"
+    echo "  [PASS] Squid access log appears in docker logs"
 else
-    echo "  [FAIL] Access-Log NICHT in docker logs"; fail=1
-    echo "  --- docker logs (Auszug) ---"; $D logs "$NAME" 2>&1 | tail -10 | sed 's/^/    /'
+    echo "  [FAIL] access log NOT in docker logs"; fail=1
+    echo "  --- docker logs (excerpt) ---"; $D logs "$NAME" 2>&1 | tail -10 | sed 's/^/    /'
 fi
 
-echo "== access-log smoke: $fail Fehler =="
+echo "== access-log smoke: $fail failures =="
 exit "$fail"

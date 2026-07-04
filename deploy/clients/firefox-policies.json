@@ -1,5 +1,5 @@
 {
-  "_comment": "SPDX-License-Identifier: GPL-3.0-or-later — Firefox enterprise policy (policies.json bzw. ADMX). Lehrer-Variante; für Schüler den FQDN auf proxy-students.* ändern und per GPO-Security-Filtering/ILT der jeweiligen Gruppe zuweisen. FQDNs an eure AD-DNS-Domain anpassen.",
+  "_comment": "Firefox enterprise policy (policies.json / ADMX). Teacher variant; for students change the FQDN to proxy-students.* and assign it to the respective group via GPO security filtering / ILT. Adjust the FQDNs to your AD DNS domain.",
   "policies": {
     "Proxy": {
       "Mode": "manual",

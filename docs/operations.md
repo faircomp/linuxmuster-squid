@@ -3,27 +3,27 @@ SPDX-FileCopyrightText: Kevin Stenzel
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# Betrieb
+# Operations
 
-Kurzreferenz für den laufenden Betrieb. Architektur → [`architecture.md`](architecture.md),
-Client-Rollout → [`deployment-gpo.md`](deployment-gpo.md), Keytabs/DNS →
+Quick reference for day-to-day operations. Architecture → [`architecture.md`](architecture.md),
+client rollout → [`deployment-gpo.md`](deployment-gpo.md), keytabs/DNS →
 [`keytab-and-dns.md`](keytab-and-dns.md).
 
-## Installation (Control-Plane-Tooling)
+## Installation (control-plane tooling)
 
 ```
-apt install ./linuxmuster-squid_<version>_all.deb     # bzw. aus dem lmn73-apt-Repo
-systemctl status linuxmuster-squid                    # sollte "active" sein
+apt install ./linuxmuster-squid_<version>_all.deb     # or from the lmn73 apt repo
+systemctl status linuxmuster-squid                    # should be "active"
 ```
-Der postinst legt den System-User `lmnsquid` (in Gruppe `docker`) an, generiert einen
-zufälligen API-Token in `/etc/linuxmuster-squid/config.yml` (0600) und startet den Dienst
-(gebunden an `127.0.0.1:8080`).
+The postinst creates the system user `lmnsquid` (in group `docker`), generates a
+random API token in `/etc/linuxmuster-squid/config.yml` (0600) and starts the service
+(bound to `127.0.0.1:8080`).
 
-## Instanzen verwalten (CLI = dünner Client der REST-API)
+## Managing instances (CLI = thin client of the REST API)
 
-> **Tipp:** Die exakten `--ad-group`-Werte je Schule + fertige `create`-Befehle liefert
-> `scripts/discover-ad-facts.sh` (auf dem DC ausführen, join-frei) — beugt vertippten
-> Gruppennamen vor (die sonst einen stillen 403 verursachen).
+> **Tip:** The exact `--ad-group` values per school + ready-made `create` commands are
+> provided by `scripts/discover-ad-facts.sh` (run on the DC, join-free) — prevents mistyped
+> group names (which would otherwise cause a silent 403).
 
 ```
 lmnsquid create --school default-school --role teachers --ad-group teachers \
@@ -37,97 +37,97 @@ lmnsquid stop|start|restart default-school-teachers
 lmnsquid logs default-school-teachers --tail 100
 lmnsquid rm default-school-teachers
 ```
-Der Keytab muss vorher als Secret `<keytab-secret>` in `secrets_dir`
-(`/etc/linuxmuster-squid/secrets`) liegen — siehe `keytab-and-dns.md`.
+The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
+(`/etc/linuxmuster-squid/secrets`) — see `keytab-and-dns.md`.
 
-## Updates (digest-gepinnt, Health-Auto-Rollback)
+## Updates (digest-pinned, health auto-rollback)
 
 ```
-lmnsquid update default-school-teachers ghcr.io/faircomp/linuxmuster-squid@sha256:<neu>
-lmnsquid rollback default-school-teachers        # auf den letzten Known-Good
+lmnsquid update default-school-teachers ghcr.io/faircomp/linuxmuster-squid@sha256:<new>
+lmnsquid rollback default-school-teachers        # to the last known-good
 ```
-Das Update pullt den neuen Digest, ersetzt den Container, wartet auf `healthy` und
-**rollt bei Fehler automatisch zurück** — die Schule bleibt online. Welcher Digest
-produktiv gehört, entscheidet ein **gemergter Renovate-PR** (nie Auto-Merge).
+The update pulls the new digest, replaces the container, waits for `healthy` and
+**automatically rolls back on failure** — the school stays online. Which digest
+belongs in production is decided by a **merged Renovate PR** (never auto-merge).
 
-## Beobachten
+## Observing
 
 ```
 systemctl status linuxmuster-squid ; journalctl -u linuxmuster-squid
-docker ps --filter name=lmnsquid-                # laufende Proxy-Container
+docker ps --filter name=lmnsquid-                # running proxy containers
 lmnsquid status <name>                            # exists/running/health/image
-lmnsquid logs <name> --tail 100 --grep teacher1   # Live: Access + Squid, optional gefiltert
-lmnsquid logs <name> --since 1783000000            # ab Unix-Epoch-Sekunde
-lmnsquid access-logs <name> --grep blocked.example --since 1782900000  # HISTORIE (Tage/Monate)
+lmnsquid logs <name> --tail 100 --grep teacher1   # live: access + Squid, optionally filtered
+lmnsquid logs <name> --since 1783000000            # from Unix epoch second
+lmnsquid access-logs <name> --grep blocked.example --since 1782900000  # HISTORY (days/months)
 ```
-Mutationen der API laufen ins Audit-Log (`logger "lmnsquid.audit"`). Ist der Docker-Daemon
-weg, antwortet die API mit **503** (nicht rohem 500).
+API mutations go to the audit log (`logger "lmnsquid.audit"`). If the Docker daemon
+is gone, the API responds with **503** (not a raw 500).
 
-### Alerting & Auth-Health (ohne Monitoring-Stack)
+### Alerting & auth health (without a monitoring stack)
 
-- **Instanz down/unhealthy melden:** vorhandene Signale an eure Schul-Infra hängen, z. B.
-  `docker events --filter event=health_status --filter event=die` in ein Skript, das bei
-  `unhealthy`/`die` eine Mail/Matrix-Nachricht schickt (kein Prometheus nötig).
-- **Keytab-Ablauf früh erkennen** (sonst ganze Schule offline, wenn der Dienst-Account das
-  Passwort rotiert): `klist -kt <keytab>` zeigt KVNO/Enctypes; ein Cron alarmiert bei einem
-  Spike von `Negotiate … BH` / 407-nach-Ticket im Access-Log
-  (`lmnsquid access-logs <name> --grep BH`). Nach Rotation: Keytab neu exportieren, Instanz
-  `restart`. Siehe [`keytab-and-dns.md`](keytab-and-dns.md) (KVNO/SPN-Fallstricke).
+- **Report instance down/unhealthy:** hook existing signals into your school infra, e.g.
+  `docker events --filter event=health_status --filter event=die` into a script that sends a
+  mail/Matrix message on `unhealthy`/`die` (no Prometheus needed).
+- **Detect keytab expiry early** (otherwise the whole school goes offline when the service
+  account rotates its password): `klist -kt <keytab>` shows KVNO/enctypes; a cron alerts on a
+  spike of `Negotiate … BH` / 407-after-ticket in the access log
+  (`lmnsquid access-logs <name> --grep BH`). After rotation: re-export the keytab, `restart`
+  the instance. See [`keytab-and-dns.md`](keytab-and-dns.md) (KVNO/SPN pitfalls).
 
-## Logs, Rotation & Aufbewahrung
+## Logs, rotation & retention
 
-- **Zwei Log-Wege:** (1) der Squid-**Access-Log** wird per Tailer auf Container-stdout
-  gespiegelt → `docker/lmnsquid logs` (Live-Blick, gedeckelter docker-json-log); (2) die
-  **dauerhafte, durchsuchbare Historie** liegt gzip-rotiert im **persistenten Log-Volume**
-  `lmnsquid-logs-<name>` (`/var/log/squid`), überlebt Neustarts/Updates.
-- **Rotation:** `logrotate` rotiert täglich + gzip; behalten wird `--log-retention-days`
-  (Default **30**, konfigurierbar bis 3650) → das *ist* die Aufbewahrungs-/Löschfrist.
-- **Historie abfragen:** `GET /v1/instances/{name}/logs/access?since=&until=&grep=` bzw.
-  `lmnsquid access-logs …` durchsucht alle rotierten `.gz`-Tagesdateien.
-- **Plattenplatz:** grob `Retention-Tage × ~2 MB gepackt × Instanzen` — bei 90 Tagen
-  ≈ 180 MB/Instanz. Im Blick behalten.
-- **Für zentrale Langzeit-Analyse** stattdessen den Docker-`syslog`-Log-Treiber an euren
-  vorhandenen syslog/SIEM hängen — die Control-Plane ist **keine** Log-Datenbank.
+- **Two log paths:** (1) the Squid **access log** is mirrored to container stdout by a tailer
+  → `docker/lmnsquid logs` (live view, capped docker-json log); (2) the **durable, searchable
+  history** lives gzip-rotated in the **persistent log volume** `lmnsquid-logs-<name>`
+  (`/var/log/squid`), surviving restarts/updates.
+- **Rotation:** `logrotate` rotates daily + gzip; retained is `--log-retention-days`
+  (default **30**, configurable up to 3650) → that *is* the retention/deletion period.
+- **Query history:** `GET /v1/instances/{name}/logs/access?since=&until=&grep=` or
+  `lmnsquid access-logs …` searches all rotated `.gz` daily files.
+- **Disk space:** roughly `retention-days × ~2 MB packed × instances` — at 90 days
+  ≈ 180 MB/instance. Keep an eye on it.
+- **For centralized long-term analysis** instead hook the Docker `syslog` log driver into your
+  existing syslog/SIEM — the control plane is **not** a log database.
 
-### ⚠️ Datenschutz (DSGVO)
+### ⚠️ Data protection (GDPR)
 
-Access-Logs zeigen **wer welche Seite besucht/geblockt bekam** = personenbezogene Daten
-(Schüler-Surfverhalten). Daher:
-- **Retention knapp halten** und dokumentieren (Zweckbindung, Löschfrist = `log_retention_days`).
-- **Access-Logging pro Instanz abschaltbar:** `access_log_enabled: false` → Squid protokolliert
-  keine Requests (die Gruppen-ACL/Filterung greift unverändert).
-- Zugriff auf die Logs (API-Token) eng halten; Abfragen laufen ins Audit-Log.
+Access logs show **who visited/was blocked from which site** = personal data
+(student browsing behavior). Therefore:
+- **Keep retention tight** and document it (purpose limitation, deletion period = `log_retention_days`).
+- **Access logging can be disabled per instance:** `access_log_enabled: false` → Squid logs
+  no requests (the group ACL/filtering still applies unchanged).
+- Keep access to the logs (API token) tight; queries go to the audit log.
 
-## Sicherung
+## Backup
 
-- `/etc/linuxmuster-squid/config.yml` (API-Token!), `/etc/linuxmuster-squid/secrets/` (Keytabs),
-- `instances_dir` (`/var/lib/linuxmuster-squid/instances/*.yaml` — git-versioniert = Change-Log;
-  der postinst legt das Repo an),
-- Log-**Volumes** (`lmnsquid-logs-<name>`) nur, falls die Access-Historie aufbewahrungspflichtig
-  ist — das Cache-Volume (`lmnsquid-cache-<name>`) ist **wegwerfbar**.
+- `/etc/linuxmuster-squid/config.yml` (API token!), `/etc/linuxmuster-squid/secrets/` (keytabs),
+- `instances_dir` (`/var/lib/linuxmuster-squid/instances/*.yaml` — git-versioned = change log;
+  the postinst creates the repo),
+- Log **volumes** (`lmnsquid-logs-<name>`) only if the access history is subject to retention
+  requirements — the cache volume (`lmnsquid-cache-<name>`) is **disposable**.
 
-## Restore / Disaster-Recovery
+## Restore / disaster recovery
 
-Frischer Host → laufende Instanzen:
+Fresh host → running instances:
 ```
-apt install ./linuxmuster-squid_<version>_all.deb          # Dienst kommt hoch
-# API-Token behalten: config.yml zurückspielen ODER neuen Token akzeptieren
-cp -a <backup>/secrets/*        /etc/linuxmuster-squid/secrets/      # Keytabs
+apt install ./linuxmuster-squid_<version>_all.deb          # service comes up
+# keep the API token: restore config.yml OR accept the new token
+cp -a <backup>/secrets/*        /etc/linuxmuster-squid/secrets/      # keytabs
 cp -a <backup>/instances/*.yaml /var/lib/linuxmuster-squid/instances/
 chown -R lmnsquid:lmnsquid /etc/linuxmuster-squid/secrets /var/lib/linuxmuster-squid/instances
-lmnsquid reconcile      # liest den Soll-Zustand + pullt die gepinnten Digests -> Container laufen
+lmnsquid reconcile      # reads the desired state + pulls the pinned digests -> containers run
 ```
-- **`lmnsquid reconcile`** (`POST /v1/reconcile`) wendet **alle** gespeicherten Instanzen erneut
-  an — auch zum Beheben von Drift nach einem Vorfall.
-- **Reboot** braucht das nicht: `restart_policy: unless-stopped` bringt laufende Container zurück.
-- **Downgrade des Tools:** älteres `.deb` installieren → der postinst startet den Dienst neu
-  (lädt den alten Code). **Cache-Volume kaputt** (Container bleibt unhealthy nach Stromausfall):
+- **`lmnsquid reconcile`** (`POST /v1/reconcile`) re-applies **all** stored instances
+  — also to fix drift after an incident.
+- **Reboot** doesn't need this: `restart_policy: unless-stopped` brings running containers back.
+- **Downgrade the tool:** install an older `.deb` → the postinst restarts the service
+  (loads the old code). **Cache volume broken** (container stays unhealthy after a power outage):
   `docker rm -f <container>` + `docker volume rm lmnsquid-cache-<name>` → `lmnsquid reconcile`.
 
-## Sicherheits-Posture (Kurz)
+## Security posture (brief)
 
-- API nur `127.0.0.1`, Bearer-Token (konstant-zeitiger Vergleich); Docker-Socket-Zugriff
-  ist **root-äquivalent** → nicht über localhost hinaus exponieren, Socket-Proxy empfohlen.
-- Data-Plane-Container: non-root (`proxy`), **read-only-Rootfs**, `cap_drop: ALL`,
-  `no-new-privileges`, Keytab als ro-Secret. Kein HTTPS-MITM (nur SNI-splice/CONNECT).
-- systemd-Dienst gehärtet (`ProtectSystem=strict`, `NoNewPrivileges`, …).
+- API on `127.0.0.1` only, Bearer token (constant-time comparison); Docker socket access
+  is **root-equivalent** → do not expose beyond localhost, socket proxy recommended.
+- Data-plane container: non-root (`proxy`), **read-only rootfs**, `cap_drop: ALL`,
+  `no-new-privileges`, keytab as ro secret. No HTTPS MITM (only SNI splice/CONNECT).
+- systemd service hardened (`ProtectSystem=strict`, `NoNewPrivileges`, …).

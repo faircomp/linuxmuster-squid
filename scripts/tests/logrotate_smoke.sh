@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Smoke: der Access-Log auf einem persistenten Volume wird rotiert (gzip) und die
-# Retention (LOG_RETENTION_DAYS) greift. Erzwingt Rotation via `logrotate -f` (statt
-# einen Tag zu warten). Braucht Docker.
+# Smoke: the access log on a persistent volume is rotated (gzip) and the
+# retention (LOG_RETENTION_DAYS) takes effect. Forces rotation via `logrotate -f` (instead
+# of waiting a day). Needs Docker.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -23,7 +23,7 @@ $D build -t linuxmuster-squid:lrsmoke "$ROOT/image" >/dev/null 2>&1 \
 printf 'dummy-keytab' > "$KT"; chmod 600 "$KT"
 $D rm -f "$NAME" >/dev/null 2>&1 || true; $D volume rm "$VOL" >/dev/null 2>&1 || true
 
-echo "== run container (persistentes Log-Volume, LOG_RETENTION_DAYS=2) =="
+echo "== run container (persistent log volume, LOG_RETENTION_DAYS=2) =="
 $D run -d --name "$NAME" \
     --read-only --tmpfs /run --tmpfs /tmp --tmpfs /var/spool/squid \
     -v "$VOL:/var/log/squid" \
@@ -38,29 +38,29 @@ sleep 8
 gen(){ $D exec "$NAME" squidclient -h 127.0.0.1 -p 3128 http://probe.invalid/ >/dev/null 2>&1 || true; }
 rot(){ $D exec "$NAME" logrotate -f -s /var/log/squid/.logrotate.state /run/lmnsquid/logrotate.conf 2>/dev/null || true; }
 
-echo "== 3x erzeugen + rotieren (Retention=2 -> access.log.3* darf nicht bleiben) =="
+echo "== 3x generate + rotate (retention=2 -> access.log.3* must not remain) =="
 for _ in 1 2 3; do gen; sleep 1; rot; sleep 1; done
 
-echo "== Dateien in /var/log/squid =="
+echo "== files in /var/log/squid =="
 $D exec "$NAME" ls -1 /var/log/squid 2>/dev/null | sed 's/^/  /'
 
 if $D exec "$NAME" sh -c 'ls /var/log/squid/access.log.*.gz >/dev/null 2>&1'; then
-    echo "  [PASS] rotierte gzip-Datei vorhanden"
+    echo "  [PASS] rotated gzip file present"
 else
-    echo "  [FAIL] keine gzip-Rotation"; fail=1
+    echo "  [FAIL] no gzip rotation"; fail=1
 fi
 if $D exec "$NAME" sh -c 'ls /var/log/squid/access.log.3* >/dev/null 2>&1'; then
-    echo "  [FAIL] Retention greift nicht (access.log.3* existiert)"; fail=1
+    echo "  [FAIL] retention not taking effect (access.log.3* exists)"; fail=1
 else
-    echo "  [PASS] Retention: access.log.3* nicht vorhanden"
+    echo "  [PASS] retention: access.log.3* not present"
 fi
 
-echo "== historische Abfrage: zcat über current + rotiert + gz (wie access_logs()) =="
+echo "== historical query: zcat over current + rotated + gz (like access_logs()) =="
 if $D exec "$NAME" sh -c 'zcat -f /var/log/squid/access.log* 2>/dev/null | grep -Fq "GET"'; then
-    echo "  [PASS] Access-Historie über rotierte+gz-Dateien abfragbar"
+    echo "  [PASS] access history queryable over rotated+gz files"
 else
-    echo "  [FAIL] historische Abfrage findet nichts"; fail=1
+    echo "  [FAIL] historical query finds nothing"; fail=1
 fi
 
-echo "== logrotate smoke: $fail Fehler =="
+echo "== logrotate smoke: $fail errors =="
 exit "$fail"

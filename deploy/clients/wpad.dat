@@ -1,16 +1,18 @@
+// SPDX-FileCopyrightText: Kevin Stenzel
 // SPDX-License-Identifier: GPL-3.0-or-later
-// WPAD/PAC-Beispiel (optional, als Fallback zur expliziten GPO-Zuweisung).
-// WICHTIG: WPAD kann NICHT nach Benutzer/Rolle unterscheiden — die Lehrer/Schüler-
-// Trennung erzwingt die AD-Gruppen-ACL am Proxy (server-seitig). Für eine Vorauswahl
-// pro Raum/Subnetz ggf. isInNet() nutzen. Kein wpad-PTR anlegen (bricht Linux-SSO).
+// WPAD/PAC example (optional, as a fallback to explicit GPO assignment).
+// IMPORTANT: WPAD can NOT distinguish by user/role -- the teacher/student
+// split is enforced by the AD group ACL at the proxy (server-side). For a
+// pre-selection per room/subnet, use isInNet() if needed. Do not create a
+// wpad PTR record (it breaks Linux SSO).
 function FindProxyForURL(url, host) {
-    // Intern immer direkt (LDAP, LINBO, WebUI, interne Dienste)
+    // Internal traffic always direct (LDAP, LINBO, WebUI, internal services)
     if (isPlainHostName(host) ||
         dnsDomainIs(host, ".linuxmuster.meineschule.de") ||
         isInNet(host, "10.0.0.0", "255.0.0.0")) {
         return "DIRECT";
     }
-    // Beispiel: Schüler-Subnetz -> Schüler-Proxy, sonst Lehrer-Proxy.
+    // Example: student subnet -> student proxy, otherwise teacher proxy.
     if (isInNet(myIpAddress(), "10.2.0.0", "255.255.0.0")) {
         return "PROXY proxy-students.linuxmuster.meineschule.de:3128; DIRECT";
     }
