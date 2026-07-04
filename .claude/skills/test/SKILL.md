@@ -38,9 +38,9 @@ gitignored `.claude/settings.local.json`). Confirm with `crabbox doctor`.
 `e2e`/`all` refuse to run without `LMNSQUID_ALLOW_REAL=1` (a guard so heavy suites
 never fire by accident on the dev box).
 
-> The `scripts/tests/run.sh` aggregator and `crabbox_bootstrap.sh` are established
-> in roadmap **P0/P1** (see `ROADMAP.md`). Until then, wire new heavy tests into
-> that aggregator rather than one-off scripts.
+> The `scripts/tests/run.sh` aggregator and `crabbox_bootstrap.sh` are the
+> established entry points. Wire new heavy tests into that aggregator rather
+> than one-off scripts.
 
 ## What the heavy E2E must actually prove
 

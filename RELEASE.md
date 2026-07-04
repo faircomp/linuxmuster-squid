@@ -38,7 +38,7 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   `apt install` of the new `.deb` **automatically restarts the service** (postinst `try-restart`),
   so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). ⏸ Signing:
   see `packaging/build-deb.sh` (GPG key / lmn73 repo `Release` signature).
-- **Git tag** `vX.Y.Z` only once the §0.1 acceptance criteria (ROADMAP) are met.
+- **Git tag** `vX.Y.Z` only once the §0.1 acceptance criteria are met.
 
 ## Ongoing releases
 

@@ -12,8 +12,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 **Squid proxy for linuxmuster.net 7** (Ubuntu 24.04 / Samba AD): an explicit
 forward proxy with **Kerberos SSO** and **AD group ACLs** (teachers/students),
 one isolated instance per **(school × role)**, managed via a
-**REST API + CLI**. The detailed plan lives in [`ROADMAP.md`](ROADMAP.md),
-the architecture in [`docs/architecture.md`](docs/architecture.md), the security
+**REST API + CLI**. The architecture lives in [`docs/architecture.md`](docs/architecture.md), the security
 assumptions in [`docs/threat-model.md`](docs/threat-model.md), the decisions in
 [`docs/decisions.md`](docs/decisions.md), the test strategy in
 [`docs/test-strategy.md`](docs/test-strategy.md).
@@ -152,8 +151,7 @@ Docker, and the secure operation of school/network infrastructure.
 
 A code change without a matching docs update counts as incomplete. Before "done", check:
 `docs/architecture.md`, `docs/threat-model.md`, `docs/test-strategy.md`,
-`docs/decisions.md` (ADRs), **`ROADMAP.md`** (phase progress + "current
-status" line), `README.md`, `CHANGELOG.md` (from the first version onward). The docs update belongs
+`docs/decisions.md` (ADRs), `README.md`, `CHANGELOG.md` (from the first version onward). The docs update belongs
 in **the same commit** as the code change. Wrong docs are a bug —
 fix them, even if not directly part of the change.
 

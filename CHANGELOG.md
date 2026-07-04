@@ -11,8 +11,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semv
 
 ### Changed
 - **Project language switched to English** across all docs, code comments, and scripts
-  (README, `docs/`, ROADMAP, `CLAUDE.md`, shell/YAML/Dockerfile comments). Only
+  (README, `docs/`, `CLAUDE.md`, shell/YAML/Dockerfile comments). Only
   maintainer↔user conversation stays German.
+
+### Removed
+- `ROADMAP.md` (all phases complete) and the `/advance-roadmap` dev skill that drove it.
 
 ### Added
 - **REUSE 3.3 license compliance** (`reuse lint` green, 77/77): `LICENSES/GPL-3.0-or-later.txt`,
@@ -25,7 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semv
 
 ## [1.0.0-rc3] - 2026-07-03
 
-Gap-review backlog (ROADMAP P11) worked off — deployment reality,
+Gap-review backlog (P11) worked off — deployment reality,
 operations, honesty. All items tested automatically.
 
 ### Fixed

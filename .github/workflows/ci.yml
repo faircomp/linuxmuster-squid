@@ -4,7 +4,10 @@
 # (The heavy Kerberos + docker-py E2E runs on crabbox, not in GitHub CI.)
 name: ci
 
-on: [push, pull_request]
+on:
+  push:
+    branches: ['**']
+  pull_request:
 
 jobs:
   fast:

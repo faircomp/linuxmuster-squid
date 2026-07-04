@@ -13,7 +13,7 @@ access rules** (teachers / students), one isolated instance per
 > **Status:** **`v1.0.0-rc3` — code-complete & E2E-verified** (all 11 phases
 > P0–P11, `run.sh all` green: Unit 47 + mypy + ruff + E2E 9/9 + docker integration +
 > `.deb` install/upgrade + class load 50/50; security review with all findings fixed —
-> see **[`CHANGELOG.md`](CHANGELOG.md)** / **[`ROADMAP.md`](ROADMAP.md)**). Before
+> see **[`CHANGELOG.md`](CHANGELOG.md)**). Before
 > production use, still **human gates**: manual Windows GPO acceptance
 > (**[`docs/deployment-gpo.md`](docs/deployment-gpo.md)**), GPG signing of the `.deb`
 > with the linuxmuster key, site-specific AD facts (Realm/Base DN/group DN).
