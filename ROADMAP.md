@@ -384,7 +384,7 @@ Bedrohungsmodell geschlossen, Doku vollständig, Review bestanden, `v1.0.0`.
 - [x] Negativ-/Sicherheitskatalog grün (`test_validation.py`: Traversal/Injection/Image-DoS/Name-Immutability abgelehnt; E2E-Negatives 407/403).
 - [x] Adversarialer Security-Review (5 Reviewer über den Code) — **25 Befunde, alle echten behoben & verifiziert**.
 - [x] Doku vollständig: `deployment-gpo.md`, `operations.md`, `keytab-and-dns.md`, `README.md`, `CHANGELOG.md` (Keep-a-Changelog + SemVer).
-- [~] Last-/Soak-Smoke: bewusst leicht (E2E fährt 2 Instanzen parallel; externe-ACL-`ttl/grace` im Template getunt) — dedizierter Lasttest optional.
+- [x] **Last-/Soak-Smoke** — der dedizierte Lasttest ist in **P11.7** nachgeliefert (50 parallele Auth → 50/50 200, 0 5xx); externe-ACL-`ttl/grace` im Template getunt.
 - [x] **Alle autonom testbaren §0.1-Kriterien verifiziert** → Tag `v1.0.0-rc1` (volles `v1.0.0` nach den Human-Gates).
 
 **Definition of Done:** Alle §0.1-Kriterien erfüllt und real bewiesen (crabbox-
