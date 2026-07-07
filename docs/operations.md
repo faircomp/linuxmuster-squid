@@ -76,6 +76,22 @@ is gone, the API responds with **503** (not a raw 500).
 
 ## Logs, rotation & retention
 
+**Where they are on disk** (`<name>` = instance name, e.g. `default-school-teachers`; the
+container is `lmnsquid-<name>`):
+
+- **Control-plane service:** systemd journal only — `journalctl -u linuxmuster-squid` (no log
+  file on disk). API mutations additionally go to the audit log (`logger` tag `lmnsquid.audit`
+  → syslog/journal).
+- **Squid access log:** container `/var/log/squid/access.log`; on the host in the per-instance
+  volume `lmnsquid-logs-<name>` → `/var/lib/docker/volumes/lmnsquid-logs-<name>/_data/`
+  (default local driver), with rotated `access.log.<n>.gz` alongside.
+- **Squid cache log:** container `/var/log/squid/cache.log`, same volume (rotated weekly, keep 4).
+- **Cache spool** (not a log, same scheme): volume `lmnsquid-cache-<name>` → `/var/spool/squid`
+  — disposable.
+
+The control-plane install tree itself (`/opt`, `/etc`, `/var/lib/linuxmuster-squid`) holds **no**
+logs; all request/cache logs live in the Docker volumes above.
+
 - **Two log paths:** (1) the Squid **access log** is mirrored to container stdout by a tailer
   → `docker/lmnsquid logs` (live view, capped docker-json log); (2) the **durable, searchable
   history** lives gzip-rotated in the **persistent log volume** `lmnsquid-logs-<name>`
