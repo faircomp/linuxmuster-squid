@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from lmnsquid.models import Instance, UpdateRequest
+from lmnsquid.models import DEFAULT_IMAGE, Instance, UpdateRequest
 
 
 def _base(**over: Any) -> dict[str, Any]:
@@ -61,6 +61,30 @@ def test_update_request_requires_tag_or_digest() -> None:
     with pytest.raises(ValidationError):
         UpdateRequest(image="ubuntu")
     UpdateRequest(image="ghcr.io/x/y:2.0")
+
+
+def test_instance_defaults_to_pinned_image() -> None:
+    """Omitting image falls back to the maintained, digest-pinned default."""
+    inst = Instance(**{k: v for k, v in _base().items() if k != "image"})
+    assert inst.image == DEFAULT_IMAGE
+    assert "@sha256:" in inst.image
+
+
+def test_update_request_defaults_to_pinned_image() -> None:
+    assert UpdateRequest().image == DEFAULT_IMAGE
+
+
+def test_school_subnets_accepts_multiple_and_normalizes() -> None:
+    assert Instance(**_base(school_subnets="10.1.0.0/16 10.2.0.0/16")).school_subnets == (
+        "10.1.0.0/16 10.2.0.0/16"
+    )
+    # comma-separated / messy whitespace normalize to one space-separated string
+    assert Instance(**_base(school_subnets="10.1.0.0/16,  10.2.0.0/16")).school_subnets == (
+        "10.1.0.0/16 10.2.0.0/16"
+    )
+    # a single bad CIDR in the list still fails closed
+    with pytest.raises(ValidationError):
+        Instance(**_base(school_subnets="10.1.0.0/16 not-a-cidr"))
 
 
 def test_api_rejects_traversal_name(client: Any, auth_headers: dict[str, str]) -> None:

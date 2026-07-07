@@ -30,17 +30,28 @@ _IMAGE_RE = re.compile(
     r"^[a-z0-9][a-z0-9._/:-]*(?::[A-Za-z0-9][A-Za-z0-9._-]{0,127}|@sha256:[a-f0-9]{64})$"
 )
 
+# Default data-plane image for new/updated instances, so callers need not pass
+# --image. Pinned by digest and kept current by the maintainers; bumping it only
+# affects instances created or explicitly updated afterwards (existing ones keep
+# their pinned digest until `update`).
+DEFAULT_IMAGE = (
+    "ghcr.io/faircomp/linuxmuster-squid"
+    "@sha256:bcdcf9bd4ded362bc72d12a84eaf6666a84aa2c11575b59c0b20a34784670a5f"
+)
 
-def _valid_cidr_list(value: str) -> bool:
-    parts = value.split()
+
+def _normalize_cidr_list(value: str) -> str:
+    """Split on commas/whitespace, validate each part as a CIDR, and return the
+    parts space-joined — the form squid's ``acl ... src`` line consumes."""
+    parts = [p for p in re.split(r"[,\s]+", value.strip()) if p]
     if not parts:
-        return False
+        raise ValueError("school_subnets must be one or more CIDRs")
     for part in parts:
         try:
             ipaddress.ip_network(part, strict=False)
-        except ValueError:
-            return False
-    return True
+        except ValueError as exc:
+            raise ValueError(f"invalid CIDR {part!r}") from exc
+    return " ".join(parts)
 
 
 class Instance(BaseModel):
@@ -55,7 +66,7 @@ class Instance(BaseModel):
     school_subnets: str = "0.0.0.0/0"
     keytab_secret: str
     cache_size_mb: int = 1000
-    image: str
+    image: str = DEFAULT_IMAGE
     log_retention_days: int = 30
     access_log_enabled: bool = True
 
@@ -97,9 +108,7 @@ class Instance(BaseModel):
     @field_validator("school_subnets")
     @classmethod
     def _v_subnets(cls, v: str) -> str:
-        if not _valid_cidr_list(v):
-            raise ValueError("school_subnets must be space-separated CIDR(s)")
-        return v
+        return _normalize_cidr_list(v)
 
     @field_validator("http_port")
     @classmethod
@@ -156,9 +165,12 @@ class InstancePatch(BaseModel):
 
 
 class UpdateRequest(BaseModel):
-    """Body for ``POST /v1/instances/{name}/update``."""
+    """Body for ``POST /v1/instances/{name}/update``.
 
-    image: str
+    ``image`` may be omitted to update to the maintained :data:`DEFAULT_IMAGE`.
+    """
+
+    image: str = DEFAULT_IMAGE
 
     @field_validator("image")
     @classmethod

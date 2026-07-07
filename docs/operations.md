@@ -29,8 +29,8 @@ random API token in `/etc/linuxmuster-squid/config.yml` (0600) and starts the se
 lmnsquid create --school default-school --role teachers --ad-group teachers \
   --realm LINUXMUSTER.MEINESCHULE.DE \
   --visible-hostname proxy-teachers.linuxmuster.meineschule.de \
-  --image ghcr.io/faircomp/linuxmuster-squid@sha256:<digest> \
-  --keytab-secret proxy.keytab --school-subnets 10.1.0.0/16
+  --keytab-secret proxy.keytab \
+  --school-subnets 10.1.0.0/16 --school-subnets 10.3.0.0/16
 lmnsquid list
 lmnsquid status default-school-teachers
 lmnsquid stop|start|restart default-school-teachers
@@ -40,10 +40,16 @@ lmnsquid rm default-school-teachers
 The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
 (`/etc/linuxmuster-squid/secrets`) — see `keytab-and-dns.md`.
 
+- **`--image` is optional:** it defaults to the maintained, digest-pinned data-plane
+  image; pass `--image ghcr.io/…@sha256:<digest>` only to override a specific instance.
+- **`--school-subnets` is repeatable:** `--school-subnets 10.1.0.0/16 --school-subnets 10.3.0.0/16`
+  (a comma- or space-separated single value works too).
+
 ## Updates (digest-pinned, health auto-rollback)
 
 ```
-lmnsquid update default-school-teachers ghcr.io/faircomp/linuxmuster-squid@sha256:<new>
+lmnsquid update default-school-teachers                                        # -> maintained default digest
+lmnsquid update default-school-teachers ghcr.io/faircomp/linuxmuster-squid@sha256:<new>   # explicit pin
 lmnsquid rollback default-school-teachers        # to the last known-good
 ```
 The update pulls the new digest, replaces the container, waits for `healthy` and

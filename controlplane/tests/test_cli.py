@@ -67,3 +67,33 @@ def test_cli_health_no_auth(monkeypatch: pytest.MonkeyPatch, app: Any) -> None:
     r = runner.invoke(cli.app, ["health"])
     assert r.exit_code == 0
     assert "ok" in r.output
+
+
+def test_cli_create_defaults_image_and_multi_subnet(
+    patch_client: None, instance_data: dict[str, Any]
+) -> None:
+    from lmnsquid.models import DEFAULT_IMAGE
+
+    r = runner.invoke(
+        cli.app,
+        [
+            "create",
+            "--school", "s2",
+            "--role", "students",
+            "--ad-group", "students",
+            "--realm", instance_data["realm"],
+            "--visible-hostname", "proxy2.example.lan",
+            "--keytab-secret", instance_data["keytab_secret"],
+            "--school-subnets", "10.1.0.0/16",
+            "--school-subnets", "10.2.0.0/16",
+        ],
+    )
+    assert r.exit_code == 0, r.output
+
+    show = runner.invoke(cli.app, ["show", "s2-students"]).output
+    assert DEFAULT_IMAGE in show                    # image defaulted (no --image given)
+    assert "10.1.0.0/16 10.2.0.0/16" in show        # subnets joined space-separated
+
+    # update without an explicit image -> maintained default, still succeeds
+    assert runner.invoke(cli.app, ["update", "s2-students"]).exit_code == 0
+    assert runner.invoke(cli.app, ["rm", "s2-students"]).exit_code == 0

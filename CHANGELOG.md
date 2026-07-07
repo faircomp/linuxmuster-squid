@@ -21,6 +21,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semv
 - **REUSE 3.3 license compliance** (`reuse lint` green, 77/77): `LICENSES/GPL-3.0-or-later.txt`,
   SPDX headers on every file, `.license` sidecars for non-comment files (JSON, Debian control).
   `reuse lint` added as a CI gate; `[project.urls]` in `pyproject.toml`.
+- **`--image` is now optional** on `lmnsquid create` — it defaults to a maintained,
+  digest-pinned data-plane image (`DEFAULT_IMAGE`); `lmnsquid update <name>` without an
+  image updates to that same default (health auto-rollback unchanged).
+- **`--school-subnets` is repeatable** (`--school-subnets A --school-subnets B`); the API
+  also accepts a comma-/space-separated list and normalizes it to squid's `src` form.
 
 ### Fixed
 - **CI shellcheck** was failing on pre-existing info-level findings; pinned to
