@@ -53,7 +53,24 @@ class Updater:
         self._prev_file(name).write_text(previous_image, encoding="utf-8")
         audit.info("update start name=%s from=%s to=%s", name, previous_image, new_image)
 
-        self.reconciler.apply(inst.model_copy(update={"image": new_image}))
+        try:
+            self.reconciler.apply(inst.model_copy(update={"image": new_image}))
+        except Exception as exc:
+            # apply() rewrote the store and removed the old container BEFORE the new
+            # one could start (e.g. the new image is unpullable). Broad catch on
+            # purpose: any failure here must restore the known-good image, not leave
+            # the school offline pinned to a broken image.
+            audit.warning(
+                "update apply failed name=%s (%s) -> rollback to %s", name, exc, previous_image
+            )
+            self.reconciler.apply(inst)  # inst still carries previous_image
+            return {
+                "name": name,
+                "updated": False,
+                "rolled_back_to": previous_image,
+                "failed_image": new_image,
+                "error": str(exc),
+            }
         if self._wait_healthy(name):
             audit.info("update ok name=%s image=%s", name, new_image)
             return {
@@ -83,7 +100,13 @@ class Updater:
             if inst.image == target_image:
                 results.append({"name": inst.name, "updated": False, "skipped": True})
                 continue
-            results.append(self.update(inst.name, target_image))
+            try:
+                results.append(self.update(inst.name, target_image))
+            except Exception as exc:
+                # One instance failing (even during its own rollback) must not abort
+                # the whole batch — record it and carry on to the rest.
+                audit.error("update-all failed name=%s (%s)", inst.name, exc)
+                results.append({"name": inst.name, "updated": False, "error": str(exc)})
         return results
 
     def rollback(self, name: str) -> dict[str, Any]:

@@ -103,17 +103,21 @@ envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROU
 squid -k parse -f "${CONF}"
 squid -N -f "${CONF}" -z || true
 
+# Mirror the access log to the container stdout (`docker logs` / `lmnsquid logs`) -- only
+# when access logging is on. After the setuid to 'proxy', Squid cannot write /dev/stdout,
+# so a tailer does it. tail -F follows across rotation; stdbuf -oL forces line buffering
+# (otherwise tail block-buffers to the pipe -> lines appear late/never).
 if [ "${ACCESS_LOG_ENABLED}" != "0" ]; then
-    # Mirror the access log to the container stdout so that `docker logs` / `lmnsquid logs` show it.
-    # After the setuid to 'proxy', Squid cannot write to /dev/stdout (file + tailer).
-    # tail -F follows across rotation; stdbuf -oL forces line buffering (otherwise tail block-
-    # buffers to the pipe -> lines appear late/never).
     stdbuf -oL tail -F /var/log/squid/access.log 2>/dev/null &
+fi
 
-    # logrotate: rotate access.log/cache.log daily resp. weekly + gzip, keep LOG_RETENTION_DAYS.
-    # State file on the PERSISTENT volume so that "daily" is correct across restarts too.
-    # copytruncate: no squid signal needed, tail -F follows the truncation. Retention = deletion deadline.
-    cat > "${RUN}/logrotate.conf" <<EOF
+# logrotate: cache.log ALWAYS (it grows regardless of the access-log toggle -> would fill
+# the volume in privacy mode otherwise), access.log only when enabled. State on the
+# PERSISTENT volume so "daily" is correct across restarts. copytruncate: no squid signal
+# needed, tail -F follows the truncation. Retention = deletion deadline for the access log.
+{
+    if [ "${ACCESS_LOG_ENABLED}" != "0" ]; then
+        cat <<EOF
 /var/log/squid/access.log {
     daily
     rotate ${LOG_RETENTION_DAYS}
@@ -123,6 +127,9 @@ if [ "${ACCESS_LOG_ENABLED}" != "0" ]; then
     notifempty
     copytruncate
 }
+EOF
+    fi
+    cat <<EOF
 /var/log/squid/cache.log {
     weekly
     rotate 4
@@ -132,11 +139,11 @@ if [ "${ACCESS_LOG_ENABLED}" != "0" ]; then
     copytruncate
 }
 EOF
-    ( while true; do
-          logrotate -s /var/log/squid/.logrotate.state "${RUN}/logrotate.conf" 2>/dev/null || true
-          sleep 3600
-      done ) &
-fi
+} > "${RUN}/logrotate.conf"
+( while true; do
+      logrotate -s /var/log/squid/.logrotate.state "${RUN}/logrotate.conf" 2>/dev/null || true
+      sleep 3600
+  done ) &
 
 echo "linuxmuster-squid: instance='${INSTANCE}' fqdn='${VISIBLE_HOSTNAME}' group='${AD_GROUP}@${REALM}' port=${HTTP_PORT}" >&2
 exec squid -N -d1 -f "${CONF}"

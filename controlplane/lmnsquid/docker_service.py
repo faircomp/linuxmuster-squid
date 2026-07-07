@@ -53,7 +53,15 @@ class DockerService:
             return None
 
     def _pull(self, image: str) -> None:
-        """Pull ``image`` best-effort, splitting off an explicit tag if present."""
+        """Pull ``image`` best-effort, handling a ``@sha256:`` digest pin and a
+        ``:tag`` (without mistaking a registry ``host:port`` for a tag)."""
+        if "@" in image:
+            # Digest pin ``repo@sha256:<hex>``: keep the whole ``sha256:<hex>`` as the
+            # tag so docker-py pulls the digest (a plain ``rsplit(':')`` would drop the
+            # ``sha256:`` prefix and pull a non-existent tag).
+            repository, _, digest = image.partition("@")
+            self.client.images.pull(repository, tag=digest)
+            return
         repository = image
         tag: Optional[str] = None
         # Only treat a colon in the final path segment as a tag separator so we

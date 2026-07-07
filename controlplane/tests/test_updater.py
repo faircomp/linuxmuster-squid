@@ -101,3 +101,42 @@ def test_update_all_lifts_stale_and_skips_current(
     assert store.get("a-teachers").image == DEFAULT_IMAGE  # type: ignore[union-attr]
     assert results["b-students"].get("skipped") is True    # untouched (no recreate)
     assert store.get("b-students").image == DEFAULT_IMAGE   # type: ignore[union-attr]
+
+
+def test_update_rolls_back_when_apply_raises(
+    store: Store, docker: Any, reconciler: Reconciler, instance: Instance
+) -> None:
+    reconciler.apply(instance)  # baseline healthy on the good image
+    good = instance.image
+    up = _updater(store, docker, reconciler)
+
+    # 'unpullable' makes the fake raise from ensure_running AFTER removing the old container
+    res = up.update(instance.name, "ghcr.io/example/lmnsquid:unpullable")
+
+    assert res["updated"] is False                              # did not raise out
+    assert res["rolled_back_to"] == good
+    assert store.get(instance.name).image == good              # type: ignore[union-attr]
+    assert docker.status(instance.name)["health"] == "healthy"  # back online on the good image
+
+
+def test_update_all_bad_target_rolls_back_each_and_does_not_abort(
+    store: Store, docker: Any, reconciler: Reconciler
+) -> None:
+    def _inst(school: str, image: str) -> Instance:
+        return Instance(
+            school=school, role="teachers", ad_group="teachers", realm="EX.LAN",
+            visible_hostname=f"{school}.example.lan", keytab_secret=f"{school}.keytab", image=image,
+        )
+
+    reconciler.apply(_inst("a", "ghcr.io/example/lmnsquid:v1"))
+    reconciler.apply(_inst("b", "ghcr.io/example/lmnsquid:v1"))
+    up = _updater(store, docker, reconciler)
+
+    results = {r["name"]: r for r in up.update_all("ghcr.io/example/lmnsquid:unpullable")}
+
+    # BOTH processed (batch not aborted); each rolled back to its known-good image
+    assert set(results) == {"a-teachers", "b-teachers"}
+    for name in ("a-teachers", "b-teachers"):
+        assert results[name]["updated"] is False
+        assert store.get(name).image == "ghcr.io/example/lmnsquid:v1"  # type: ignore[union-attr]
+        assert docker.status(name)["health"] == "healthy"

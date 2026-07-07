@@ -34,6 +34,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semv
 ### Fixed
 - **CI shellcheck** was failing on pre-existing info-level findings; pinned to
   `--severity=warning` in `run.sh` and CI, and fixed a real `SC2164` (`cd … || exit`).
+- **Update auto-rollback now also covers a failing `apply()`** (e.g. an unpullable image):
+  the previous known-good image is restored instead of leaving the instance offline pinned
+  to a broken image; `update-all` no longer aborts the batch on one bad instance.
+- **`_pull` handles `@sha256:` digests** (the default image form) instead of mangling them
+  into a bogus tag that silently failed.
+- **CLI no longer times out** on health-gated `update`/`update-all` (read timeout removed).
+- **postinst** starts the service on reinstall-over-config-files (not only fresh install).
+- **Blocking API endpoints are synchronous** so a long `update-all` no longer stalls the
+  event loop / `/v1/health`.
+- **`cache.log` rotation runs even with `access_log_enabled: false`** (no more unbounded growth).
+- **Docs**: corrected the healthcheck description (407 probe, not `mgr:info`) and the
+  `http_access` order in `architecture.md`.
 
 ## [1.0.0-rc3] - 2026-07-03
 

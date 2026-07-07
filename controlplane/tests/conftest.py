@@ -60,6 +60,11 @@ class FakeDockerService:
 
     def ensure_running(self, inst: Instance) -> dict[str, Any]:
         self.ensure_calls.append(inst.name)
+        if "unpullable" in inst.image:
+            # Mirror the real service: the old container is force-removed before the new
+            # one is created, so a pull/run failure leaves NO container and raises.
+            self.containers.pop(inst.name, None)
+            raise RuntimeError("simulated pull failure")
         self.containers[inst.name] = {
             "running": True,
             "image": inst.image,

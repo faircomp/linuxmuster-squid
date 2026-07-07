@@ -72,7 +72,7 @@ http_access deny !Safe_ports
 http_access deny CONNECT !SSL_ports
 http_access deny CONNECT connect_ip_literal
 http_access deny CONNECT connect_ip6_literal
-http_access allow localhost manager        # only healthcheck (squidclient mgr:info)
+http_access allow localhost manager        # cache manager from localhost (manual debug; healthcheck uses a 407 probe)
 http_access deny manager
 http_access deny !authenticated            # no ticket -> 407 (Negotiate challenge)
 http_access deny blocked_domains           # blocked domain -> 403 (also for teachers)

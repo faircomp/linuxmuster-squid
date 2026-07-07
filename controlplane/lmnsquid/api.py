@@ -82,14 +82,17 @@ def create_app(
     async def version() -> dict[str, str]:
         return {"version": settings.version}
 
+    # NOTE: the endpoints below do blocking docker-py / health-poll work; they are
+    # plain `def` so FastAPI runs them in a threadpool instead of stalling the event
+    # loop (an `update-all` can otherwise hold it for minutes and hang /v1/health).
     @app.post("/v1/reconcile", dependencies=auth)
-    async def reconcile() -> dict[str, Any]:
+    def reconcile() -> dict[str, Any]:
         """Re-apply every stored instance (reconverge drift / restore on a fresh host)."""
         audit.info("reconcile all instances")
         return {"reconciled": reconciler.reconcile_all()}
 
     @app.post("/v1/update-all", dependencies=auth)
-    async def update_all() -> dict[str, Any]:
+    def update_all() -> dict[str, Any]:
         """Lift every instance onto the maintained default image (per-instance rollback)."""
         audit.info("update-all to default image=%s", DEFAULT_IMAGE)
         return {"results": updater.update_all(DEFAULT_IMAGE)}
@@ -193,13 +196,13 @@ def create_app(
 
     # ---------------------------------------------------- digest-pinned updates
     @app.post("/v1/instances/{name}/update", dependencies=auth)
-    async def update_instance(name: str, body: UpdateRequest) -> dict[str, Any]:
+    def update_instance(name: str, body: UpdateRequest) -> dict[str, Any]:
         _require(name)
         audit.info("update request name=%s image=%s", name, body.image)
         return updater.update(name, body.image)
 
     @app.post("/v1/instances/{name}/rollback", dependencies=auth)
-    async def rollback_instance(name: str) -> dict[str, Any]:
+    def rollback_instance(name: str) -> dict[str, Any]:
         _require(name)
         audit.info("rollback request name=%s", name)
         try:

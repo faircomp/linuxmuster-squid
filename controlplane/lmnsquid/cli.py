@@ -27,8 +27,12 @@ def _get_client() -> httpx.Client:
     loopback = any(
         s in settings.api_url for s in ("://127.0.0.1", "://localhost", "://[::1]")
     )
+    # `update` / `update-all` are health-gated server-side (up to ~90s per instance,
+    # times the instance count), so cap only connect and let reads run as long as the
+    # (bounded) server operation needs — otherwise the CLI aborts a working update.
+    timeout = httpx.Timeout(30.0, connect=10.0, read=None)
     return httpx.Client(
-        base_url=settings.api_url, headers=headers, timeout=30.0, verify=not loopback
+        base_url=settings.api_url, headers=headers, timeout=timeout, verify=not loopback
     )
 
 

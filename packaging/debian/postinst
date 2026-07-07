@@ -48,14 +48,14 @@ fi
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
     systemctl enable linuxmuster-squid.service || true
-    # Fresh install ($2 empty) -> start; upgrade ($2 = previous version) -> try-restart,
-    # so the running service REALLY loads the new code from the venv (enable --now
-    # would be a no-op on an already-running service -> old code would stay active).
+    # Load new code on a genuine upgrade (try-restart no-ops if the service is not
+    # running), then start unconditionally so it is up in ALL cases -- fresh install
+    # AND reinstall over a removed/config-files state, where try-restart alone would
+    # leave it stopped. `start` is a no-op if it is already running.
     if [ -n "${2:-}" ]; then
         systemctl try-restart linuxmuster-squid.service || true
-    else
-        systemctl start linuxmuster-squid.service || true
     fi
+    systemctl start linuxmuster-squid.service || true
     # On upgrade, lift all running instances onto this package's pinned default
     # image (best-effort; each instance updates with its own health-check
     # auto-rollback). Wait briefly for the restarted API; never fail the install.

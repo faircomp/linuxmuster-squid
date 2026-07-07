@@ -67,7 +67,8 @@ Status document. Keep it up to date with every substantive change (see
 - **Hardening:** `cache_effective_user proxy`; Keytab as a secret (tmpfs, readable by
   `proxy`); `KRB5CCNAME=FILE:` (the kernel-keyring ccache fails when unprivileged);
   `read_only` rootfs + tmpfs; `cap_drop: ALL` (+ minimal SETUID/SETGID/DAC_OVERRIDE);
-  manager ACL localhost only; logs → stdout/stderr; healthcheck `squidclient mgr:info`.
+  manager ACL localhost only; logs → stdout/stderr; healthcheck = an unauthenticated
+  request that must return **407** (proves Squid is up *and* enforcing Kerberos).
 
 ## 4. Control Plane
 
@@ -105,5 +106,5 @@ Status document. Keep it up to date with every substantive change (see
 2. Squid `407 Proxy-Authenticate: Negotiate` → client sends a Kerberos ticket (SSO).
 3. `negotiate_kerberos_auth` checks against the Keytab → username (`%LOGIN`).
 4. `ext_kerberos_ldap_group_acl` checks group membership (ticket/LDAP, SRV).
-5. `http_access`: `deny !authenticated` → `allow authenticated role_group
-   school_net` → filter (`deny blocked`) → `deny all`. Result 200 / 403 / 407.
+5. `http_access` (first-match-wins): `deny !authenticated` → `deny blocked` →
+   `allow authenticated role_group school_net` → `deny all`. Result 200 / 403 / 407.
