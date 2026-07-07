@@ -34,7 +34,9 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
 - **Data-plane image:** built by the CI on each push/tag; **reference it in production only via
   `@sha256` digest** (instance validation enforces tag/digest). Which digest goes live is decided by
   a **merged Renovate PR** (`automerge:false`), never automatically.
-- **`.deb` (control-plane tooling):** `sudo VERSION=<x.y.z> bash packaging/build-deb.sh`. An
+- **`.deb` (control-plane tooling):** built by CI (`build-deb.yml`) on every `v*` tag and
+  attached to the GitHub Release (`gh release download … && apt install ./linuxmuster-squid_*.deb`);
+  build locally with `sudo VERSION=<x.y.z> bash packaging/build-deb.sh`. An
   `apt install` of the new `.deb` **automatically restarts the service** (postinst `try-restart`),
   so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). ⏸ Signing:
   see `packaging/build-deb.sh` (GPG key / lmn73 repo `Release` signature).
