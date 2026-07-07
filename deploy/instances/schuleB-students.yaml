@@ -8,6 +8,6 @@ realm: LINUXMUSTER.MEINESCHULE.DE
 visible_hostname: proxy-students.schuleb.linuxmuster.meineschule.de
 http_port: 3128
 school_subnets: "10.2.0.0/16"
-keytab_secret: proxy.keytab
+keytab_secret: schuleB.keytab
 cache_size_mb: 2000
 image: "ghcr.io/faircomp/linuxmuster-squid@sha256:PLACEHOLDER"

@@ -51,8 +51,10 @@ Status document. Keep it up to date with every substantive change (see
   `squid.conf` per instance from a template (whitelist variables only).
 - **Auth:** explicit forward proxy (no intercept — proxy auth is impossible
   there). `auth_param negotiate .../negotiate_kerberos_auth -k ${KEYTAB}
-  -s HTTP/${VISIBLE_HOSTNAME}@${REALM}`. Realm UPPERCASE; SPN host = FQDN that
-  clients configure.
+  -s GSS_C_NO_NAME` — Squid accepts **any** principal present in the keytab (key
+  match), so the `HTTP/<connect-fqdn>@REALM` SPN(s) the clients target (realm
+  UPPERCASE) only need to exist in the keytab. The SPN host is the FQDN clients
+  configure; the port is not part of the SPN.
 - **Authz:** `external_acl_type ... %LOGIN ext_kerberos_ldap_group_acl -g ${AD_GROUP}
   -D ${REALM}` → `acl role_group external ...`. Authorization runs only after
   successful authentication (`%LOGIN`).
