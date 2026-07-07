@@ -87,6 +87,9 @@ safer MVP.
 **Status:** Accepted (verified). **Decision:** git as source of truth,
 `image@sha256:` pin, Renovate (`automerge:false`, merge = go/no-go), controlled
 `pull`+`up` with health-check auto-rollback; tooling as a signed `.deb`.
+**`.deb` upgrade lifts instances:** installing a new package runs `update-all` so every
+instance follows that package's pinned `DEFAULT_IMAGE` (the apt install is the human
+go/no-go), each with health auto-rollback; `lmnsquid update-all` does the same on demand.
 **Why:** Watchtower is archived (2025-12-17), has no rollback, applies breaking
 changes blindly, needs a root socket.
 

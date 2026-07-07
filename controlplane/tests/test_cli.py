@@ -97,3 +97,25 @@ def test_cli_create_defaults_image_and_multi_subnet(
     # update without an explicit image -> maintained default, still succeeds
     assert runner.invoke(cli.app, ["update", "s2-students"]).exit_code == 0
     assert runner.invoke(cli.app, ["rm", "s2-students"]).exit_code == 0
+
+
+def test_cli_update_all(patch_client: None, instance_data: dict[str, Any]) -> None:
+    from lmnsquid.models import DEFAULT_IMAGE
+
+    # instance created on a NON-default image
+    runner.invoke(
+        cli.app,
+        [
+            "create",
+            "--school", instance_data["school"],
+            "--role", instance_data["role"],
+            "--ad-group", instance_data["ad_group"],
+            "--realm", instance_data["realm"],
+            "--visible-hostname", instance_data["visible_hostname"],
+            "--keytab-secret", instance_data["keytab_secret"],
+            "--image", "ghcr.io/example/lmnsquid:v1",
+        ],
+    )
+    r = runner.invoke(cli.app, ["update-all"])
+    assert r.exit_code == 0, r.output
+    assert DEFAULT_IMAGE in runner.invoke(cli.app, ["show", "default-school-teachers"]).output

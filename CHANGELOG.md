@@ -26,6 +26,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semv
   image updates to that same default (health auto-rollback unchanged).
 - **`--school-subnets` is repeatable** (`--school-subnets A --school-subnets B`); the API
   also accepts a comma-/space-separated list and normalizes it to squid's `src` form.
+- **`lmnsquid update-all`** (`POST /v1/update-all`) lifts every instance onto `DEFAULT_IMAGE`
+  with per-instance health auto-rollback (instances already on it are skipped). A **`.deb`
+  upgrade** now runs it automatically (best-effort) so running proxies follow the package's
+  pinned image.
 
 ### Fixed
 - **CI shellcheck** was failing on pre-existing info-level findings; pinned to

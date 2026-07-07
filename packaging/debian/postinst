@@ -56,6 +56,18 @@ if [ -d /run/systemd/system ]; then
     else
         systemctl start linuxmuster-squid.service || true
     fi
+    # On upgrade, lift all running instances onto this package's pinned default
+    # image (best-effort; each instance updates with its own health-check
+    # auto-rollback). Wait briefly for the restarted API; never fail the install.
+    if [ -n "${2:-}" ]; then
+        LMN=/opt/linuxmuster-squid/venv/bin/lmnsquid
+        i=0
+        while [ "$i" -lt 30 ]; do
+            "$LMN" health >/dev/null 2>&1 && break
+            i=$((i + 1)); sleep 1
+        done
+        "$LMN" update-all >/dev/null 2>&1 || true
+    fi
 fi
 
 exit 0

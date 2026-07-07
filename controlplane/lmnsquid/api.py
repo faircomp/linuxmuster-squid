@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from .config import Settings
 from .docker_service import DockerService
-from .models import Instance, InstancePatch, UpdateRequest
+from .models import DEFAULT_IMAGE, Instance, InstancePatch, UpdateRequest
 from .reconciler import Reconciler
 from .security import make_verify_token
 from .store import Store
@@ -87,6 +87,12 @@ def create_app(
         """Re-apply every stored instance (reconverge drift / restore on a fresh host)."""
         audit.info("reconcile all instances")
         return {"reconciled": reconciler.reconcile_all()}
+
+    @app.post("/v1/update-all", dependencies=auth)
+    async def update_all() -> dict[str, Any]:
+        """Lift every instance onto the maintained default image (per-instance rollback)."""
+        audit.info("update-all to default image=%s", DEFAULT_IMAGE)
+        return {"results": updater.update_all(DEFAULT_IMAGE)}
 
     # --------------------------------------------------------------- instances
     @app.post(

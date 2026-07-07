@@ -191,6 +191,13 @@ def update(
         _emit(c.post(f"/v1/instances/{name}/update", json=body))
 
 
+@app.command("update-all")
+def update_all() -> None:
+    """Lift every instance onto the maintained default image (health auto-rollback)."""
+    with _get_client() as c:
+        _emit(c.post("/v1/update-all"))
+
+
 @app.command()
 def rollback(name: str) -> None:
     """Roll the instance back to the last known-good image."""

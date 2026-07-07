@@ -73,6 +73,19 @@ class Updater:
             "failed_image": new_image,
         }
 
+    def update_all(self, target_image: str) -> list[dict[str, Any]]:
+        """Update every stored instance to ``target_image``, each with its own
+        health-gated auto-rollback. Instances already on the target are skipped
+        so a no-op run (e.g. a ``.deb`` upgrade whose default did not move) does
+        not needlessly recreate any container."""
+        results: list[dict[str, Any]] = []
+        for inst in self.store.list():
+            if inst.image == target_image:
+                results.append({"name": inst.name, "updated": False, "skipped": True})
+                continue
+            results.append(self.update(inst.name, target_image))
+        return results
+
     def rollback(self, name: str) -> dict[str, Any]:
         """Revert ``name`` to the image recorded before the last update."""
         inst = self.store.get(name)

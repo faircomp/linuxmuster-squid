@@ -73,3 +73,31 @@ def test_update_endpoint(client: Any, auth_headers: dict[str, str], instance_dat
     )
     assert resp.status_code == 200
     assert resp.json()["updated"] is True
+
+
+def test_update_all_lifts_stale_and_skips_current(
+    store: Store, docker: Any, reconciler: Reconciler
+) -> None:
+    from lmnsquid.models import DEFAULT_IMAGE
+
+    def _inst(school: str, role: str, image: str) -> Instance:
+        return Instance(
+            school=school,
+            role=role,
+            ad_group=role,
+            realm="EX.LAN",
+            visible_hostname=f"{school}-{role}.example.lan",
+            keytab_secret=f"{school}-{role}.keytab",
+            image=image,
+        )
+
+    reconciler.apply(_inst("a", "teachers", "ghcr.io/example/lmnsquid:v1"))  # stale
+    reconciler.apply(_inst("b", "students", DEFAULT_IMAGE))                  # already current
+    up = _updater(store, docker, reconciler)
+
+    results = {r["name"]: r for r in up.update_all(DEFAULT_IMAGE)}
+
+    assert results["a-teachers"]["updated"] is True
+    assert store.get("a-teachers").image == DEFAULT_IMAGE  # type: ignore[union-attr]
+    assert results["b-students"].get("skipped") is True    # untouched (no recreate)
+    assert store.get("b-students").image == DEFAULT_IMAGE   # type: ignore[union-attr]

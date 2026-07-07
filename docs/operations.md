@@ -50,11 +50,17 @@ The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
 ```
 lmnsquid update default-school-teachers                                        # -> maintained default digest
 lmnsquid update default-school-teachers ghcr.io/faircomp/linuxmuster-squid@sha256:<new>   # explicit pin
+lmnsquid update-all                              # every instance -> default image (per-instance rollback)
 lmnsquid rollback default-school-teachers        # to the last known-good
 ```
 The update pulls the new digest, replaces the container, waits for `healthy` and
 **automatically rolls back on failure** — the school stays online. Which digest
 belongs in production is decided by a **merged Renovate PR** (never auto-merge).
+
+On a **`.deb` upgrade** the postinst runs `update-all` automatically (best-effort): all
+instances are lifted onto that package's pinned default image, each with its own health-check
+auto-rollback; instances already on the default are skipped, and the apt transaction never
+fails over this. Run `lmnsquid update-all` yourself any time to do the same on demand.
 
 ## Observing
 
