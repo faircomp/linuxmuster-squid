@@ -7,6 +7,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
+## [1.2.0] - 2026-07-08
+
+### Added
+- **`--internet-group` accepts one group per school** (repeat the flag, e.g.
+  `--internet-group internet --internet-group msg-internet`). The proxy requires the role
+  group **and** membership in **any** of the listed internet groups (rendered as
+  `-g g1@REALM:g2@REALM`). Because a user is only ever in their own school's internet group,
+  this enforces *Internetsperre* **at any location** and lets it **follow a visitor** across
+  schools — so global `role-teacher` / `role-student` proxies can still honour the lock.
+  Single-group usage is unchanged.
+
 ## [1.1.1] - 2026-07-08
 
 ### Changed

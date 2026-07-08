@@ -92,8 +92,14 @@ def test_internet_group_optional_and_validated() -> None:
     assert Instance(**_base()).internet_group is None                       # off by default
     assert Instance(**_base(internet_group="internet")).internet_group == "internet"
     assert Instance(**_base(internet_group="msg-internet")).internet_group == "msg-internet"
+    # colon-separated list (one internet group per school) -> OR at the proxy
+    assert Instance(**_base(internet_group="internet:msg-internet")).internet_group == (
+        "internet:msg-internet"
+    )
     with pytest.raises(ValidationError):
         Instance(**_base(internet_group="bad/group"))
+    with pytest.raises(ValidationError):
+        Instance(**_base(internet_group="internet:bad/group"))          # one bad -> reject
 
 
 def test_api_rejects_traversal_name(client: Any, auth_headers: dict[str, str]) -> None:

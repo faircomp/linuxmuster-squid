@@ -85,6 +85,7 @@ def test_cli_create_defaults_image_and_multi_subnet(
             "--visible-hostname", "proxy2.example.lan",
             "--keytab-secret", instance_data["keytab_secret"],
             "--internet-group", "internet",
+            "--internet-group", "msg-internet",
             "--school-subnets", "10.1.0.0/16",
             "--school-subnets", "10.2.0.0/16",
         ],
@@ -94,7 +95,7 @@ def test_cli_create_defaults_image_and_multi_subnet(
     show = runner.invoke(cli.app, ["show", "s2-students"]).output
     assert DEFAULT_IMAGE in show                    # image defaulted (no --image given)
     assert "10.1.0.0/16 10.2.0.0/16" in show        # subnets joined space-separated
-    assert '"internet_group": "internet"' in show   # 2nd gate carried through
+    assert '"internet_group": "internet:msg-internet"' in show   # all schools' internet groups (OR)
 
     # update without an explicit image -> maintained default, still succeeds
     assert runner.invoke(cli.app, ["update", "s2-students"]).exit_code == 0

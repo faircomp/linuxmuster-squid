@@ -34,7 +34,13 @@ fi
 # in that AD group and re-checks it on a SHORT ttl (grace=0, no stale serving), so removing a
 # user from the group blocks their NEW requests within ~30s. Empty -> role group only.
 if [ -n "${INTERNET_GROUP}" ]; then
-    INTERNET_ACL_DEF="external_acl_type inet_group ttl=30 negative_ttl=15 grace=0 %LOGIN /usr/lib/squid/ext_kerberos_ldap_group_acl -m 5 -g ${INTERNET_GROUP}@${REALM}
+    # INTERNET_GROUP is a colon-separated list of internet groups (one per school, e.g.
+    # "internet:msg-internet"). Append @REALM to each -> "g1@REALM:g2@REALM"; the helper
+    # grants access if the user is in ANY of them (OR). A user is only ever in their own
+    # school's internet group, so this enforces "Internetsperre" at any location, and a
+    # visitor keeps their home internet state.
+    INTERNET_GROUPS_G=$(printf '%s' "${INTERNET_GROUP}" | sed "s/[^:]\{1,\}/&@${REALM}/g")
+    INTERNET_ACL_DEF="external_acl_type inet_group ttl=30 negative_ttl=15 grace=0 %LOGIN /usr/lib/squid/ext_kerberos_ldap_group_acl -m 5 -g ${INTERNET_GROUPS_G}
 acl internet_group external inet_group"
     INTERNET_ACL_REF="internet_group"
 else

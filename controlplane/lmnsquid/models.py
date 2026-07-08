@@ -95,11 +95,20 @@ class Instance(BaseModel):
     @field_validator("internet_group")
     @classmethod
     def _v_internet_group(cls, v: str | None) -> str | None:
-        # Optional second gate: membership in the linuxmuster "internet" group
-        # (Internetsperre). None -> feature off (role group only).
-        if v is not None and not _GROUP_RE.match(v):
-            raise ValueError("invalid internet_group")
-        return v
+        # Optional second gate: membership in the linuxmuster "internet" group(s)
+        # (Internetsperre). A colon-separated list of one group per school
+        # (e.g. "internet:msg-internet"); a user passes if in ANY of them (they are
+        # only ever in their own school's group) -> the lock works at any location and
+        # follows visitors. None -> feature off (role group only).
+        if v is None:
+            return v
+        groups = [g for g in v.split(":") if g]
+        if not groups:
+            raise ValueError("internet_group must be one or more group names")
+        for g in groups:
+            if not _GROUP_RE.match(g):
+                raise ValueError(f"invalid internet group {g!r}")
+        return ":".join(groups)
 
     @field_validator("realm")
     @classmethod

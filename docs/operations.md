@@ -44,9 +44,11 @@ The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
   image; pass `--image ghcr.io/…@sha256:<digest>` only to override a specific instance.
 - **`--school-subnets` is repeatable:** `--school-subnets 10.1.0.0/16 --school-subnets 10.3.0.0/16`
   (a comma- or space-separated single value works too).
-- **`--internet-group` (optional):** also require the linuxmuster **internet** group
-  (`internet` / `<school>-internet`) — honours *Internetsperre*: removing a user from the
-  group blocks their new requests within ~30s. Omit to enforce the role group only.
+- **`--internet-group` (optional, repeatable):** also require the linuxmuster **internet**
+  group — honours *Internetsperre* (removing a user from the group blocks their new requests
+  within ~30s). List **one per school** (`--internet-group internet --internet-group
+  msg-internet`) so it covers **visitors** too and works with global `role-teacher`/`role-student`
+  proxies — a user passes if in **any** listed group. Omit to enforce the role group only.
 
 ## Updates (digest-pinned, health auto-rollback)
 
