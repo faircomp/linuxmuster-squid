@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-07-08
 
 ### Changed
 - **Project language switched to English** across all docs, code comments, and scripts
