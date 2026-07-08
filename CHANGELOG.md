@@ -7,6 +7,15 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
+## [1.1.1] - 2026-07-08
+
+### Changed
+- **The proxy port now binds all interfaces (`0.0.0.0`) by default** so LAN clients can
+  reach it out of the box (was `127.0.0.1` — reachable only from the host, hence a fresh
+  proxy answered nothing over its FQDN). Access stays gated by Kerberos auth + the group
+  ACL; set `container_bind_ip` in `config.yml` to a specific IP to narrow it. The
+  control-plane **API keeps binding `127.0.0.1`** (unchanged).
+
 ## [1.1.0] - 2026-07-08
 
 ### Added

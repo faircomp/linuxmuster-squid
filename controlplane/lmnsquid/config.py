@@ -28,7 +28,9 @@ class Settings(BaseSettings):
     bind_host: str = "127.0.0.1"
     bind_port: int = 8080
     api_url: str = "http://127.0.0.1:8080"
-    container_bind_ip: str = "127.0.0.1"  # host IP the proxy container port binds to
+    container_bind_ip: str = "0.0.0.0"  # host IP the proxy port binds to; 0.0.0.0 = all
+    # interfaces so LAN clients can reach it (access is gated by Kerberos + group ACL).
+    # Narrow to a specific IP if the host has an untrusted interface.
     log_max_size: str = "20m"             # docker json-log cap per container (live view)
     log_max_file: int = 5
     version: str = "0.4.0"

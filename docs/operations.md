@@ -159,6 +159,9 @@ lmnsquid reconcile      # reads the desired state + pulls the pinned digests -> 
 
 - API on `127.0.0.1` only, Bearer token (constant-time comparison); Docker socket access
   is **root-equivalent** → do not expose beyond localhost, socket proxy recommended.
+- Proxy ports bind **all interfaces** (`container_bind_ip=0.0.0.0`) by default so LAN clients
+  can reach them — access is gated by **Kerberos + the group ACL** (an unauthenticated request
+  gets 407). Narrow `container_bind_ip` to a specific IP if the host has an untrusted interface.
 - Data-plane container: non-root (`proxy`), **read-only rootfs**, `cap_drop: ALL`,
   `no-new-privileges`, keytab as ro secret. No HTTPS MITM (only SNI splice/CONNECT).
 - systemd service hardened (`ProtectSystem=strict`, `NoNewPrivileges`, …).

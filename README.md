@@ -10,7 +10,7 @@ with **Kerberos SSO** against Samba Active Directory and **group-based
 access rules** (teachers / students), one isolated instance per
 **(school × role)** — managed via a **REST API + CLI**.
 
-> **Status:** **`v1.1.0` — code-complete & E2E-verified** (all 11 phases
+> **Status:** **`v1.1.1` — code-complete & E2E-verified** (all 11 phases
 > P0–P11, `run.sh all` green: Unit 47 + mypy + ruff + E2E 9/9 + docker integration +
 > `.deb` install/upgrade + class load 50/50; security review with all findings fixed —
 > see **[`CHANGELOG.md`](CHANGELOG.md)**). Before

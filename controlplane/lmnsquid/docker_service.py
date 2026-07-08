@@ -26,7 +26,7 @@ class DockerService:
         self,
         docker_host: Optional[str] = None,
         secrets_dir: str = "/etc/linuxmuster-squid/secrets",
-        container_bind_ip: str = "127.0.0.1",
+        container_bind_ip: str = "0.0.0.0",
         log_max_size: str = "20m",
         log_max_file: int = 5,
     ) -> None:
