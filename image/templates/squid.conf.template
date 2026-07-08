@@ -39,6 +39,10 @@ external_acl_type ad_group ttl=300 negative_ttl=60 grace=30 %LOGIN \
     /usr/lib/squid/ext_kerberos_ldap_group_acl -m 5 -g ${AD_GROUP}@${REALM}
 acl role_group external ad_group
 
+# --- Optional: linuxmuster "Internetsperre" (2nd required AD group; rendered by entrypoint,
+#     empty when unused). Short ttl so removing a user from the group blocks within ~30s. ---
+${INTERNET_ACL_DEF}
+
 # --- School scope via source subnet (a school has no marker "on the wire") ---
 acl school_net src ${SCHOOL_SUBNETS}
 
@@ -76,7 +80,7 @@ http_access allow localhost manager        # cache manager from localhost (manua
 http_access deny manager
 http_access deny !authenticated            # no ticket -> 407 (Negotiate challenge)
 http_access deny blocked_domains           # blocked domain -> 403 (also for teachers)
-http_access allow authenticated role_group school_net   # in group + subnet -> 200
+http_access allow authenticated role_group ${INTERNET_ACL_REF} school_net   # in role (+internet) group + subnet -> 200
 http_access deny all                       # authenticated, but not in group -> 403
 
 # --- Cache & Logs ---

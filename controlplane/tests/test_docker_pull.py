@@ -35,3 +35,15 @@ def test_pull_does_not_mistake_registry_port_for_tag() -> None:
     ds = _service_with_mock_client()
     ds._pull("registry.local:5000/proxy:v1")
     ds.client.images.pull.assert_called_once_with("registry.local:5000/proxy", tag="v1")
+
+
+def test_env_for_passes_internet_group() -> None:
+    from lmnsquid.models import Instance
+
+    ds = _service_with_mock_client()
+    base = dict(
+        school="s", role="students", ad_group="students",
+        realm="EX.LAN", visible_hostname="p.example.lan", keytab_secret="k.keytab",
+    )
+    assert ds.env_for(Instance(**base, internet_group="internet"))["INTERNET_GROUP"] == "internet"
+    assert ds.env_for(Instance(**base))["INTERNET_GROUP"] == ""   # unset -> empty (feature off)

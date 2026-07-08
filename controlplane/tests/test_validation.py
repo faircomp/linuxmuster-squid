@@ -45,6 +45,7 @@ def _base(**over: Any) -> dict[str, Any]:
         ("http_port", 70000),
         ("log_retention_days", 0),
         ("log_retention_days", 4000),
+        ("internet_group", "bad/group"),          # path-ish -> invalid
     ],
 )
 def test_instance_rejects_bad_field(field: str, bad: Any) -> None:
@@ -85,6 +86,14 @@ def test_school_subnets_accepts_multiple_and_normalizes() -> None:
     # a single bad CIDR in the list still fails closed
     with pytest.raises(ValidationError):
         Instance(**_base(school_subnets="10.1.0.0/16 not-a-cidr"))
+
+
+def test_internet_group_optional_and_validated() -> None:
+    assert Instance(**_base()).internet_group is None                       # off by default
+    assert Instance(**_base(internet_group="internet")).internet_group == "internet"
+    assert Instance(**_base(internet_group="msg-internet")).internet_group == "msg-internet"
+    with pytest.raises(ValidationError):
+        Instance(**_base(internet_group="bad/group"))
 
 
 def test_api_rejects_traversal_name(client: Any, auth_headers: dict[str, str]) -> None:

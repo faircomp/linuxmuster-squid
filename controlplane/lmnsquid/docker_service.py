@@ -83,6 +83,7 @@ class DockerService:
             "VISIBLE_HOSTNAME": inst.visible_hostname,
             "REALM": inst.realm,
             "AD_GROUP": inst.ad_group,
+            "INTERNET_GROUP": inst.internet_group or "",
             "SCHOOL_SUBNETS": inst.school_subnets,
             "KEYTAB": f"/run/secrets/{inst.keytab_secret}",
             "CACHE_SIZE_MB": str(inst.cache_size_mb),

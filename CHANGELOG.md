@@ -7,6 +7,16 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
+## [1.1.0] - 2026-07-08
+
+### Added
+- **linuxmuster "Internetsperre" support:** optional `--internet-group` per instance
+  (`internet` / `<school>-internet`). The proxy then requires the role group **and** the
+  internet group, re-checked on a short TTL (`grace=0`, no stale serving), so removing a
+  user from the group blocks their new requests within **~30s**. Backward compatible —
+  omitted means role group only (unchanged behaviour). Already-open HTTPS tunnels persist
+  until they close (inherent to a splicing forward proxy).
+
 ## [1.0.0] - 2026-07-08
 
 ### Changed

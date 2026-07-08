@@ -60,6 +60,7 @@ class Instance(BaseModel):
     school: str
     role: str
     ad_group: str
+    internet_group: str | None = None
     realm: str
     visible_hostname: str
     http_port: int = 3128
@@ -89,6 +90,15 @@ class Instance(BaseModel):
     def _v_group(cls, v: str) -> str:
         if not _GROUP_RE.match(v):
             raise ValueError("invalid ad_group")
+        return v
+
+    @field_validator("internet_group")
+    @classmethod
+    def _v_internet_group(cls, v: str | None) -> str | None:
+        # Optional second gate: membership in the linuxmuster "internet" group
+        # (Internetsperre). None -> feature off (role group only).
+        if v is not None and not _GROUP_RE.match(v):
+            raise ValueError("invalid internet_group")
         return v
 
     @field_validator("realm")
@@ -153,6 +163,7 @@ class InstancePatch(BaseModel):
     """
 
     ad_group: str | None = None
+    internet_group: str | None = None
     realm: str | None = None
     visible_hostname: str | None = None
     http_port: int | None = None

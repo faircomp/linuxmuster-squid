@@ -21,12 +21,25 @@ set -eu
 : "${SCHOOL_SUBNETS:=0.0.0.0/0}"          # school is identified by source subnet(s)
 : "${LOG_RETENTION_DAYS:=30}"             # access-log retention in days (logrotate)
 : "${ACCESS_LOG_ENABLED:=1}"              # 1=access log on, 0=off (data privacy)
+: "${INTERNET_GROUP:=}"                   # optional 2nd gate: linuxmuster Internetsperre (empty=off)
 
 # Access log on/off (data privacy): with 0, Squid logs no requests.
 if [ "${ACCESS_LOG_ENABLED}" = "0" ]; then
     ACCESS_LOG_DIRECTIVE="access_log none"
 else
     ACCESS_LOG_DIRECTIVE="access_log stdio:/var/log/squid/access.log squid"
+fi
+
+# linuxmuster "Internetsperre": with INTERNET_GROUP set, the proxy ALSO requires membership
+# in that AD group and re-checks it on a SHORT ttl (grace=0, no stale serving), so removing a
+# user from the group blocks their NEW requests within ~30s. Empty -> role group only.
+if [ -n "${INTERNET_GROUP}" ]; then
+    INTERNET_ACL_DEF="external_acl_type inet_group ttl=30 negative_ttl=15 grace=0 %LOGIN /usr/lib/squid/ext_kerberos_ldap_group_acl -m 5 -g ${INTERNET_GROUP}@${REALM}
+acl internet_group external inet_group"
+    INTERNET_ACL_REF="internet_group"
+else
+    INTERNET_ACL_DEF=""
+    INTERNET_ACL_REF=""
 fi
 
 RUN=/run/lmnsquid
@@ -59,7 +72,7 @@ export KRB5_CONFIG="${RUN}/krb5.conf"
 export LDAPCONF="${RUN}/ldap.conf"
 # envsubst substitutes only EXPORTED variables (otherwise "http_port " => FATAL).
 export INSTANCE HTTP_PORT CACHE_SIZE_MB KEYTAB REALM AD_GROUP VISIBLE_HOSTNAME SCHOOL_SUBNETS
-export ACCESS_LOG_DIRECTIVE
+export ACCESS_LOG_DIRECTIVE INTERNET_ACL_DEF INTERNET_ACL_REF
 
 # krb5.conf: rdns/canonicalize=false so that the ldap/ SPN is built from the literal DC name
 # (via SRV) and NOT via reverse DNS (-> SASL "Local error").
@@ -93,7 +106,7 @@ TEMPLATE=/etc/squid/templates/squid.conf.template
 CONF="${RUN}/squid.conf"
 
 # Only substitute OUR variables so Squid's own %-tokens survive untouched.
-envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROUP} ${VISIBLE_HOSTNAME} ${SCHOOL_SUBNETS} ${ACCESS_LOG_DIRECTIVE}' \
+envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROUP} ${VISIBLE_HOSTNAME} ${SCHOOL_SUBNETS} ${ACCESS_LOG_DIRECTIVE} ${INTERNET_ACL_DEF} ${INTERNET_ACL_REF}' \
     < "${TEMPLATE}" > "${CONF}"
 
 # The blocklist file is normally mounted read-only; create an empty one only if absent.

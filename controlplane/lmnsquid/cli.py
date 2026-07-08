@@ -69,6 +69,10 @@ def create(
     school: str = typer.Option(...),
     role: str = typer.Option(...),
     ad_group: str = typer.Option(...),
+    internet_group: Optional[str] = typer.Option(
+        None,
+        help="also require this AD group (linuxmuster Internetsperre; e.g. 'internet' or '<school>-internet')",
+    ),
     realm: str = typer.Option(...),
     visible_hostname: str = typer.Option(...),
     keytab_secret: str = typer.Option(...),
@@ -99,6 +103,8 @@ def create(
     }
     if image is not None:
         body["image"] = image
+    if internet_group is not None:
+        body["internet_group"] = internet_group
     with _get_client() as c:
         _emit(c.post("/v1/instances", json=body))
 
