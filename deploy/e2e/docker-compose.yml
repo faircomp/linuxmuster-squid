@@ -90,6 +90,35 @@ services:
     cap_add: ["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"]
     security_opt: ["no-new-privileges:true"]
 
+  # Internet gate: teachers AND (internet OR schule2-internet) -> proves the linuxmuster
+  # "Internetsperre" multi-group OR gate (a user passes if in ANY listed internet group,
+  # so it covers visitors) and fail-closed when in none.
+  squid-inet:
+    image: linuxmuster-squid:dev
+    hostname: squid3.example.internal
+    depends_on: [samba-dc, squid]
+    environment:
+      INSTANCE: "e2e-inet"
+      VISIBLE_HOSTNAME: "squid3.example.internal"
+      REALM: "EXAMPLE.INTERNAL"
+      AD_GROUP: "teachers"
+      INTERNET_GROUP: "internet:schule2-internet"
+      SCHOOL_SUBNETS: "0.0.0.0/0"
+      KEYTAB: "/shared/squid.keytab"
+      CACHE_SIZE_MB: "200"
+    dns: ["172.28.0.2"]
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.12
+    volumes:
+      - shared:/shared:ro
+      - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
+    read_only: true
+    tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+
   # Allowed target (returns 200).
   origin:
     image: nginx:alpine

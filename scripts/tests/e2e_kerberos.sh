@@ -61,9 +61,22 @@ dcx samba-tool group add schule2-teachers                      >/dev/null 2>&1 |
 dcx samba-tool group addmembers schule2-teachers teacher2      >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid2.$DLC" squidsvc           >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid2 A 172.28.0.11   -U "Administrator%$PW" >/dev/null 2>&1 || true
+# Internet-gate fixtures: 'internet' + 'schule2-internet' groups + 3 teachers that differ
+# ONLY by internet membership (in internet / in schule2-internet / in none). squid-inet
+# requires teachers AND (internet OR schule2-internet). The new SPN uses the squidsvc key.
+dcx samba-tool group add internet                                >/dev/null 2>&1 || true
+dcx samba-tool group add schule2-internet                        >/dev/null 2>&1 || true
+dcx samba-tool user  create inetok "$PW"                         >/dev/null 2>&1 || true
+dcx samba-tool user  create inetor "$PW"                         >/dev/null 2>&1 || true
+dcx samba-tool user  create inetno "$PW"                         >/dev/null 2>&1 || true
+dcx samba-tool group addmembers teachers "inetok,inetor,inetno"  >/dev/null 2>&1 || true
+dcx samba-tool group addmembers internet inetok                  >/dev/null 2>&1 || true
+dcx samba-tool group addmembers schule2-internet inetor          >/dev/null 2>&1 || true
+dcx samba-tool spn   add "HTTP/squid3.$DLC" squidsvc             >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid3 A 172.28.0.12    -U "Administrator%$PW" >/dev/null 2>&1 || true
 
-log "start origin + origin-https + squid + squid2"
-$DC up -d origin origin-https squid squid2 || exit 1
+log "start origin + origin-https + squid + squid2 + squid-inet"
+$DC up -d origin origin-https squid squid2 squid-inet || exit 1
 
 wait_healthy() {
   local svc="$1" ready=0 st=none cid
@@ -75,13 +88,28 @@ wait_healthy() {
   done
   if [ "$ready" != 1 ]; then echo "$svc not healthy (status=$st)"; $DC logs "$svc" 2>/dev/null | tail -60; return 1; fi
 }
-log "wait for squid + squid2 healthy"
-wait_healthy squid  || exit 1
-wait_healthy squid2 || exit 1
+log "wait for squid + squid2 + squid-inet healthy"
+wait_healthy squid     || exit 1
+wait_healthy squid2    || exit 1
+wait_healthy squid-inet || exit 1
 
 log "run assertions (test-client)"
 $DC run --rm test-client
 rc=$?
+
+# Internet-gate live check: inetok was allowed (in 'internet'); remove -> after the short
+# ACL ttl (30s) new requests must be DENIED (Internetsperre, fail-closed).
+log "internet-gate: remove inetok from 'internet', wait > ttl(30s), expect 403"
+dcx samba-tool group removemembers internet inetok >/dev/null 2>&1 || true
+sleep 40
+tcode=$($DC run --rm --entrypoint sh test-client -c \
+  'export KRB5CCNAME=FILE:/tmp/cc; printf %s "Passw0rd!" | kinit inetok@EXAMPLE.INTERNAL >/dev/null 2>&1; curl -s -o /dev/null -w "%{http_code}" --proxy http://squid3.example.internal:3128 --proxy-negotiate -U : http://origin.example.internal/' \
+  2>/dev/null | tr -cd '0-9')
+if [ "$tcode" = 403 ]; then
+  echo "  [PASS] internetsperre: 403 within ~ttl after removal"
+else
+  echo "  [FAIL] internetsperre: expected 403, got '$tcode'"; rc=$((rc + 1))
+fi
 
 log "squid access.log (excerpt)"
 $DC exec -T squid sh -c 'tail -20 /var/log/squid/access.log' 2>/dev/null \

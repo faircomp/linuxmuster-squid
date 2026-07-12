@@ -75,6 +75,11 @@ PROXY2="http://squid2.example.internal:3128"
 check_via "Multischool: schule2 teacher via schule2 -> ok"   teacher2 "$PROXY2" "$ALLOWED" 200
 check_via "Multischool: default teacher via schule2 -> deny" teacher1 "$PROXY2" "$ALLOWED" 403
 check_via "Multischool: schule2 teacher via default -> deny" teacher2 "$PROXY"  "$ALLOWED" 403
+# Internet gate (squid-inet requires teachers AND internet:schule2-internet):
+PROXY3="http://squid3.example.internal:3128"
+check_via "Internet-gate: teacher in 'internet' -> ok"          inetok "$PROXY3" "$ALLOWED" 200
+check_via "Internet-gate OR: teacher in 'schule2-internet' -> ok" inetor "$PROXY3" "$ALLOWED" 200
+check_via "Internet-gate: teacher in NO internet group -> deny" inetno "$PROXY3" "$ALLOWED" 403
 
 echo
 if [ "$fail" -eq 0 ]; then echo "E2E: ALL ASSERTIONS OK"; else echo "E2E: FAILED"; fi
