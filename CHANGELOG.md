@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.3.0] - 2026-07-12
 
 ### Added
 - **`lmnsquid edit <name>`** — change fields of an existing instance (`--ad-group`,
