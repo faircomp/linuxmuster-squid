@@ -11,7 +11,7 @@ access rules** (teachers / students), one isolated instance per
 **(school × role)** — managed via a **REST API + CLI**.
 
 > **Status:** **`v1.3.0` — code-complete & E2E-verified** (all 11 phases
-> P0–P11, `run.sh all` green: Unit 62 + mypy + ruff + E2E 9/9 + docker integration +
+> P0–P11, `run.sh all` green: Unit 62 + mypy + ruff + E2E 13/13 (incl. internet-gate, crabbox-verified) + docker integration +
 > `.deb` install/upgrade + class load 50/50; security review with all findings fixed —
 > see **[`CHANGELOG.md`](CHANGELOG.md)**). Before
 > production use, still **human gates**: manual Windows GPO acceptance
