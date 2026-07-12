@@ -211,6 +211,66 @@ def update_all() -> None:
 
 
 @app.command()
+def edit(
+    name: str,
+    ad_group: Optional[str] = typer.Option(None),
+    internet_group: list[str] = typer.Option(
+        [], "--internet-group", help="one 'internet' group per school (repeat); replaces the current set"
+    ),
+    realm: Optional[str] = typer.Option(None),
+    visible_hostname: Optional[str] = typer.Option(None),
+    image: Optional[str] = typer.Option(None),
+    keytab_secret: Optional[str] = typer.Option(None),
+    http_port: Optional[int] = typer.Option(None),
+    school_subnets: list[str] = typer.Option(
+        [], "--school-subnets", help="client subnet CIDR(s) (repeat); replaces the current set"
+    ),
+    cache_size_mb: Optional[int] = typer.Option(None),
+    log_retention_days: Optional[int] = typer.Option(None),
+    access_log_enabled: Optional[bool] = typer.Option(None),
+) -> None:
+    """Change fields of an existing instance without rm+create (re-validated + reconciled).
+
+    Only the options you pass are changed; school/role (the identity) are not editable.
+    """
+    body: dict[str, Any] = {}
+    if ad_group is not None:
+        body["ad_group"] = ad_group
+    if internet_group:
+        body["internet_group"] = ":".join(internet_group)
+    if realm is not None:
+        body["realm"] = realm
+    if visible_hostname is not None:
+        body["visible_hostname"] = visible_hostname
+    if image is not None:
+        body["image"] = image
+    if keytab_secret is not None:
+        body["keytab_secret"] = keytab_secret
+    if http_port is not None:
+        body["http_port"] = http_port
+    if school_subnets:
+        body["school_subnets"] = " ".join(school_subnets)
+    if cache_size_mb is not None:
+        body["cache_size_mb"] = cache_size_mb
+    if log_retention_days is not None:
+        body["log_retention_days"] = log_retention_days
+    if access_log_enabled is not None:
+        body["access_log_enabled"] = access_log_enabled
+    if not body:
+        typer.secho("nothing to change — pass at least one option", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(1)
+    with _get_client() as c:
+        _emit(c.patch(f"/v1/instances/{name}", json=body))
+
+
+@app.command()
+def version() -> None:
+    """Show the control-plane version."""
+    with _get_client() as c:
+        _emit(c.get("/v1/version"))
+
+
+@app.command()
 def rollback(name: str) -> None:
     """Roll the instance back to the last known-good image."""
     with _get_client() as c:

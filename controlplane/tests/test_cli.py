@@ -122,3 +122,35 @@ def test_cli_update_all(patch_client: None, instance_data: dict[str, Any]) -> No
     r = runner.invoke(cli.app, ["update-all"])
     assert r.exit_code == 0, r.output
     assert DEFAULT_IMAGE in runner.invoke(cli.app, ["show", "default-school-teachers"]).output
+
+
+def test_cli_edit_and_version(patch_client: None, instance_data: dict[str, Any]) -> None:
+    runner.invoke(
+        cli.app,
+        [
+            "create",
+            "--school", instance_data["school"], "--role", instance_data["role"],
+            "--ad-group", instance_data["ad_group"], "--realm", instance_data["realm"],
+            "--visible-hostname", instance_data["visible_hostname"],
+            "--keytab-secret", instance_data["keytab_secret"],
+        ],
+    )
+    # switch to a global role group + add both schools' internet groups, without rm/create
+    r = runner.invoke(
+        cli.app,
+        [
+            "edit", "default-school-teachers",
+            "--ad-group", "role-teacher",
+            "--internet-group", "internet", "--internet-group", "msg-internet",
+        ],
+    )
+    assert r.exit_code == 0, r.output
+    show = runner.invoke(cli.app, ["show", "default-school-teachers"]).output
+    assert '"ad_group": "role-teacher"' in show
+    assert '"internet_group": "internet:msg-internet"' in show
+
+    # edit with no options is an error
+    assert runner.invoke(cli.app, ["edit", "default-school-teachers"]).exit_code == 1
+
+    v = runner.invoke(cli.app, ["version"])
+    assert v.exit_code == 0 and "version" in v.output

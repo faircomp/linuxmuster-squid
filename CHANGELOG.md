@@ -7,6 +7,16 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`lmnsquid edit <name>`** — change fields of an existing instance (`--ad-group`,
+  `--internet-group`, `--school-subnets`, `--image`, …) without `rm`+`create`; re-validated
+  and reconciled via `PATCH /v1/instances/{name}`. Only the options you pass change.
+- **`lmnsquid version`** — show the control-plane version (`GET /v1/version`).
+- **README usage guide** (install → create the recommended global-role proxies → everyday
+  commands).
+
 ## [1.2.0] - 2026-07-08
 
 ### Added
