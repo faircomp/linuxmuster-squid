@@ -99,7 +99,7 @@ rc=$?
 
 # Internet-gate live check: inetok was allowed (in 'internet'); remove -> after the short
 # ACL ttl (30s) new requests must be DENIED (Internetsperre, fail-closed).
-log "internet-gate: remove inetok from 'internet', wait > ttl(30s), expect 403"
+log "internet-gate: remove inetok from 'internet', wait > ttl(10s), expect 403"
 dcx samba-tool group removemembers internet inetok >/dev/null 2>&1 || true
 sleep 40
 tcode=$($DC run --rm --entrypoint sh test-client -c \
