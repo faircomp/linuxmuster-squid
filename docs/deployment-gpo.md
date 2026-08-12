@@ -21,7 +21,7 @@ while teacher/student separation still holds. To keep the linuxmuster *Internets
 working everywhere (incl. visitors), list **one `internet` group per school**
 (`--internet-group internet --internet-group <school>-internet`): a user passes if in
 **any** of them, so removing them from their home `internet` group blocks them at any
-location within the short ACL TTL (~30 s). Both are crabbox-verified.
+location within the short ACL TTL (~10 s). Both are crabbox-verified.
 
 ## Recipe (School Admin)
 
@@ -46,7 +46,7 @@ location within the short ACL TTL (~30 s). Both are crabbox-verified.
    defense-in-depth.
 6. **Internetsperre:** add `--internet-group internet --internet-group <school>-internet`
    (one per school) to the instances that should honour it (usually students). Removing a user
-   from their `internet` group blocks their new requests within ~30 s, at any location.
+   from their `internet` group blocks their new requests within ~10 s, at any location.
 7. **Force proxy** on the OPNsense (block direct 80/443 **TCP** egress), otherwise clients
    bypass the non-inline proxy. **Additionally block UDP 443** (see Filter Limits).
 8. **Exam mode:** `<user>-exam` is in no role group → the proxy denies it anyway; lmn7
@@ -68,7 +68,7 @@ techniques defeat it — the proxy alone cannot catch this, but the OPNsense can
 
 > Only a human can perform these steps on real domain-joined clients.
 > The **server-side equivalent is crabbox-verified** in the E2E (13/13, incl. the internet
-> gate: OR across schools, fail-closed, and removal → ~30 s → 403).
+> gate: OR across schools, fail-closed, and removal → ~10 s → 403).
 
 Log per client (browser, codes):
 
@@ -76,7 +76,7 @@ Log per client (browser, codes):
 - [ ] Logged-in **student** → student proxy delivers (filtered) internet.
 - [ ] **Student** manually enters the **teacher proxy** → **403** (role ACL applies).
 - [ ] **Visitor** (teacher/student from **another school**) → the **local** proxy works (global role group).
-- [ ] **Internetsperre:** remove a user from their `internet` group → within ~30 s → **403**.
+- [ ] **Internetsperre:** remove a user from their `internet` group → within ~10 s → **403**.
 - [ ] Blocked domain (teacher/student) → blocked.
 - [ ] `Squid access.log` shows the Kerberos username + ACL verdict.
 

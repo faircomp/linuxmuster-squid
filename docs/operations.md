@@ -46,7 +46,7 @@ The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
   (a comma- or space-separated single value works too).
 - **`--internet-group` (optional, repeatable):** also require the linuxmuster **internet**
   group — honours *Internetsperre* (removing a user from the group blocks their new requests
-  within ~30s). List **one per school** (`--internet-group internet --internet-group
+  within ~10s). List **one per school** (`--internet-group internet --internet-group
   msg-internet`) so it covers **visitors** too and works with global `role-teacher`/`role-student`
   proxies — a user passes if in **any** listed group. Omit to enforce the role group only.
 

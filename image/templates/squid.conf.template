@@ -40,7 +40,8 @@ external_acl_type ad_group ttl=300 negative_ttl=60 grace=30 %LOGIN \
 acl role_group external ad_group
 
 # --- Optional: linuxmuster "Internetsperre" (2nd required AD group; rendered by entrypoint,
-#     empty when unused). Short ttl so removing a user from the group blocks within ~30s. ---
+#     empty when unused). Short ttl (LIVE LDAP, not the PAC) so removing a user from the group
+#     blocks within ~10s without a re-login. ---
 ${INTERNET_ACL_DEF}
 
 # --- School scope via source subnet (a school has no marker "on the wire") ---

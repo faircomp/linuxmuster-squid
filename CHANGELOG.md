@@ -7,6 +7,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Format: [Keep a Changelog](https://keepachangelog.com/) · [SemVer](https://semver.org/).
 
+## [1.3.1] - 2026-07-13
+
+### Changed
+- **Internetsperre now takes effect faster:** the internet-group ACL cache dropped from
+  `ttl=30 negative_ttl=15` to `ttl=10 negative_ttl=10` (still `grace=0`, live LDAP — not the
+  Kerberos PAC), so removing a user from the `internet` group blocks their new requests within
+  **~10s without a re-login** (was ~30s). Costs a slightly higher LDAP lookup rate per active
+  user. Already-open HTTPS tunnels still persist until they close (inherent to a splicing
+  forward proxy). Requires pulling the new image (`lmnsquid update-all`); activation of the
+  gate itself (`lmnsquid edit <name> --internet-group internet`) does not.
+
 ## [1.3.0] - 2026-07-12
 
 ### Added
