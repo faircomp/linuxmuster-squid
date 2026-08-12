@@ -48,6 +48,12 @@ include = ["lmnsquid*"]
 [tool.ruff]
 line-length = 100
 
+[tool.ruff.lint]
+# Pin the classic default rule set explicitly so an unpinned ruff upgrade cannot
+# silently widen the checks (0.16 started flagging UP/B/BLE/… that this project
+# never opted into — e.g. B008 is a false positive for Typer's Option() defaults).
+select = ["E4", "E7", "E9", "F"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_unused_ignores = true
