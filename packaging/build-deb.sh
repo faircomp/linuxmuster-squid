@@ -4,11 +4,14 @@
 #
 # Builds the linuxmuster-squid .deb with a hermetic Python venv under
 # /opt/linuxmuster-squid/venv (built at the target path so the shebangs are correct)
-# + systemd unit + maintainer scripts. RUN AS ROOT. VERSION via env.
+# + systemd unit + maintainer scripts. RUN AS ROOT (or `make deb` in the lmndev-runner
+# container). The version is the top entry of debian/changelog, the single version
+# source; VERSION=<x> in the environment overrides only the .deb metadata (the venv's
+# Python package always carries the changelog version via controlplane/setup.py).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="${VERSION:-0.9.0}"
+VERSION="${VERSION:-$(dpkg-parsechangelog -l "$ROOT/debian/changelog" -S Version)}"
 case "$VERSION" in
     ""|*[!0-9A-Za-z.+~-]*) echo "invalid VERSION: '$VERSION'" >&2; exit 1 ;;
 esac
@@ -24,8 +27,12 @@ python3 -m venv "$VENV"
 "$VENV/bin/pip" install --quiet "$ROOT/controlplane"
 
 echo "== staging tree =="
-mkdir -p "$STAGE/opt/linuxmuster-squid" "$STAGE/lib/systemd/system" "$STAGE/DEBIAN"
+mkdir -p "$STAGE/opt/linuxmuster-squid" "$STAGE/lib/systemd/system" "$STAGE/DEBIAN" \
+         "$STAGE/usr/bin"
 cp -a "$VENV" "$STAGE/opt/linuxmuster-squid/venv"
+# Operator CLI onto PATH: the venv keeps the hermetic interpreter, the packaged symlink
+# makes `lmnsquid` available without a manual `ln -s` (dpkg removes it on purge).
+ln -s /opt/linuxmuster-squid/venv/bin/lmnsquid "$STAGE/usr/bin/lmnsquid"
 cp "$ROOT/packaging/systemd/linuxmuster-squid.service" \
    "$STAGE/lib/systemd/system/linuxmuster-squid.service"
 sed "s/@VERSION@/$VERSION/" "$ROOT/packaging/debian/control" > "$STAGE/DEBIAN/control"

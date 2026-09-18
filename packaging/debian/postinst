@@ -45,6 +45,15 @@ if command -v git >/dev/null 2>&1 && [ ! -d "$INST_DIR/.git" ]; then
     chown -R lmnsquid:lmnsquid "$INST_DIR/.git" || true
 fi
 
+# Harden the shipped tree on EVERY configure, not only on upgrade: 1.3.0 shipped
+# /opt/linuxmuster-squid world-writable (0777 directories, 0666 files). dpkg resets the
+# mode of every file it replaces but leaves EXISTING directories untouched, so a server
+# upgraded from 1.3.0 keeps world-writable directories -- among them
+# venv/lib/python3.12/site-packages, where a dropped .pth file runs as lmnsquid, and
+# lmnsquid is in the docker group. Only the write bits are cleared (`go-w`, never a
+# blanket 0755), so anything intentionally restrictive stays as restrictive as it was.
+chmod -R go-w /opt/linuxmuster-squid
+
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload || true
     systemctl enable linuxmuster-squid.service || true
