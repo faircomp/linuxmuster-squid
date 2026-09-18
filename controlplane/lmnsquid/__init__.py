@@ -4,9 +4,7 @@
 
 Manages Squid Docker containers (one per school x role) through the docker-py
 SDK and exposes them via a FastAPI REST API.
+
+The version is not spelled out here: ``importlib.metadata.version("lmnsquid")``
+returns the one debian/changelog defines (fed in by setup.py at build time).
 """
-from __future__ import annotations
-
-__version__ = "0.4.0"
-
-__all__ = ["__version__"]

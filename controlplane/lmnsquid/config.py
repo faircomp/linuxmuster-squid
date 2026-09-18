@@ -33,7 +33,6 @@ class Settings(BaseSettings):
     # Narrow to a specific IP if the host has an untrusted interface.
     log_max_size: str = "20m"             # docker json-log cap per container (live view)
     log_max_file: int = 5
-    version: str = "0.4.0"
 
     model_config = SettingsConfigDict(env_prefix=_ENV_PREFIX)
 

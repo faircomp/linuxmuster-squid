@@ -10,10 +10,10 @@ with **Kerberos SSO** against Samba Active Directory and **group-based
 access rules** (teachers / students), one isolated instance per
 **(school × role)** — managed via a **REST API + CLI**.
 
-> **Status:** **`v1.3.0` — code-complete & E2E-verified** (all 11 phases
+> **Status:** **code-complete & E2E-verified** (all 11 phases
 > P0–P11, `run.sh all` green: Unit 62 + mypy + ruff + E2E 13/13 (incl. internet-gate, crabbox-verified) + docker integration +
 > `.deb` install/upgrade + class load 50/50; security review with all findings fixed —
-> see **[`CHANGELOG.md`](CHANGELOG.md)**). Before
+> see **[`debian/changelog`](debian/changelog)**, versions `7.3.N` for linuxmuster.net 7.3). Before
 > production use, still **human gates**: manual Windows GPO acceptance
 > (**[`docs/deployment-gpo.md`](docs/deployment-gpo.md)**), GPG signing of the `.deb`
 > with the linuxmuster key, site-specific AD facts (Realm/Base DN/group DN).
@@ -96,7 +96,9 @@ operations, logs & on-disk paths: [`docs/operations.md`](docs/operations.md).
 
 ## Development & Tests
 
-The fast tier (lint/unit) runs locally/CI. The **heavy tier** — the real
+The fast tier (lint/unit) runs locally/CI; `make deb` builds the package (as root, or in
+the `ghcr.io/linuxmuster/lmndev-runner:24.04` container exactly like CI). The version
+is the top entry of `debian/changelog` — the only place it is edited. The **heavy tier** — the real
 Kerberos E2E (Samba AD DC + Squid + client, proving *teacher→200 /
 student→403 / blocked→403 / no-ticket→407*) — needs a **Linux host with
 Docker**. Aggregator:
