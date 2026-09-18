@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Fast tier: control-plane lint/type/unit + shell + blocklist smoke.
-# (The heavy Kerberos + docker-py E2E runs on crabbox, not in GitHub CI.)
+#
+# From linuxmusterDEV/templates/ci.yml. Three stages on every push/PR: the fast tier
+# (lint/type/unit + shell + license compliance + blocklist smoke), the package build in
+# the same container upstream CI uses (proves it builds on the target Ubuntu/Python),
+# and an install smoke on ubuntu-24.04. The heavy Kerberos + docker-py E2E runs on
+# crabbox, not in GitHub CI.
 name: ci
 
 on:
@@ -16,10 +20,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"        # = Ubuntu 24.04 / lmn73
+      # The gate tools are PINNED on purpose: an unpinned `pip install ruff` picks up
+      # whatever released last, and a linter that widens its default rule set turns the
+      # pipeline red without a single line of our code changing (ruff 0.16 did exactly
+      # that here). Pinned == the developer's local result == CI's result. Renovate
+      # proposes bumps as PRs (customManager in renovate.json).
       - name: Install control-plane + tools
-        run: pip install ruff mypy pytest pytest-asyncio httpx types-PyYAML reuse ./controlplane
-      - name: ruff
+        run: |
+          pip install \
+            ruff==0.15.21 \
+            mypy==2.2.0 \
+            reuse==6.2.0 \
+            pytest==9.1.1 \
+            pytest-asyncio httpx types-PyYAML ./controlplane
+      - name: ruff check
         run: ruff check .
       - name: mypy
         run: mypy --config-file controlplane/pyproject.toml controlplane/lmnsquid
@@ -31,3 +46,71 @@ jobs:
         run: reuse lint
       - name: blocklist smoke
         run: bash scripts/tests/blocklist_smoke.sh
+
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      version: ${{ steps.image.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: image
+        run: |
+          DIST=$(dpkg-parsechangelog -S Distribution); NUM="${DIST#lmn}"
+          if [ "${NUM:-0}" -ge 74 ] 2>/dev/null; then IMG=ghcr.io/linuxmuster/lmndev-runner:latest; else IMG=ghcr.io/linuxmuster/lmndev-runner:24.04; fi
+          echo "image=$IMG" >> "$GITHUB_OUTPUT"
+          echo "version=$(dpkg-parsechangelog -S Version)" >> "$GITHUB_OUTPUT"
+
+  package:
+    needs: resolve
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.resolve.outputs.image }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build package (make deb wraps packaging/build-deb.sh)
+        run: |
+          # No debian/control at the root yet (that is the debian/ conversion PR), so
+          # install what build-deb.sh needs by hand instead of `apt-get build-dep`.
+          apt-get update -qq && apt-get install -y -qq python3-venv
+          make deb
+          mkdir -p output && mv ./linuxmuster-squid_*.deb output/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: output/
+          if-no-files-found: error
+
+  install-smoke:
+    needs: package
+    runs-on: ubuntu-24.04              # the target OS; the venv python must match
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: packages/
+      # Actually install the built package and use it the way the docs tell an admin
+      # to. Building alone proves nothing about the installed layout.
+      - name: Install and use the package like an admin would
+        run: |
+          set -eux
+          sudo apt-get update -qq
+          sudo apt-get install -y ./packages/*.deb
+          test "$(command -v lmnsquid)" = /usr/bin/lmnsquid
+          sudo lmnsquid --help >/dev/null
+          # postinst enabled + started the service; the API must answer like the docs promise.
+          ok=0
+          for i in $(seq 1 30); do
+            if sudo lmnsquid health >/dev/null 2>&1; then ok=1; break; fi
+            sleep 1
+          done
+          if [ "$ok" != 1 ]; then
+            systemctl status linuxmuster-squid.service --no-pager || true
+            sudo journalctl -u linuxmuster-squid.service --no-pager | tail -50 || true
+            exit 1
+          fi
+          sudo lmnsquid health
+          # Single version source: the CLI/API report the .deb version (~rc -> rc in PEP 440).
+          ver="$(dpkg-query -W -f='${Version}' linuxmuster-squid)"
+          sudo lmnsquid version | grep -F "\"${ver//\~/}\""
