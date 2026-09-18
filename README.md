@@ -52,8 +52,7 @@ Details: [`docs/architecture.md`](docs/architecture.md).
 # fetch the .deb from the latest release (CI builds it per tag) and install
 gh release download -R faircomp/linuxmuster-squid -p 'linuxmuster-squid_*.deb'
 sudo apt install -y ./linuxmuster-squid_*.deb     # postinst: user + config, starts on 127.0.0.1:8080
-sudo ln -sf /opt/linuxmuster-squid/venv/bin/lmnsquid /usr/local/bin/lmnsquid
-sudo lmnsquid health                              # {"status":"ok"}
+sudo lmnsquid health                              # {"status":"ok"} (CLI is on PATH: /usr/bin/lmnsquid)
 ```
 The keytab is created **once on the Samba AD DC** and copied to
 `/etc/linuxmuster-squid/secrets/` on the proxy host — see [`docs/keytab-and-dns.md`](docs/keytab-and-dns.md).

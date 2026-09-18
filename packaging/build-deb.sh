@@ -27,8 +27,12 @@ python3 -m venv "$VENV"
 "$VENV/bin/pip" install --quiet "$ROOT/controlplane"
 
 echo "== staging tree =="
-mkdir -p "$STAGE/opt/linuxmuster-squid" "$STAGE/lib/systemd/system" "$STAGE/DEBIAN"
+mkdir -p "$STAGE/opt/linuxmuster-squid" "$STAGE/lib/systemd/system" "$STAGE/DEBIAN" \
+         "$STAGE/usr/bin"
 cp -a "$VENV" "$STAGE/opt/linuxmuster-squid/venv"
+# Operator CLI onto PATH: the venv keeps the hermetic interpreter, the packaged symlink
+# makes `lmnsquid` available without a manual `ln -s` (dpkg removes it on purge).
+ln -s /opt/linuxmuster-squid/venv/bin/lmnsquid "$STAGE/usr/bin/lmnsquid"
 cp "$ROOT/packaging/systemd/linuxmuster-squid.service" \
    "$STAGE/lib/systemd/system/linuxmuster-squid.service"
 sed "s/@VERSION@/$VERSION/" "$ROOT/packaging/debian/control" > "$STAGE/DEBIAN/control"
