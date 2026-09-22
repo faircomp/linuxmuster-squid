@@ -362,7 +362,8 @@ jobs:
             echo '```'
             sudo sha256sum -c before/sha256
             echo "modes/ownership under /etc/linuxmuster-squid: unchanged"
-            echo "instance record: only image: differs, all-teachers.prev present"
+            echo "instance record: all 12 admin-set keys identical, all-teachers.prev present"
+            echo "dpkg log: $(grep ' upgrade linuxmuster-squid:' /var/log/dpkg.log | tail -1)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
