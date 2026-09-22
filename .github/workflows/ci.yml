@@ -41,6 +41,11 @@ jobs:
             pytest-asyncio httpx types-PyYAML ./controlplane
       - name: ruff check
         run: ruff check .
+      # Formatting is a gate, not a suggestion: without it the tree drifts away from
+      # `ruff format` (it had, in seven files) and every later PR carries unrelated
+      # reformatting noise. Same pinned ruff as the lint step, so local == CI.
+      - name: ruff format --check
+        run: ruff format --check .
       - name: mypy
         run: mypy --config-file controlplane/pyproject.toml controlplane/lmnsquid
       - name: pytest
