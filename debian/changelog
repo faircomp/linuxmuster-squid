@@ -1,3 +1,28 @@
+linuxmuster-squid (7.3.2) lmn73; urgency=medium
+
+  * CI gains an `upgrade-smoke` job (ci.yml and release.yml): it installs the
+    newest published release, gives it the state a real proxy host has (a
+    keytab under secrets/, an admin-maintained file in the config directory, an
+    instance with a pinned image, a blocklist entry), upgrades onto the freshly
+    built package and fails the build if config.yml, the keytab, the admin file
+    or a blocklist survives with different bytes or different permissions, if
+    the instance record changed in anything but its `image:` line, if the
+    service is no longer enabled+active, if the CLI no longer reports the .deb
+    version, if anything is left behind under /opt or is world-writable, or if
+    the instance change log recorded nothing. `release.yml` will not publish a
+    tag whose upgrade smoke failed.
+  * The upgrade is installed with `--reinstall --allow-downgrades`, so the
+    postinst really runs with its `$2` set and the upgrade branch
+    (try-restart, update-all, reconcile) is exercised instead of silently
+    skipped when the build is version-equal to the release.
+  * `workflow_dispatch` takes a `prev_tag` input so the jump from an arbitrary
+    older release (e.g. v1.3.0, the pre-conventions line) can be proven on
+    demand.
+  * ci.yml only runs on pushes to `main` and tags; every other branch is
+    covered by its pull request, which halves the CI runs per commit.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Tue, 22 Sep 2026 19:20:00 +0200
+
 linuxmuster-squid (7.3.1) lmn73; urgency=medium
 
   * The domain blocklist gets a product path (it was reachable only from the

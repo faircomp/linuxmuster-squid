@@ -3,14 +3,20 @@
 #
 # From linuxmusterDEV/templates/release.yml, modeled on lmndev-runner/workflows/*.release.yml:
 # version and distribution come from the top entry of debian/changelog; the tag must match
-# it. No publish job yet (no faircomp/deb archive); add the upstream publish job when the
-# archive exists.
+# it. The release is gated on the same install AND upgrade smoke as ci.yml, so no tag can
+# be published that does not install on top of the version a school is running. No publish
+# job yet (no faircomp/deb archive); add the upstream publish job when the archive exists.
 name: release
 
 on:
   push:
     tags: ['v[0-9]*']
   workflow_dispatch:
+    inputs:
+      prev_tag:
+        description: 'upgrade smoke: tag to upgrade from (empty = newest published release)'
+        required: false
+        default: ''
 
 jobs:
   gate:
@@ -86,8 +92,210 @@ jobs:
           # every installed file matches the shipped md5sums (silent = ok)
           test -z "$(sudo dpkg --verify linuxmuster-squid)"
 
+  # Kevin's rule: a release must still install cleanly ON TOP OF the version that is
+  # already running on a school server. This job installs the newest published release
+  # (or the tag passed to workflow_dispatch), puts the config and state a real admin
+  # has in place, upgrades to the freshly built package and checks that nothing was
+  # lost. It skips itself only while no release exists at all.
+  upgrade-smoke:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read        # restrictive org defaults: the job only reads our releases
+    steps:
+      - uses: actions/checkout@v4          # needed for the fixtures below
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: packages/
+      - name: Fetch the published release to upgrade from
+        id: prev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p previous
+          tag="${{ github.event.inputs.prev_tag }}"
+          if [ -z "$tag" ]; then
+            # The version a school is running right now = the newest real release.
+            tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 20 \
+                    --json tagName,isDraft,isPrerelease \
+                    --jq '[.[] | select(.isDraft == false and .isPrerelease == false)][0].tagName // ""')
+          fi
+          if [ -z "$tag" ]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "::notice::no published release yet, upgrade smoke skipped"
+            exit 0
+          fi
+          for i in 1 2 3; do
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir previous && break
+            echo "download attempt $i failed, retrying"; sleep 10
+          done
+          test -n "$(ls previous/*.deb 2>/dev/null)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "::notice::upgrading from $tag"
+
+      - name: Install the released version and give it an admin's config and state
+        if: steps.prev.outputs.skip != '1'
+        run: |
+          set -eux
+          sudo apt-get update -qq
+          sudo apt-get install -y ./previous/*.deb
+          # v1.3.0 (the pre-conventions line) ships no /usr/bin/lmnsquid, so the OLD
+          # version is always driven through its venv entry point.
+          LMN=/opt/linuxmuster-squid/venv/bin/lmnsquid
+          for i in $(seq 1 30); do sudo "$LMN" health >/dev/null 2>&1 && break; sleep 1; done
+          sudo "$LMN" health
+
+          # The keytab is the domain credential. Its content is irrelevant here; that
+          # its bytes and its 0600 survive the upgrade is the whole point.
+          printf 'FAKE-KEYTAB-FOR-CI-UPGRADE-SMOKE\n' \
+            | sudo tee /etc/linuxmuster-squid/secrets/proxy.keytab >/dev/null
+          sudo chown lmnsquid:lmnsquid /etc/linuxmuster-squid/secrets/proxy.keytab
+          sudo chmod 600 /etc/linuxmuster-squid/secrets/proxy.keytab
+
+          # A file the ADMIN put into the package's config directory. The package knows
+          # nothing about it, so an upgrade has no excuse to touch it.
+          printf '# maintained by the admin\n.tracker.example\n.ads.example\n' \
+            | sudo tee /etc/linuxmuster-squid/blocked.domains >/dev/null
+          sudo chown lmnsquid:lmnsquid /etc/linuxmuster-squid/blocked.domains
+          sudo chmod 644 /etc/linuxmuster-squid/blocked.domains
+
+          # One instance. Reconciler.apply() stores the record BEFORE it touches Docker,
+          # so a failing image pull still leaves exactly the record the upgrade has to
+          # preserve -- the data plane is best effort here, the file state is asserted.
+          # --image pins a digest of the admin's own choosing (a documented option) and
+          # is what makes the postinst measurable: when only the package version moves,
+          # the released default digest and the built default digest are identical and
+          # update-all would skip every instance instead of rewriting it.
+          sudo "$LMN" create --school all --role teachers --ad-group role-teacher \
+            --realm EXAMPLE.ORG --visible-hostname proxy.example.org \
+            --keytab-secret proxy.keytab --http-port 3128 --school-subnets 10.0.0.0/8 \
+            --image ghcr.io/faircomp/linuxmuster-squid@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+            || true
+          sudo test -f /var/lib/linuxmuster-squid/instances/all-teachers.yaml
+
+          # A blocklist entry. `lmnsquid blocklist` exists from 7.3.1 on; when the
+          # previous release predates it, the same file is written by hand -- either way
+          # it is a file the admin owns and the upgrade must leave alone.
+          sudo "$LMN" blocklist all-teachers add example.org || true
+          BL=/etc/linuxmuster-squid/blocklists/all-teachers
+          if ! sudo test -f "$BL/blocked.domains"; then
+            sudo install -d -o lmnsquid -g lmnsquid -m 755 /etc/linuxmuster-squid/blocklists
+            sudo install -d -o lmnsquid -g lmnsquid -m 755 "$BL"
+            printf '.example.org\n' | sudo tee "$BL/blocked.domains" >/dev/null
+            sudo chown lmnsquid:lmnsquid "$BL/blocked.domains"
+            sudo chmod 644 "$BL/blocked.domains"
+          fi
+          sudo grep -qx '\.example\.org' "$BL/blocked.domains"
+
+          # --- snapshot everything that must survive ----------------------------
+          mkdir -p before after
+          sudo find /etc/linuxmuster-squid -type f \
+               \( -name config.yml -o -name proxy.keytab -o -name blocked.domains \) \
+               | sort > before/files.txt
+          sudo sha256sum $(cat before/files.txt) > before/sha256
+          sudo find /etc/linuxmuster-squid -printf '%m %U:%G %p\n' | sort > before/etc-modes
+          sudo stat -c '%a %U:%G' /var/lib/linuxmuster-squid/instances/all-teachers.yaml > before/inst-mode
+          sudo cat /var/lib/linuxmuster-squid/instances/all-teachers.yaml > before/all-teachers.yaml
+          # The store repository belongs to lmnsquid; safe.directory lets root read it.
+          sudo git -c safe.directory=/var/lib/linuxmuster-squid/instances \
+                   -C /var/lib/linuxmuster-squid/instances rev-parse HEAD > before/head \
+            2>/dev/null || echo none > before/head
+          cat before/files.txt before/sha256 before/etc-modes before/inst-mode before/head
+
+      - name: Upgrade to the freshly built package
+        if: steps.prev.outputs.skip != '1'
+        run: |
+          set -eux
+          set -o pipefail
+          # --reinstall --allow-downgrades: on main the build is regularly version-equal
+          # to the release, and a plain install would say "already the newest version"
+          # and test nothing. dpkg must run the postinst with $2 set, or its upgrade
+          # branch (try-restart, update-all, reconcile) never runs.
+          sudo apt-get install -y --reinstall --allow-downgrades ./packages/*.deb 2>&1 \
+            | tee upgrade.log
+
+      - name: Assert that nothing was lost
+        if: steps.prev.outputs.skip != '1'
+        run: |
+          set -eux
+          set -o pipefail
+          new="$(dpkg-query -W -f='${Version}' linuxmuster-squid)"
+          GITDIR=/var/lib/linuxmuster-squid/instances
+
+          # 1. the postinst took its UPGRADE branch (dpkg passed $2), it did not
+          #    silently re-run the fresh-install path: dpkg names the version it
+          #    unpacked over, and the control plane logged the update-all that only
+          #    the `[ -n "${2:-}" ]` branch of the postinst calls.
+          grep -E 'Unpacking linuxmuster-squid \([^)]+\) over \([^)]+\)' upgrade.log
+          sudo journalctl -u linuxmuster-squid.service --no-pager \
+            | grep -F 'lmnsquid.audit:update-all to default image='
+
+          # 2. every admin-owned file byte-identical (config.yml carries the API token)
+          sudo sha256sum -c before/sha256
+
+          # 3. modes and ownership in the config tree unchanged
+          sudo find /etc/linuxmuster-squid -printf '%m %U:%G %p\n' | sort > after/etc-modes
+          diff -u before/etc-modes after/etc-modes
+
+          # 4. the instance record is written by the software, not the admin, and the
+          #    postinst rewrites `image:` on purpose (update-all). Every field the admin
+          #    set must be identical, and the rollback note must exist -- that covers
+          #    both outcomes: pull succeeded (new digest) or failed (auto-rollback, the
+          #    record is back on the pinned digest).
+          sudo cat "$GITDIR/all-teachers.yaml" > after/all-teachers.yaml
+          diff -u <(grep -v '^image:' before/all-teachers.yaml) \
+                  <(grep -v '^image:' after/all-teachers.yaml)
+          sudo test -f "$GITDIR/all-teachers.prev"
+          sudo stat -c '%a %U:%G' "$GITDIR/all-teachers.yaml" > after/inst-mode
+          diff -u before/inst-mode after/inst-mode
+
+          # 5. the service survived the upgrade
+          systemctl is-enabled linuxmuster-squid.service
+          systemctl is-active linuxmuster-squid.service
+
+          # 6. the CLI reports the version of the .deb (~rc -> rc in PEP 440)
+          test "$(command -v lmnsquid)" = /usr/bin/lmnsquid
+          sudo lmnsquid version | grep -F "\"${new//\~/}\""
+
+          # 7. no leftovers of the old version, nothing world-writable (1.3.0 shipped
+          #    /opt world-writable; dpkg fixes files but not existing directories, the
+          #    postinst's `chmod -R go-w` does)
+          comm -13 <(dpkg -L linuxmuster-squid | grep '^/opt/' | sort) \
+                   <(sudo find /opt/linuxmuster-squid | sort) > after/orphans
+          test ! -s after/orphans || { echo "files under /opt dpkg does not own:"; cat after/orphans; exit 1; }
+          test "$(sudo find /opt/linuxmuster-squid /etc/linuxmuster-squid /var/lib/linuxmuster-squid -perm -0002 | wc -l)" = 0
+          test "$(sudo find /opt/linuxmuster-squid -name 'lmnsquid-*.dist-info' | wc -l)" = 1
+
+          # 8. the change log of the instance store recorded the upgrade
+          sudo git -c safe.directory=$GITDIR -C $GITDIR rev-parse HEAD > after/head
+          ! diff -q before/head after/head
+          sudo git -c safe.directory=$GITDIR -C $GITDIR log -1 --format='%an' \
+            | grep -qx 'linuxmuster-squid'
+          sudo git -c safe.directory=$GITDIR -C $GITDIR log --oneline -5
+
+          # 9. the package database is consistent and every file matches its md5sum
+          test -z "$(dpkg --audit)"
+          sudo apt-get -f install -s | grep -q '0 newly installed'
+          test -z "$(sudo dpkg --verify linuxmuster-squid)"
+
+          {
+            echo "### upgrade smoke: ${{ steps.prev.outputs.tag }} -> $new"
+            echo
+            echo '```'
+            sudo sha256sum -c before/sha256
+            echo "modes/ownership under /etc/linuxmuster-squid: unchanged"
+            echo "instance record: only image: differs, all-teachers.prev present"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Journal of the control plane (always, for diagnosis)
+        if: always() && steps.prev.outputs.skip != '1'
+        run: sudo journalctl -u linuxmuster-squid.service --no-pager | tail -60
+
   release:
-    needs: [gate, build, install-smoke]
+    needs: [gate, build, install-smoke, upgrade-smoke]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
