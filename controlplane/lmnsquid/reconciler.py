@@ -25,9 +25,9 @@ class Reconciler:
         self.store.put(inst)
         return self.docker.ensure_running(inst)
 
-    def remove(self, name: str) -> None:
-        """Remove the container then delete the instance from the store."""
-        self.docker.remove(name)
+    def remove(self, name: str, keep_logs: bool = False) -> None:
+        """Remove the container (+ volumes, blocklist) then delete the instance from the store."""
+        self.docker.remove(name, keep_logs=keep_logs)
         self.store.delete(name)
 
     def reconcile_all(self) -> list[dict]:

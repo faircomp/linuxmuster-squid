@@ -12,7 +12,8 @@ if getent group docker >/dev/null 2>&1; then
     usermod -aG docker lmnsquid || true
 fi
 
-mkdir -p /etc/linuxmuster-squid/secrets /var/lib/linuxmuster-squid/instances
+mkdir -p /etc/linuxmuster-squid/secrets /etc/linuxmuster-squid/blocklists \
+         /var/lib/linuxmuster-squid/instances
 
 # Config with a random API token (only if it does not exist yet)
 CFG=/etc/linuxmuster-squid/config.yml
@@ -24,6 +25,7 @@ if [ ! -f "$CFG" ]; then
 api_token: "$TOKEN"
 instances_dir: /var/lib/linuxmuster-squid/instances
 secrets_dir: /etc/linuxmuster-squid/secrets
+blocklists_dir: /etc/linuxmuster-squid/blocklists
 bind_host: 127.0.0.1
 bind_port: 8080
 api_url: http://127.0.0.1:8080
@@ -89,6 +91,13 @@ if [ -d /run/systemd/system ]; then
             i=$((i + 1)); sleep 1
         done
         "$LMN" update-all >/dev/null 2>&1 || true
+        # Containers created before 7.3.1 run without the blocklist mount, and
+        # update-all skips instances already on the default image. Recreate them once
+        # (same image, same definition; a few seconds per instance) so the
+        # per-instance blocklist takes effect. Best-effort like update-all.
+        if dpkg --compare-versions "$2" lt 7.3.1; then
+            "$LMN" reconcile >/dev/null 2>&1 || true
+        fi
     fi
 fi
 

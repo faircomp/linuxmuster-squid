@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     api_token: str
     instances_dir: str = "/etc/linuxmuster-squid/instances"
     secrets_dir: str = "/etc/linuxmuster-squid/secrets"
+    blocklists_dir: str = "/etc/linuxmuster-squid/blocklists"  # <name>/blocked.domains per instance
     docker_host: str | None = None
     bind_host: str = "127.0.0.1"
     bind_port: int = 8080

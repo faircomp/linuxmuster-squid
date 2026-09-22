@@ -42,6 +42,7 @@ def main() -> None:
         settings.container_bind_ip,
         settings.log_max_size,
         settings.log_max_file,
+        settings.blocklists_dir,
     )
     reconciler = Reconciler(store, docker)
     updater = Updater(store, docker, reconciler)

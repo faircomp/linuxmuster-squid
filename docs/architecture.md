@@ -17,9 +17,11 @@ Status document. Keep it up to date with every substantive change (see
 - Default network `10.0.0.0/16`; server `10.0.0.1`, OPNsense gateway `10.0.0.254`.
   Zones: GREEN (internal/trusted) ↔ RED (Internet).
 - **Roles** live in the AD attribute `sophomorixRole` (teacher/student/examuser/…).
-  Usable **group**: `teachers`/`students` for **default-school** (unprefixed),
-  `<schule>-teachers`/`<schule>-students` otherwise. Bind via a Sophomorix
-  `*-binduser` under `OU=Management,OU=GLOBAL` — never as admin. Cross-school
+  Usable **groups**: the global `role-teacher`/`role-student`/`role-staff` (span all
+  schools — the recommended binding), or per school `teachers`/`students` for
+  **default-school** (unprefixed), `<schule>-teachers`/`<schule>-students` otherwise.
+  The group helper binds to LDAP via GSSAPI as the keytab's service-account principal
+  (`keytab-and-dns.md`) — never as admin, no bind password. Cross-school
   lookups: **Global Catalog 3268**.
 - **Existing proxy:** Squid **in OPNsense** with Kerberos SSO via
   `os-web-proxy-sso` — **deprecated/unmaintained**. This project fills that gap.
@@ -62,8 +64,16 @@ Status document. Keep it up to date with every substantive change (see
   by its subnet — no marker "on the wire").
 - **HTTPS filtering without decryption:** preferably SNI **peek + splice**
   (squid-openssl; throwaway CA only for the peek step, **never** distributed to
-  clients), fallback CONNECT `dstdomain` (no SSL needed). Category blocklists:
-  UT Capitole/Toulouse with a refresh job.
+  clients), fallback CONNECT `dstdomain` (no SSL needed). A blocked HTTPS name is
+  **terminated at the TLS handshake** (`ssl_bump terminate`): the client sees a
+  connection error, not a 403 page — there is no error page without decryption.
+- **Blocklist per instance:** `<blocklists_dir>/<name>/blocked.domains` on the host
+  (`/etc/linuxmuster-squid/blocklists/…`), the directory bind-mounted read-only at
+  `/etc/squid/lists` — the path the template reads for `dstdomain` and
+  `ssl::server_name`. Managed via `lmnsquid blocklist <name> add|remove|list|reload`
+  (the API endpoints below); `reload` = SIGHUP to squid (= `squid -k reconfigure`),
+  no restart. Entries are `.example.org` = domain + subdomains. UT Capitole/Toulouse
+  category lists via `blocklist-refresh.sh` (host cron) into the same file.
 - **Hardening:** `cache_effective_user proxy`; Keytab as a secret (tmpfs, readable by
   `proxy`); `KRB5CCNAME=FILE:` (the kernel-keyring ccache fails when unprivileged);
   `read_only` rootfs + tmpfs; `cap_drop: ALL` (+ minimal SETUID/SETGID/DAC_OVERRIDE);
@@ -73,7 +83,10 @@ Status document. Keep it up to date with every substantive change (see
 ## 4. Control Plane
 
 - **REST-API (FastAPI/uvicorn):** CRUD over instance definitions +
-  lifecycle actions (`start/stop/restart/update/rollback/status/logs`).
+  lifecycle actions (`start/stop/restart/update/rollback/status/logs`) + the
+  per-instance blocklist (`GET/POST/DELETE …/blocklist`, `POST …/blocklist/reload`).
+  `DELETE /v1/instances/{name}` removes container, cache + log volumes and the
+  blocklist (`?keep_logs=true` keeps the log volume).
   `HTTPBearer(auto_error=False)` + `hmac.compare_digest`; app-wide dependency;
   bind **127.0.0.1 only** (in-app TLS is NOT implemented; off-host only via
   an operator-owned TLS reverse proxy — on a non-loopback bind `main.py` warns, because the

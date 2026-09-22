@@ -112,10 +112,60 @@ def create(
 
 
 @app.command()
-def rm(name: str) -> None:
-    """Remove an instance (and its container)."""
+def rm(
+    name: str,
+    keep_logs: bool = typer.Option(
+        False,
+        "--keep-logs",
+        help="keep the access-log volume lmnsquid-logs-<name> (personal data); "
+        "default removes it together with the cache volume",
+    ),
+) -> None:
+    """Remove an instance: container, cache + log volumes, blocklist and definition."""
     with _get_client() as c:
-        _emit(c.delete(f"/v1/instances/{name}"))
+        _emit(c.delete(f"/v1/instances/{name}", params={"keep_logs": "true"} if keep_logs else None))
+
+
+blocklist_app = typer.Typer(
+    help="Per-instance domain blocklist (HTTP -> 403; HTTPS is cut at the TLS handshake). "
+    "Changes take effect after `reload`.",
+    no_args_is_help=True,
+)
+app.add_typer(blocklist_app, name="blocklist")
+
+
+@blocklist_app.callback()
+def _blocklist(ctx: typer.Context, name: str = typer.Argument(..., help="instance name")) -> None:
+    """Manage the blocklist of one instance: list | add <domain> | remove <domain> | reload."""
+    ctx.obj = name
+
+
+@blocklist_app.command("list")
+def blocklist_list(ctx: typer.Context) -> None:
+    """Show the blocked domains."""
+    with _get_client() as c:
+        _emit(c.get(f"/v1/instances/{ctx.obj}/blocklist"))
+
+
+@blocklist_app.command("add")
+def blocklist_add(ctx: typer.Context, domain: str) -> None:
+    """Block a domain and all its subdomains (then `reload`)."""
+    with _get_client() as c:
+        _emit(c.post(f"/v1/instances/{ctx.obj}/blocklist", json={"domain": domain}))
+
+
+@blocklist_app.command("remove")
+def blocklist_remove(ctx: typer.Context, domain: str) -> None:
+    """Unblock a domain (then `reload`)."""
+    with _get_client() as c:
+        _emit(c.delete(f"/v1/instances/{ctx.obj}/blocklist/{domain}"))
+
+
+@blocklist_app.command("reload")
+def blocklist_reload(ctx: typer.Context) -> None:
+    """Apply the list to the running proxy without a restart (squid reconfigure)."""
+    with _get_client() as c:
+        _emit(c.post(f"/v1/instances/{ctx.obj}/blocklist/reload"))
 
 
 @app.command()

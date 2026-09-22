@@ -21,9 +21,11 @@ random API token in `/etc/linuxmuster-squid/config.yml` (0600) and starts the se
 
 ## Managing instances (CLI = thin client of the REST API)
 
-> **Tip:** The exact `--ad-group` values per school + ready-made `create` commands are
-> provided by `scripts/discover-ad-facts.sh` (run on the DC, join-free) — prevents mistyped
-> group names (which would otherwise cause a silent 403).
+> **Tip:** The global role groups (`--ad-group`), the internet groups per school
+> (`--internet-group`) and ready-made `create` commands are printed by
+> `/usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh` (run on the DC, join-free) —
+> prevents mistyped group names (which would otherwise cause a silent 403). First-time setup
+> end to end: [`install.md`](install.md).
 
 ```
 lmnsquid create --school default-school --role teachers --ad-group teachers \
@@ -35,7 +37,7 @@ lmnsquid list
 lmnsquid status default-school-teachers
 lmnsquid stop|start|restart default-school-teachers
 lmnsquid logs default-school-teachers --tail 100
-lmnsquid rm default-school-teachers
+lmnsquid rm default-school-teachers               # + cache/log volumes, blocklist, .prev; --keep-logs keeps the log volume
 ```
 The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
 (`/etc/linuxmuster-squid/secrets`) — see `keytab-and-dns.md`.
@@ -49,6 +51,43 @@ The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
   within ~10s). List **one per school** (`--internet-group internet --internet-group
   msg-internet`) so it covers **visitors** too and works with global `role-teacher`/`role-student`
   proxies — a user passes if in **any** listed group. Omit to enforce the role group only.
+- **`lmnsquid rm <name>`** removes the container, the cache volume, the **log volume**
+  (`lmnsquid-logs-<name>` = access-log history, personal data), the blocklist directory and
+  the definition (+ its `.prev` rollback note). `--keep-logs` (API: `?keep_logs=true`) keeps
+  the log volume, e.g. for a retention obligation; delete it later with
+  `docker volume rm lmnsquid-logs-<name>`. The keytab in `secrets/` stays (operator-managed).
+
+## Blocklist (per instance)
+
+Each instance has its own domain list, `/etc/linuxmuster-squid/blocklists/<name>/blocked.domains`
+(created empty on `create`), which the container sees read-only at `/etc/squid/lists/blocked.domains`
+— the file its `squid.conf` reads for `dstdomain` (HTTP + CONNECT) and `ssl::server_name` (SNI).
+
+```
+lmnsquid blocklist default-school-students add example.org      # -> [".example.org"]: the domain and all subdomains
+lmnsquid blocklist default-school-students list
+lmnsquid blocklist default-school-students remove example.org
+lmnsquid blocklist default-school-students reload               # squid re-reads the list: no restart, cache and connections stay
+```
+
+- `add`/`remove` write the file (sorted, one `.domain` per line; comments are not
+  preserved) and take effect on the next **`reload`** — batch your changes, then reload once.
+  `reload` sends the running squid the reconfigure signal (SIGHUP, what `squid -k reconfigure`
+  sends); the auth/group helpers restart, the cache stays. API:
+  `GET/POST /v1/instances/{name}/blocklist`, `DELETE …/blocklist/{domain}`, `POST …/blocklist/reload`.
+- **What the user sees:** HTTP → **403** (Squid error page, also for teachers). HTTPS → the
+  proxy peeks at the SNI and **terminates the TLS handshake**: the browser shows a
+  connection/TLS error, *not* a block page (there is none without decryption, ADR-002).
+  A blocked name shows up as `TCP_DENIED/403 … GET http://…` resp. `TCP_DENIED/200 0 CONNECT …:443`
+  in the access log.
+- **Hand-editing / category lists:** the file may be edited directly (one domain per line,
+  leading dot = with subdomains; `#` comments) followed by `lmnsquid blocklist <name> reload`.
+  UT-Capitole category lists: `BLOCKED_DOMAINS=/etc/linuxmuster-squid/blocklists/<name>/blocked.domains
+  BLOCK_CATEGORIES="adult malware phishing" bash /usr/share/linuxmuster-squid/scripts/blocklist-refresh.sh`
+  from a host cron (fail-closed size floor), then `reload`. The directory must stay owned by
+  `lmnsquid` so the API can keep writing (it replaces the file atomically).
+- **Upgraded from 7.3.0?** Containers created before 7.3.1 run without the mount until
+  recreated once; the postinst runs `lmnsquid reconcile` for that (see Updates).
 
 ## Updates (digest-pinned, health auto-rollback)
 
@@ -66,6 +105,14 @@ On a **`.deb` upgrade** the postinst runs `update-all` automatically (best-effor
 instances are lifted onto that package's pinned default image, each with its own health-check
 auto-rollback; instances already on the default are skipped, and the apt transaction never
 fails over this. Run `lmnsquid update-all` yourself any time to do the same on demand.
+
+**Upgrade from 7.3.0 (or older) to 7.3.1:** instances created before 7.3.1 have no blocklist
+mount, and `update-all` skips them when the default image did not move. The postinst therefore
+runs `lmnsquid reconcile` once when the previous version is `< 7.3.1`: every instance is
+recreated with the same image and definition (a few seconds of downtime per instance, no
+health gate — same image as before). Check with
+`docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' lmnsquid-<name>` (must list
+`/etc/squid/lists`); if the postinst could not reach the API, run `lmnsquid reconcile` yourself.
 
 ## Observing
 
@@ -130,12 +177,17 @@ Access logs show **who visited/was blocked from which site** = personal data
 - **Access logging can be disabled per instance:** `access_log_enabled: false` → Squid logs
   no requests (the group ACL/filtering still applies unchanged).
 - Keep access to the logs (API token) tight; queries go to the audit log.
+- **`lmnsquid rm` deletes the log volume** with the instance (the deletion path); pass
+  `--keep-logs` only when a retention obligation requires it.
 
 ## Backup
 
 - `/etc/linuxmuster-squid/config.yml` (API token!), `/etc/linuxmuster-squid/secrets/` (keytabs),
+  `/etc/linuxmuster-squid/blocklists/` (per-instance blocklists),
 - `instances_dir` (`/var/lib/linuxmuster-squid/instances/*.yaml` — git-versioned = change log;
-  the postinst creates the repo),
+  the postinst creates and configures the repo; every create/edit/update/rm is one commit:
+  `git -C /var/lib/linuxmuster-squid/instances log --oneline` works as root, the postinst
+  registers the directory as `safe.directory`),
 - Log **volumes** (`lmnsquid-logs-<name>`) only if the access history is subject to retention
   requirements — the cache volume (`lmnsquid-cache-<name>`) is **disposable**.
 
@@ -146,8 +198,9 @@ Fresh host → running instances:
 apt install ./linuxmuster-squid_<version>_all.deb          # service comes up
 # keep the API token: restore config.yml OR accept the new token
 cp -a <backup>/secrets/*        /etc/linuxmuster-squid/secrets/      # keytabs
+cp -a <backup>/blocklists/*     /etc/linuxmuster-squid/blocklists/   # per-instance blocklists (optional; empty ones are recreated)
 cp -a <backup>/instances/*.yaml /var/lib/linuxmuster-squid/instances/
-chown -R lmnsquid:lmnsquid /etc/linuxmuster-squid/secrets /var/lib/linuxmuster-squid/instances
+chown -R lmnsquid:lmnsquid /etc/linuxmuster-squid /var/lib/linuxmuster-squid/instances
 lmnsquid reconcile      # reads the desired state + pulls the pinned digests -> containers run
 ```
 - **`lmnsquid reconcile`** (`POST /v1/reconcile`) re-applies **all** stored instances

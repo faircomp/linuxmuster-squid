@@ -12,6 +12,7 @@ from docker.errors import ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig
 
+from .blocklist import CONTAINER_DIR, Blocklist
 from .models import Instance
 
 
@@ -29,12 +30,14 @@ class DockerService:
         container_bind_ip: str = "0.0.0.0",
         log_max_size: str = "20m",
         log_max_file: int = 5,
+        blocklists_dir: str = "/etc/linuxmuster-squid/blocklists",
     ) -> None:
         self.docker_host: Optional[str] = docker_host
         self.secrets_dir: str = secrets_dir
         self.container_bind_ip: str = container_bind_ip
         self.log_max_size: str = log_max_size
         self.log_max_file: int = log_max_file
+        self.blocklist = Blocklist(blocklists_dir)
         self.client: docker.DockerClient = (
             docker.DockerClient(base_url=docker_host) if docker_host else docker.from_env()
         )
@@ -99,8 +102,9 @@ class DockerService:
 
         Pulls the image, removes any existing ``lmnsquid-<name>`` container,
         then creates and starts a fresh one with the instance environment, the
-        visible hostname, an ``unless-stopped`` restart policy and the keytab
-        secret mounted read-only at the ``KEYTAB`` path.
+        visible hostname, an ``unless-stopped`` restart policy, the keytab
+        secret mounted read-only at the ``KEYTAB`` path and the instance's
+        blocklist directory mounted read-only at ``/etc/squid/lists``.
         """
         try:
             self._pull(inst.image)
@@ -120,6 +124,9 @@ class DockerService:
         keytab_host_path = os.path.realpath(os.path.join(secrets_root, inst.keytab_secret))
         if os.path.commonpath([secrets_root, keytab_host_path]) != secrets_root:
             raise ValueError(f"keytab_secret escapes secrets_dir: {inst.keytab_secret!r}")
+        # Blocklist: created empty if absent (create, reconcile, update all pass through
+        # here, so instances from before 7.3.1 get the mount on their next recreate).
+        blocklist_dir = os.path.realpath(self.blocklist.ensure(inst.name))
 
         self.client.containers.run(
             inst.image,
@@ -141,6 +148,7 @@ class DockerService:
             ),
             volumes={
                 keytab_host_path: {"bind": keytab_container_path, "mode": "ro"},
+                blocklist_dir: {"bind": CONTAINER_DIR, "mode": "ro"},
                 f"lmnsquid-cache-{inst.name}": {"bind": "/var/spool/squid", "mode": "rw"},
                 f"lmnsquid-logs-{inst.name}": {"bind": "/var/log/squid", "mode": "rw"},
             },
@@ -166,10 +174,44 @@ class DockerService:
             container.restart()
         return self.status(name)
 
-    def remove(self, name: str) -> None:
+    def remove(self, name: str, keep_logs: bool = False) -> None:
+        """Remove the container and everything the instance owns on this host.
+
+        The cache volume is disposable and always goes; the log volume holds the
+        access-log history (personal data, threat model T13) and goes unless
+        ``keep_logs``; the blocklist directory goes with the definition.
+        """
         container = self._get(name)
         if container is not None:
             container.remove(force=True)
+        volumes = [f"lmnsquid-cache-{name}"]
+        if not keep_logs:
+            volumes.append(f"lmnsquid-logs-{name}")
+        for volume in volumes:
+            try:
+                self.client.volumes.get(volume).remove(force=True)
+            except NotFound:
+                pass
+        self.blocklist.delete(name)
+
+    def reload(self, name: str) -> dict[str, Any]:
+        """Make the running squid re-read squid.conf and its ACL list files (the blocklist).
+
+        Sends SIGHUP to the container's PID 1, which is squid itself (entrypoint.sh
+        ``exec``s it) -- the signal ``squid -k reconfigure`` sends. No ``docker exec``,
+        so it also works behind the socket proxy (``EXEC: 0``, ADR-012); no restart,
+        the cache and open client connections survive, the auth/group helpers restart.
+        Raises ``LookupError`` when there is no running container.
+        """
+        container = self._get(name)
+        if container is None:
+            raise LookupError(f"instance {name!r} has no container")
+        container.reload()
+        state: dict[str, Any] = container.attrs.get("State", {}) or {}
+        if not state.get("Running", False):
+            raise LookupError(f"instance {name!r} is not running")
+        container.kill(signal="SIGHUP")
+        return {"name": name, "reloaded": True}
 
     # -- introspection -----------------------------------------------------
 
