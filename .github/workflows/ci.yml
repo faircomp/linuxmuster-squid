@@ -81,6 +81,11 @@ jobs:
           apt-get update -qq && apt-get install -y -qq python3-venv
           make deb
           mkdir -p output && mv ./linuxmuster-squid_*.deb output/
+          # DEBIAN/md5sums must cover every shipped regular file, or `dpkg --verify` is a no-op.
+          deb=$(ls output/*.deb)
+          dpkg-deb --ctrl-tarfile "$deb" | tar -tf - | grep -qx './md5sums'
+          test "$(dpkg-deb -c "$deb" | grep -c '^-')" = "$(dpkg-deb --ctrl-tarfile "$deb" | tar -xOf - ./md5sums | wc -l)"
+          echo "md5sums: $(dpkg-deb --ctrl-tarfile "$deb" | tar -xOf - ./md5sums | wc -l) files"
       - uses: actions/upload-artifact@v4
         with:
           name: packages
@@ -119,3 +124,6 @@ jobs:
           # Single version source: the CLI/API report the .deb version (~rc -> rc in PEP 440).
           ver="$(dpkg-query -W -f='${Version}' linuxmuster-squid)"
           sudo lmnsquid version | grep -F "\"${ver//\~/}\""
+          # every installed file matches the shipped md5sums (silent = ok)
+          test -z "$(sudo dpkg --verify linuxmuster-squid)"
+          test -x /usr/share/linuxmuster-squid/scripts/provision-keytab.sh
