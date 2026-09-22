@@ -309,7 +309,11 @@ jobs:
           comm -13 <(dpkg -L linuxmuster-squid | grep '^/opt/' | sort) \
                    <(sudo find /opt/linuxmuster-squid | sort) > after/orphans
           test ! -s after/orphans || { echo "files under /opt dpkg does not own:"; cat after/orphans; exit 1; }
-          test "$(sudo find /opt/linuxmuster-squid /etc/linuxmuster-squid /var/lib/linuxmuster-squid -perm -0002 | wc -l)" = 0
+          # Only files and directories: a symlink is always lrwxrwxrwx on Linux and its
+          # mode is meaningless (the venv ships four: python, python3, python3.12, lib64).
+          sudo find /opt/linuxmuster-squid /etc/linuxmuster-squid /var/lib/linuxmuster-squid \
+               \( -type f -o -type d \) -perm -0002 > after/world-writable
+          test ! -s after/world-writable || { echo "world-writable:"; cat after/world-writable; exit 1; }
           test "$(sudo find /opt/linuxmuster-squid -name 'lmnsquid-*.dist-info' | wc -l)" = 1
 
           # 8. the change log of the instance store recorded the upgrade
