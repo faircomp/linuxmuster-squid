@@ -3,15 +3,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Downloads the UT-Capitole (Toulouse) blocklists and builds the domain list
-# for Squid (dstdomain / ssl::server_name) from them. Run periodically via cron/sidecar;
-# afterwards it reloads Squid (squid -k reconfigure), if reachable locally.
+# for Squid (dstdomain / ssl::server_name) from them. Run periodically from a cron on
+# the proxy HOST (as user lmnsquid, so the control plane keeps write access), then apply
+# it with `lmnsquid blocklist <instance> reload`. It REPLACES the instance's whole list:
+# entries added with `lmnsquid blocklist add` are lost -- keep such instances out of the
+# refresh or re-add them.
 #
-# Env overrides: UT_CAPITOLE_URL, BLOCK_CATEGORIES (space-separated), BLOCKED_DOMAINS.
+# Env: INSTANCE=<school>-<role> selects the list under /etc/linuxmuster-squid/blocklists;
+# overrides: BLOCKED_DOMAINS (explicit file), UT_CAPITOLE_URL, BLOCK_CATEGORIES
+# (space-separated), BLOCKLIST_MIN_LINES.
 set -euo pipefail
 
 URL="${UT_CAPITOLE_URL:-https://dsi.ut-capitole.fr/blacklists/download/blacklists.tar.gz}"
 CATEGORIES="${BLOCK_CATEGORIES:-adult malware phishing dangerous_material}"
-OUT="${BLOCKED_DOMAINS:-/etc/squid/lists/blocked.domains}"
+OUT="${BLOCKED_DOMAINS:-/etc/linuxmuster-squid/blocklists/${INSTANCE:?set INSTANCE=<school>-<role> (or BLOCKED_DOMAINS=<file>)}/blocked.domains}"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -53,5 +58,5 @@ fi
 mv "${OUT}.tmp" "$OUT"
 echo "== $(wc -l < "$OUT") domains -> $OUT =="
 
-# Reload Squid, if local
-squid -k reconfigure 2>/dev/null || echo "(squid -k reconfigure skipped — not local)"
+# The list is read by squid inside the container; the control plane applies it.
+echo "== apply with: lmnsquid blocklist ${INSTANCE:-<instance>} reload =="

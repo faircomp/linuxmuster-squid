@@ -20,6 +20,8 @@ from pathlib import Path
 
 FILE_NAME = "blocked.domains"
 CONTAINER_DIR = "/etc/squid/lists"  # squid.conf: acl blocked_domains dstdomain "/etc/squid/lists/blocked.domains"
+# Instance name = <school>-<role> (models._NAME_RE per part): the directory name under root.
+_INSTANCE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{1,62}$")
 
 # One DNS name (labels of letters/digits/hyphens), after IDNA encoding and lower-casing.
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
@@ -52,8 +54,8 @@ class Blocklist:
         self.root = Path(root)
 
     def dir_for(self, name: str) -> Path:
-        """Host directory mounted into the instance ``name`` (rejects unsafe names)."""
-        if not name or "/" in name or "\\" in name or ".." in name:
+        """Host directory mounted into the instance ``name`` (rejects anything but a name)."""
+        if not _INSTANCE_RE.match(name):
             raise ValueError(f"unsafe instance name: {name!r}")
         return self.root / name
 

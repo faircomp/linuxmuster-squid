@@ -115,7 +115,14 @@ off-host only via an operator-owned TLS reverse proxy. The host is the
 trust boundary. **Side effect:** `access-logs` (historical) uses `docker exec` →
 does **not** work behind the proxy with `EXEC:0`, and neither does `blocklist reload`
 (`squid -k reconfigure` via exec, ADR-014); the live `logs` path (container.logs) does.
-### ADR-014 — Blocklist per instance on the host, directory-mounted, reload by signal
+### ADR-013 — Image registry: GHCR (default)
+**Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:**
+The data-plane image is published to **GHCR (ghcr.io)**; Renovate pins the
+digest. **Why:** free, integrates cleanly with GitHub CI + Renovate
+digest pinning. **Alternatives:** Docker Hub (pull rate limits) or self-
+hosted/linuxmuster registry (more infrastructure).
+
+### ADR-014 — Blocklist per instance on the host, directory-mounted, reload via `squid -k reconfigure` (exec)
 **Status:** Accepted (2026-09-22, campaign fix 7.3.1). **Decision:** each instance owns
 `<blocklists_dir>/<name>/blocked.domains` on the proxy host; the control plane creates it
 empty on create/reconcile and bind-mounts the **directory** read-only at `/etc/squid/lists`
@@ -132,13 +139,6 @@ signal, as a manual stop, and an `unless-stopped` container then stays down afte
 (seen in the lab). Price: like `access-logs`, `reload` needs `docker exec` (ADR-012).
 **Limit (documented):** a blocked HTTPS name is terminated at the TLS handshake, there is
 no 403 page without decryption (ADR-002).
-
-### ADR-013 — Image registry: GHCR (default)
-**Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:**
-The data-plane image is published to **GHCR (ghcr.io)**; Renovate pins the
-digest. **Why:** free, integrates cleanly with GitHub CI + Renovate
-digest pinning. **Alternatives:** Docker Hub (pull rate limits) or self-
-hosted/linuxmuster registry (more infrastructure).
 
 ---
 

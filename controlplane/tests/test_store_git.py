@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -85,6 +86,7 @@ def test_not_a_repo_warns_once_but_stores(tmp_path: Path, caplog: pytest.LogCapt
     assert len(warnings) == 1
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the chmod that forces the failure")
 def test_git_failure_is_logged_as_error(repo: Path, caplog: pytest.LogCaptureFixture) -> None:
     # A repository that cannot be written to (e.g. wrong ownership in production) must
     # surface in the journal instead of vanishing at debug level.

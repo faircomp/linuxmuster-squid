@@ -17,7 +17,7 @@ command -v samba-tool >/dev/null 2>&1 \
     || { echo "samba-tool not found — run this script on the Samba-DC." >&2; exit 2; }
 
 GROUPS_ALL="$(samba-tool group list 2>/dev/null | sort -u)"
-has_group() { grep -qx -- "$1" <<< "$GROUPS_ALL"; }
+has_group() { grep -qxF -- "$1" <<< "$GROUPS_ALL"; }
 
 # Exact names only: a suffix match (`-students`) would also catch every sophomorix
 # class and project group (e.g. 5a-students), which are NOT role groups.

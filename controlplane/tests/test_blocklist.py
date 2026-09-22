@@ -70,7 +70,7 @@ def test_blocklist_file_lifecycle(tmp_path: Path) -> None:
 
 def test_blocklist_rejects_unsafe_name(tmp_path: Path) -> None:
     bl = Blocklist(str(tmp_path))
-    for bad in ("../x", "a/b", ""):
+    for bad in ("../x", "a/b", "", ".", "a", "a.b"):
         with pytest.raises(ValueError):
             bl.ensure(bad)
 
