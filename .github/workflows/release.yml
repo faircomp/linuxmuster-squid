@@ -226,7 +226,13 @@ jobs:
           # model legitimately gains fields (radius just gained ldap_ca) and a negative
           # list turns this job red in an unrelated PR. Whoever adds an admin-set field
           # adds it here in the same PR -- that coupling is the point.
-          cat > record-keys.py <<'PY'
+          # OUTSIDE the checkout on purpose. This job runs actions/checkout, so a helper
+          # placed in the workspace puts the repository on sys.path[0] and any import it
+          # does could resolve against the SOURCE TREE instead of what apt installed --
+          # an assertion that then proves nothing about the installed package. Written to
+          # RUNNER_TEMP and run with `-P` (ignore the script's directory), interpreted by
+          # the package's own venv so PyYAML needs no extra install.
+          cat > "$RUNNER_TEMP/record-keys.py" <<'PY'
           import sys
 
           import yaml
@@ -253,8 +259,8 @@ jobs:
           for key in ADMIN_KEYS:
               print(f"{key}={data[key]!r}")
           PY
-          # PyYAML lives in the package venv, so the job needs nothing extra installed.
-          /opt/linuxmuster-squid/venv/bin/python record-keys.py before/all-teachers.yaml > before/record
+          /opt/linuxmuster-squid/venv/bin/python -P "$RUNNER_TEMP/record-keys.py" \
+            before/all-teachers.yaml > before/record
           test "$(wc -l < before/record)" = 12
           cat before/files.txt before/sha256 before/etc-modes before/inst-mode before/head before/record
 
@@ -301,12 +307,13 @@ jobs:
 
           # 4. the instance record is written by the software, not the admin, and the
           #    postinst rewrites `image:` on purpose (update-all). Every key the admin
-          #    set must be identical -- compared as a POSITIVE list (see record-keys.py),
+          #    set must be identical -- compared as a POSITIVE list (record-keys.py),
           #    so a field the model gains later does not turn this job red. The rollback
           #    note must exist, which covers both outcomes: pull succeeded (new digest)
           #    or failed (auto-rollback, the record is back on the pinned digest).
           sudo cat "$GITDIR/all-teachers.yaml" > after/all-teachers.yaml
-          /opt/linuxmuster-squid/venv/bin/python record-keys.py after/all-teachers.yaml > after/record
+          /opt/linuxmuster-squid/venv/bin/python -P "$RUNNER_TEMP/record-keys.py" \
+            after/all-teachers.yaml > after/record
           test "$(wc -l < after/record)" = 12
           diff -u before/record after/record
           # The raw record diff is a log entry, never an assertion.
