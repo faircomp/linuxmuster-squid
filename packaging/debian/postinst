@@ -50,10 +50,13 @@ if command -v git >/dev/null 2>&1; then
     fi
     git -C "$INST_DIR" config user.name  "linuxmuster-squid" || true
     git -C "$INST_DIR" config user.email "lmnsquid@localhost" || true
+    # The updater's rollback notes are not part of the change log.
+    [ -f "$INST_DIR/.gitignore" ] || printf '*.prev\n' > "$INST_DIR/.gitignore"
+    git -C "$INST_DIR" add -- .gitignore >/dev/null 2>&1 || true
     # 7.3.0 left instance files staged but never committed: record what is there now.
     git -C "$INST_DIR" add -A -- '*.yaml' >/dev/null 2>&1 || true
     if ! git -C "$INST_DIR" diff --cached --quiet 2>/dev/null; then
-        git -C "$INST_DIR" commit -q -m "lmnsquid: record existing instances (package configure)" || true
+        git -C "$INST_DIR" commit -q -m "lmnsquid: package configure (record existing definitions)" || true
     fi
 fi
 
@@ -90,13 +93,31 @@ if [ -d /run/systemd/system ]; then
             "$LMN" health >/dev/null 2>&1 && break
             i=$((i + 1)); sleep 1
         done
-        "$LMN" update-all >/dev/null 2>&1 || true
-        # Containers created before 7.3.1 run without the blocklist mount, and
-        # update-all skips instances already on the default image. Recreate them once
-        # (same image, same definition; a few seconds per instance) so the
-        # per-instance blocklist takes effect. Best-effort like update-all.
+        # Best-effort (the apt transaction never fails over these), but never silent:
+        # the CLI output goes to the journal, and a non-zero exit (an instance rolled
+        # back, not brought up, or the API unreachable) is printed where apt shows it.
+        lmn_step() {
+            if out=$("$LMN" "$@" 2>&1); then
+                printf '%s\n' "$out" | logger -t linuxmuster-squid -p daemon.info || true
+            else
+                printf '%s\n' "$out" | logger -t linuxmuster-squid -p daemon.warning || true
+                echo "WARNING: linuxmuster-squid: 'lmnsquid $*' reported failures:" >&2
+                # The CLI names the affected instances on stderr and carries the reason
+                # per instance; show those lines here so they reach the apt output, the
+                # full result stays in the journal.
+                printf '%s\n' "$out" | grep -E 'instance\(s\) failed|"error": ' \
+                    | head -n 5 | sed 's/^/  /' >&2
+                echo "  Full output: journalctl -t linuxmuster-squid; state: lmnsquid list" >&2
+            fi
+        }
+        lmn_step update-all
+        # Containers created before 7.3.1 run without the blocklist mount. reconcile
+        # replaces exactly the containers whose definition no longer matches what they
+        # were created from (label lmnsquid.spec) -- so one update-all just recreated is
+        # left alone, an old one is replaced once (new container first, the old one
+        # comes back if the new one is not healthy).
         if dpkg --compare-versions "$2" lt 7.3.1; then
-            "$LMN" reconcile >/dev/null 2>&1 || true
+            lmn_step reconcile
         fi
     fi
 fi

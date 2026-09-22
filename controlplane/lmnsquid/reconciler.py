@@ -21,7 +21,7 @@ class Reconciler:
         self.docker = docker
 
     def apply(self, inst: Instance) -> dict:
-        """Persist ``inst`` then (re)create and start its container."""
+        """Persist ``inst`` then make its container match and run."""
         self.store.put(inst)
         return self.docker.ensure_running(inst)
 
@@ -31,8 +31,25 @@ class Reconciler:
         self.store.delete(name)
 
     def reconcile_all(self) -> list[dict]:
-        """Ensure every stored instance is running; return their statuses."""
+        """Ensure every stored instance runs as defined; return their statuses.
+
+        One instance failing (unpullable image, broken definition, daemon error) must
+        not stop the others from being reconciled: its status carries an ``error``
+        and the loop carries on. The API/CLI surface the failed names.
+        """
         statuses: list[dict] = []
         for inst in self.store.list():
-            statuses.append(self.docker.ensure_running(inst))
+            try:
+                statuses.append(self.docker.ensure_running(inst))
+            except Exception as exc:  # noqa: BLE001 - isolate per instance, report below
+                logger.error("reconcile failed name=%s: %s", inst.name, exc)
+                statuses.append({**self._status_or_unknown(inst.name), "error": str(exc)})
         return statuses
+
+    def _status_or_unknown(self, name: str) -> dict:
+        """Status of ``name``, or a placeholder — reporting a failure must not fail too."""
+        try:
+            return self.docker.status(name)
+        except Exception as exc:  # noqa: BLE001 - the daemon may be the reason we are here
+            logger.error("status unavailable name=%s: %s", name, exc)
+            return {"name": name, "exists": None, "running": False, "health": None, "image": None}

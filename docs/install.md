@@ -14,7 +14,8 @@ Kerberos details: [`keytab-and-dns.md`](keytab-and-dns.md); clients:
 
 Placeholders: `<domain>` = the AD DNS domain (`linuxmuster.lan`), `<REALM>` = the same in
 UPPERCASE, `<proxy-fqdn>` = the proxy host's FQDN (`proxy.<domain>`), `<subnet>` = the
-client network(s). All commands as root.
+client network(s), `<school>` = a school short name other than the default school (its
+groups are prefixed, e.g. `<school>-internet`). All commands as root.
 
 ## 1. Prerequisites (proxy host)
 
@@ -167,11 +168,15 @@ apt-get install -y ./linuxmuster-squid_<new>_all.deb   # restarts the service, t
 lmnsquid update-all                                    # on demand: every instance -> pinned default image
 ```
 
-Every instance update is health-gated with automatic rollback. **Upgrading from 7.3.0:**
-containers created with 7.3.0 run without the blocklist mount until they are recreated
-once; the postinst does that (`lmnsquid reconcile`, same image and definition, a few
-seconds per instance). Verify with `docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' lmnsquid-<name>`
-(shows `/etc/squid/lists`), or run `lmnsquid reconcile` yourself.
+Every instance update is health-gated with automatic rollback: the replacement container
+is created first, the previous one is kept until the new one is **healthy** and restarted if
+it is not. **Upgrading from 7.3.0:** containers created with 7.3.0 run without the blocklist
+mount until they are replaced once; the postinst does that (`lmnsquid reconcile`, a few
+seconds per instance — containers that already match their definition are left running).
+Verify with `docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' lmnsquid-<name>`
+(shows `/etc/squid/lists`), or run `lmnsquid reconcile` yourself. Both postinst steps log to
+`journalctl -t linuxmuster-squid` and print a `WARNING:` in the apt output naming any instance
+that could not be brought up; the apt transaction itself never fails over them.
 
 ## 10. Removing
 

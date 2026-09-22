@@ -13,9 +13,25 @@ linuxmuster-squid (7.3.1) lmn73; urgency=medium
     HTTP request gets 403; a blocked HTTPS host is cut at the TLS handshake
     (peek + terminate), the browser shows a connection error, not a block page.
   * Upgrade from 7.3.0: containers created before 7.3.1 run without the mount
-    until they are recreated once. The postinst runs `lmnsquid reconcile` for
-    that when the previous version is < 7.3.1 (same image and definition, a
-    few seconds per instance); run it yourself if the postinst could not.
+    until they are replaced once. The postinst runs `lmnsquid reconcile` for
+    that when the previous version is < 7.3.1 (a few seconds per instance);
+    run it yourself if the postinst could not.
+  * Replacing a container (create, edit, update, rollback, reconcile) no longer
+    has a gap for failure: the new container is created first, the old one is
+    kept until the new one is healthy and restarted if it is not, and the
+    operation reports the error instead of leaving the instance without a
+    container. A container whose definition is unchanged is left alone (label
+    lmnsquid.spec), so `reconcile` touches only what differs. One instance
+    failing no longer stops `reconcile` for the others (`failed` in the API
+    result); `lmnsquid reconcile` and `update-all` exit 1 when an instance was
+    not brought up or rolled back. The postinst logs both steps to the journal
+    (`journalctl -t linuxmuster-squid`) and prints a WARNING in the apt output
+    on failure instead of discarding it.
+  * blocklist-refresh.sh writes the instance's list under
+    /etc/linuxmuster-squid/blocklists/$INSTANCE/ by default and tells you to
+    `lmnsquid blocklist <name> reload`; it replaces the whole file.
+  * CI: the built package must carry an md5sums entry for every shipped file
+    and `dpkg --verify` must be silent after the install smoke.
   * `lmnsquid rm` now removes the instance's cache and log volumes (the access
     log is personal data), its blocklist and the updater's .prev note;
     `--keep-logs` keeps the log volume (DELETE ...?keep_logs=true).

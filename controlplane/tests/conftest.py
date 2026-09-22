@@ -67,9 +67,8 @@ class FakeDockerService:
     def ensure_running(self, inst: Instance) -> dict[str, Any]:
         self.ensure_calls.append(inst.name)
         if "unpullable" in inst.image:
-            # Mirror the real service: the old container is force-removed before the new
-            # one is created, so a pull/run failure leaves NO container and raises.
-            self.containers.pop(inst.name, None)
+            # Mirror the real service: the replacement is created first, so a failure
+            # leaves the previous container exactly as it was and raises.
             raise RuntimeError("simulated pull failure")
         # Mirror the real service: the blocklist is created (empty) and mounted, and the
         # cache/log volumes come into existence with the container.

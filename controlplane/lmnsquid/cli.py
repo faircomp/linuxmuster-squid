@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Optional
+from urllib.parse import quote
 
 import httpx
 import typer
@@ -158,7 +159,7 @@ def blocklist_add(ctx: typer.Context, domain: str) -> None:
 def blocklist_remove(ctx: typer.Context, domain: str) -> None:
     """Unblock a domain (then `reload`)."""
     with _get_client() as c:
-        _emit(c.delete(f"/v1/instances/{ctx.obj}/blocklist/{domain}"))
+        _emit(c.delete(f"/v1/instances/{ctx.obj}/blocklist/{quote(domain, safe='')}"))
 
 
 @blocklist_app.command("reload")
@@ -253,11 +254,28 @@ def update(
         _emit(c.post(f"/v1/instances/{name}/update", json=body))
 
 
+def _fail_if(names: list[str], what: str) -> None:
+    """Non-zero exit when a batch operation left instances behind (postinst relies on it)."""
+    if names:
+        typer.secho(
+            f"{what}: {len(names)} instance(s) failed: {', '.join(names)}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1)
+
+
 @app.command("update-all")
 def update_all() -> None:
-    """Lift every instance onto the maintained default image (health auto-rollback)."""
+    """Lift every instance onto the maintained default image (health auto-rollback).
+
+    Exits 1 if any instance was rolled back or errored (the others are still done).
+    """
     with _get_client() as c:
-        _emit(c.post("/v1/update-all"))
+        resp = c.post("/v1/update-all")
+    _emit(resp)
+    results = resp.json().get("results", [])
+    _fail_if([r["name"] for r in results if "error" in r or "rolled_back_to" in r], "update-all")
 
 
 @app.command()
@@ -336,9 +354,15 @@ def health() -> None:
 
 @app.command()
 def reconcile() -> None:
-    """Re-apply all stored instances (reconverge drift / restore on a fresh host)."""
+    """Re-apply all stored instances (reconverge drift / restore on a fresh host).
+
+    Containers that already match their definition are left alone. Exits 1 if any
+    instance could not be brought up (the others are still reconciled).
+    """
     with _get_client() as c:
-        _emit(c.post("/v1/reconcile"))
+        resp = c.post("/v1/reconcile")
+    _emit(resp)
+    _fail_if(resp.json().get("failed", []), "reconcile")
 
 
 def main() -> None:

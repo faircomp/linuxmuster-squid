@@ -64,6 +64,19 @@ def create_app(
             )
         return inst
 
+    def _apply(inst: Instance) -> dict[str, Any]:
+        """Apply ``inst``; report a container that refuses to come up legibly.
+
+        ``ensure_running`` keeps/restores the previous container and raises with the
+        reason — pass that on instead of a bare "Internal Server Error".
+        """
+        try:
+            return reconciler.apply(inst)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            ) from exc
+
     def _check_log_params(tail: int, grep: str | None) -> None:
         if not 1 <= tail <= 10000:
             raise HTTPException(
@@ -92,9 +105,17 @@ def create_app(
     # loop (an `update-all` can otherwise hold it for minutes and hang /v1/health).
     @app.post("/v1/reconcile", dependencies=auth)
     def reconcile() -> dict[str, Any]:
-        """Re-apply every stored instance (reconverge drift / restore on a fresh host)."""
+        """Re-apply every stored instance (reconverge drift / restore on a fresh host).
+
+        Always 200 with every instance's status; ``failed`` lists the names whose
+        container could not be brought up (their entries carry ``error``).
+        """
         audit.info("reconcile all instances")
-        return {"reconciled": reconciler.reconcile_all()}
+        results = reconciler.reconcile_all()
+        failed = [r["name"] for r in results if "error" in r]
+        if failed:
+            audit.warning("reconcile failed for %s", ", ".join(failed))
+        return {"reconciled": results, "failed": failed}
 
     @app.post("/v1/update-all", dependencies=auth)
     def update_all() -> dict[str, Any]:
@@ -108,8 +129,8 @@ def create_app(
         dependencies=auth,
         status_code=status.HTTP_201_CREATED,
     )
-    async def create_instance(inst: Instance) -> dict[str, Any]:
-        result = reconciler.apply(inst)
+    def create_instance(inst: Instance) -> dict[str, Any]:
+        result = _apply(inst)
         audit.info("create instance name=%s image=%s", inst.name, inst.image)
         return {"instance": inst, "status": result}
 
@@ -122,7 +143,7 @@ def create_app(
         return _require(name)
 
     @app.patch("/v1/instances/{name}", dependencies=auth)
-    async def patch_instance(name: str, patch: InstancePatch) -> dict[str, Any]:
+    def patch_instance(name: str, patch: InstancePatch) -> dict[str, Any]:
         existing = _require(name)
         updates = patch.model_dump(exclude_unset=True)
         # Re-validate the merged instance through Instance validators; school/role
@@ -130,7 +151,7 @@ def create_app(
         merged = Instance.model_validate(
             {**existing.model_dump(exclude={"name", "container_name"}), **updates}
         )
-        result = reconciler.apply(merged)
+        result = _apply(merged)
         audit.info(
             "patch instance name=%s fields=%s",
             merged.name,
@@ -143,7 +164,7 @@ def create_app(
         dependencies=auth,
         status_code=status.HTTP_204_NO_CONTENT,
     )
-    async def delete_instance(name: str, keep_logs: bool = False) -> None:
+    def delete_instance(name: str, keep_logs: bool = False) -> None:
         """Remove the instance: container, cache + log volumes, blocklist, definition.
 
         ``keep_logs=true`` retains the access-log volume ``lmnsquid-logs-<name>``.

@@ -83,9 +83,11 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
   in the access log.
 - **Hand-editing / category lists:** the file may be edited directly (one domain per line,
   leading dot = with subdomains; `#` comments) followed by `lmnsquid blocklist <name> reload`.
-  UT-Capitole category lists: `BLOCKED_DOMAINS=/etc/linuxmuster-squid/blocklists/<name>/blocked.domains
-  BLOCK_CATEGORIES="adult malware phishing" bash /usr/share/linuxmuster-squid/scripts/blocklist-refresh.sh`
-  from a host cron (fail-closed size floor), then `reload`. The directory must stay owned by
+  UT-Capitole category lists: `INSTANCE=<name> BLOCK_CATEGORIES="adult malware phishing"
+  bash /usr/share/linuxmuster-squid/scripts/blocklist-refresh.sh` from a host cron **as user
+  `lmnsquid`** (fail-closed size floor), then `reload`. The refresh **replaces the whole
+  file** — entries added with `lmnsquid blocklist add` are lost, so keep manually curated
+  instances out of the refresh or re-add them afterwards. The directory must stay owned by
   `lmnsquid` so the API can keep writing (it replaces the file atomically).
 - **Upgraded from 7.3.0?** Containers created before 7.3.1 run without the mount until
   recreated once; the postinst runs `lmnsquid reconcile` for that (see Updates).
@@ -109,11 +111,23 @@ fails over this. Run `lmnsquid update-all` yourself any time to do the same on d
 
 **Upgrade from 7.3.0 (or older) to 7.3.1:** instances created before 7.3.1 have no blocklist
 mount, and `update-all` skips them when the default image did not move. The postinst therefore
-runs `lmnsquid reconcile` once when the previous version is `< 7.3.1`: every instance is
-recreated with the same image and definition (a few seconds of downtime per instance, no
-health gate — same image as before). Check with
+runs `lmnsquid reconcile` once when the previous version is `< 7.3.1`: it replaces exactly the
+containers whose definition differs from what they were created from (see below), a few
+seconds per instance. Check with
 `docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' lmnsquid-<name>` (must list
 `/etc/squid/lists`); if the postinst could not reach the API, run `lmnsquid reconcile` yourself.
+Both postinst steps log their output to the journal (`journalctl -t linuxmuster-squid`) and
+print a `WARNING:` in the apt output when an instance was rolled back or not brought up — the
+apt transaction itself never fails over them.
+
+**How a container is replaced** (create, edit, update, rollback, reconcile): the new container
+is created first, the old one is stopped and parked, the new one is started and must become
+**healthy**; only then is the old one removed. If the new one exits or stays unhealthy, it is
+removed, the old one is restarted, and the operation reports the error (HTTP 500 for a single
+instance; `reconcile` lists the name under `failed` and the CLI exits 1 while the other
+instances are still reconciled). A container that already matches its definition (label
+`lmnsquid.spec`) is left running — so `lmnsquid reconcile` is safe to run at any time and an
+`edit` that changes nothing causes no restart. Use `lmnsquid restart <name>` for a plain restart.
 
 ## Observing
 
@@ -205,7 +219,9 @@ chown -R lmnsquid:lmnsquid /etc/linuxmuster-squid /var/lib/linuxmuster-squid/ins
 lmnsquid reconcile      # reads the desired state + pulls the pinned digests -> containers run
 ```
 - **`lmnsquid reconcile`** (`POST /v1/reconcile`) re-applies **all** stored instances
-  — also to fix drift after an incident.
+  — also to fix drift after an incident. Containers that already match are left alone, a
+  missing one is created, a differing one replaced (old one kept until the new one is
+  healthy); one failing instance does not stop the rest (`failed` list, CLI exit 1).
 - **Reboot** doesn't need this: `restart_policy: unless-stopped` brings running containers back.
 - **Downgrade the tool:** install an older `.deb` → the postinst restarts the service
   (loads the old code). **Cache volume broken** (container stays unhealthy after a power outage):

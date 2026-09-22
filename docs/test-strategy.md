@@ -46,7 +46,8 @@ acceptance list in `deployment-gpo.md`.
 - **P3:** teacher of school A via school-B instance→403; prefixed group names take effect;
   subnet scope takes effect.
 - **P4:** API without token→401, wrong token→403; invalid instance definition
-  rejected; reconcile idempotent.
+  rejected; reconcile idempotent (matching container untouched); one instance failing to
+  come up does not block the others (`failed` list) and the previous container is kept.
 - **P5:** update to a broken image→auto-rollback, service stays available;
   `rollback` deterministic.
 - **P9:** `.deb` install→systemd `active`, API/CLI smoke; package upgrade/rollback.
