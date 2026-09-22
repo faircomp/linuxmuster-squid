@@ -9,5 +9,10 @@ fi
 if [ "$1" = "purge" ]; then
     rm -rf /opt/linuxmuster-squid
     rm -rf /etc/linuxmuster-squid /var/lib/linuxmuster-squid
+    # The safe.directory entry the postinst added for the instances repo.
+    if command -v git >/dev/null 2>&1; then
+        git config --system --unset-all safe.directory \
+            '^/var/lib/linuxmuster-squid/instances$' 2>/dev/null || true
+    fi
 fi
 exit 0
