@@ -6,15 +6,22 @@ linuxmuster-squid (7.3.2) lmn73; urgency=medium
     instance with a pinned image, a blocklist entry), upgrades onto the freshly
     built package and fails the build if config.yml, the keytab, the admin file
     or a blocklist survives with different bytes or different permissions, if
-    the instance record changed in anything but its `image:` line, if the
-    service is no longer enabled+active, if the CLI no longer reports the .deb
-    version, if anything is left behind under /opt or is world-writable, or if
-    the instance change log recorded nothing. `release.yml` will not publish a
-    tag whose upgrade smoke failed.
+    any admin-set key of the instance record changed (compared as a positive
+    list of keys, so the record may still gain fields), if the service is no
+    longer enabled+active, if the CLI no longer reports the .deb version, if
+    anything is left behind under /opt or is world-writable, or if the instance
+    change log recorded nothing. `release.yml` will not publish a tag whose
+    upgrade smoke failed.
   * The upgrade is installed with `--reinstall --allow-downgrades`, so the
     postinst really runs with its `$2` set and the upgrade branch
     (try-restart, update-all, reconcile) is exercised instead of silently
-    skipped when the build is version-equal to the release.
+    skipped when the build is version-equal to the release. That it really
+    happened is asserted, not assumed: dpkg's own log must carry an `upgrade`
+    action for the package, and the checksum manifest may not run empty.
+  * The job refuses to skip itself when the package has releases: it falls back
+    to the newest prerelease, and only a package without any release at all may
+    skip. It gates the release job, so a silent skip would publish a tag whose
+    upgrade path was never tested.
   * `workflow_dispatch` takes a `prev_tag` input so the jump from an arbitrary
     older release (e.g. v1.3.0, the pre-conventions line) can be proven on
     demand.

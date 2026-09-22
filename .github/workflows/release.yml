@@ -112,19 +112,33 @@ jobs:
         id: prev
         env:
           GH_TOKEN: ${{ github.token }}
+          # Passed through the environment, not interpolated into the script source.
+          PREV_TAG: ${{ github.event.inputs.prev_tag }}
         run: |
           set -eu
           mkdir -p previous
-          tag="${{ github.event.inputs.prev_tag }}"
+          tag="${PREV_TAG:-}"
           if [ -z "$tag" ]; then
-            # The version a school is running right now = the newest real release.
-            tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 20 \
+            # The version a school is running right now = the newest real release;
+            # fall back to the newest prerelease if there is no full release yet.
+            tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 \
                     --json tagName,isDraft,isPrerelease \
                     --jq '[.[] | select(.isDraft == false and .isPrerelease == false)][0].tagName // ""')
+            if [ -z "$tag" ]; then
+              tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 \
+                      --json tagName,isDraft --jq '[.[] | select(.isDraft == false)][0].tagName // ""')
+              [ -n "$tag" ] && echo "::warning::no full release yet, upgrading from prerelease $tag"
+            fi
           fi
           if [ -z "$tag" ]; then
+            # Skipping is only legitimate while the package has NO release at all: this
+            # job gates the release job, so a silent skip would publish a tag whose
+            # upgrade path was never tested.
+            if [ "$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq 'length')" != "0" ]; then
+              echo "::error::releases exist but none could be selected - refusing to skip"; exit 1
+            fi
             echo "skip=1" >> "$GITHUB_OUTPUT"
-            echo "::notice::no published release yet, upgrade smoke skipped"
+            echo "::notice::first release of this package, nothing to upgrade from"
             exit 0
           fi
           for i in 1 2 3; do
@@ -194,7 +208,12 @@ jobs:
           sudo find /etc/linuxmuster-squid -type f \
                \( -name config.yml -o -name proxy.keytab -o -name blocked.domains \) \
                | sort > before/files.txt
-          sudo sha256sum $(cat before/files.txt) > before/sha256
+          # A manifest that can run empty is a green light that proves nothing:
+          # `sha256sum $(cat empty-file)` hashes stdin and `sha256sum -c` then reports
+          # "-: OK" with exit 0. Pin the expected count and never pass an empty list.
+          test "$(wc -l < before/files.txt)" = 4      # config.yml, keytab, 2x blocked.domains
+          xargs -r -a before/files.txt sudo sha256sum > before/sha256
+          test "$(wc -l < before/sha256)" = 4
           sudo find /etc/linuxmuster-squid -printf '%m %U:%G %p\n' | sort > before/etc-modes
           sudo stat -c '%a %U:%G' /var/lib/linuxmuster-squid/instances/all-teachers.yaml > before/inst-mode
           sudo cat /var/lib/linuxmuster-squid/instances/all-teachers.yaml > before/all-teachers.yaml
@@ -202,7 +221,42 @@ jobs:
           sudo git -c safe.directory=/var/lib/linuxmuster-squid/instances \
                    -C /var/lib/linuxmuster-squid/instances rev-parse HEAD > before/head \
             2>/dev/null || echo none > before/head
-          cat before/files.txt before/sha256 before/etc-modes before/inst-mode before/head
+          # The instance record is written by the SOFTWARE, so it is compared by the keys
+          # the admin set, never by "everything except the field that moves today": the
+          # model legitimately gains fields (radius just gained ldap_ca) and a negative
+          # list turns this job red in an unrelated PR. Whoever adds an admin-set field
+          # adds it here in the same PR -- that coupling is the point.
+          cat > record-keys.py <<'PY'
+          import sys
+
+          import yaml
+
+          ADMIN_KEYS = [
+              "access_log_enabled",
+              "ad_group",
+              "cache_size_mb",
+              "http_port",
+              "internet_group",
+              "keytab_secret",
+              "log_retention_days",
+              "realm",
+              "role",
+              "school",
+              "school_subnets",
+              "visible_hostname",
+          ]
+
+          data = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+          missing = [k for k in ADMIN_KEYS if k not in data]
+          if missing:
+              raise SystemExit(f"instance record lost admin-set key(s): {', '.join(missing)}")
+          for key in ADMIN_KEYS:
+              print(f"{key}={data[key]!r}")
+          PY
+          # PyYAML lives in the package venv, so the job needs nothing extra installed.
+          /opt/linuxmuster-squid/venv/bin/python record-keys.py before/all-teachers.yaml > before/record
+          test "$(wc -l < before/record)" = 12
+          cat before/files.txt before/sha256 before/etc-modes before/inst-mode before/head before/record
 
       - name: Upgrade to the freshly built package
         if: steps.prev.outputs.skip != '1'
@@ -229,10 +283,16 @@ jobs:
           #    unpacked over, and the control plane logged the update-all that only
           #    the `[ -n "${2:-}" ]` branch of the postinst calls.
           grep -E 'Unpacking linuxmuster-squid \([^)]+\) over \([^)]+\)' upgrade.log
+          # dpkg logs the action it took. It is "upgrade" whenever the package was
+          # already installed -- including a same-version --reinstall (verified) -- and
+          # "install" when it was not. Without this the whole job can pass while apt did
+          # nothing at all, the defect this template shipped with once.
+          grep " upgrade linuxmuster-squid:" /var/log/dpkg.log
           sudo journalctl -u linuxmuster-squid.service --no-pager \
             | grep -F 'lmnsquid.audit:update-all to default image='
 
           # 2. every admin-owned file byte-identical (config.yml carries the API token)
+          test -s before/sha256
           sudo sha256sum -c before/sha256
 
           # 3. modes and ownership in the config tree unchanged
@@ -240,13 +300,17 @@ jobs:
           diff -u before/etc-modes after/etc-modes
 
           # 4. the instance record is written by the software, not the admin, and the
-          #    postinst rewrites `image:` on purpose (update-all). Every field the admin
-          #    set must be identical, and the rollback note must exist -- that covers
-          #    both outcomes: pull succeeded (new digest) or failed (auto-rollback, the
-          #    record is back on the pinned digest).
+          #    postinst rewrites `image:` on purpose (update-all). Every key the admin
+          #    set must be identical -- compared as a POSITIVE list (see record-keys.py),
+          #    so a field the model gains later does not turn this job red. The rollback
+          #    note must exist, which covers both outcomes: pull succeeded (new digest)
+          #    or failed (auto-rollback, the record is back on the pinned digest).
           sudo cat "$GITDIR/all-teachers.yaml" > after/all-teachers.yaml
-          diff -u <(grep -v '^image:' before/all-teachers.yaml) \
-                  <(grep -v '^image:' after/all-teachers.yaml)
+          /opt/linuxmuster-squid/venv/bin/python record-keys.py after/all-teachers.yaml > after/record
+          test "$(wc -l < after/record)" = 12
+          diff -u before/record after/record
+          # The raw record diff is a log entry, never an assertion.
+          diff -u before/all-teachers.yaml after/all-teachers.yaml || true
           sudo test -f "$GITDIR/all-teachers.prev"
           sudo stat -c '%a %U:%G' "$GITDIR/all-teachers.yaml" > after/inst-mode
           diff -u before/inst-mode after/inst-mode
@@ -274,7 +338,8 @@ jobs:
 
           # 8. the change log of the instance store recorded the upgrade
           sudo git -c safe.directory=$GITDIR -C $GITDIR rev-parse HEAD > after/head
-          ! diff -q before/head after/head
+          test -s after/head
+          test "$(cat before/head)" != "$(cat after/head)"
           sudo git -c safe.directory=$GITDIR -C $GITDIR log -1 --format='%an' \
             | grep -qx 'linuxmuster-squid'
           sudo git -c safe.directory=$GITDIR -C $GITDIR log --oneline -5
