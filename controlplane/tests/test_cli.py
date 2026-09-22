@@ -32,13 +32,20 @@ def test_cli_full_lifecycle(patch_client: None, instance_data: dict[str, Any]) -
         cli.app,
         [
             "create",
-            "--school", instance_data["school"],
-            "--role", instance_data["role"],
-            "--ad-group", instance_data["ad_group"],
-            "--realm", instance_data["realm"],
-            "--visible-hostname", instance_data["visible_hostname"],
-            "--image", instance_data["image"],
-            "--keytab-secret", instance_data["keytab_secret"],
+            "--school",
+            instance_data["school"],
+            "--role",
+            instance_data["role"],
+            "--ad-group",
+            instance_data["ad_group"],
+            "--realm",
+            instance_data["realm"],
+            "--visible-hostname",
+            instance_data["visible_hostname"],
+            "--image",
+            instance_data["image"],
+            "--keytab-secret",
+            instance_data["keytab_secret"],
         ],
     )
     assert r.exit_code == 0, r.output
@@ -52,7 +59,7 @@ def test_cli_full_lifecycle(patch_client: None, instance_data: dict[str, Any]) -
         cli.app,
         ["update", "default-school-teachers", "ghcr.io/example/lmnsquid:v2"],
     )
-    assert r.exit_code == 0 and "\"updated\": true" in r.output
+    assert r.exit_code == 0 and '"updated": true' in r.output
 
     assert runner.invoke(cli.app, ["rm", "default-school-teachers"]).exit_code == 0
 
@@ -78,24 +85,34 @@ def test_cli_create_defaults_image_and_multi_subnet(
         cli.app,
         [
             "create",
-            "--school", "s2",
-            "--role", "students",
-            "--ad-group", "students",
-            "--realm", instance_data["realm"],
-            "--visible-hostname", "proxy2.example.lan",
-            "--keytab-secret", instance_data["keytab_secret"],
-            "--internet-group", "internet",
-            "--internet-group", "msg-internet",
-            "--school-subnets", "10.1.0.0/16",
-            "--school-subnets", "10.2.0.0/16",
+            "--school",
+            "s2",
+            "--role",
+            "students",
+            "--ad-group",
+            "students",
+            "--realm",
+            instance_data["realm"],
+            "--visible-hostname",
+            "proxy2.example.lan",
+            "--keytab-secret",
+            instance_data["keytab_secret"],
+            "--internet-group",
+            "internet",
+            "--internet-group",
+            "msg-internet",
+            "--school-subnets",
+            "10.1.0.0/16",
+            "--school-subnets",
+            "10.2.0.0/16",
         ],
     )
     assert r.exit_code == 0, r.output
 
     show = runner.invoke(cli.app, ["show", "s2-students"]).output
-    assert DEFAULT_IMAGE in show                    # image defaulted (no --image given)
-    assert "10.1.0.0/16 10.2.0.0/16" in show        # subnets joined space-separated
-    assert '"internet_group": "internet:msg-internet"' in show   # all schools' internet groups (OR)
+    assert DEFAULT_IMAGE in show  # image defaulted (no --image given)
+    assert "10.1.0.0/16 10.2.0.0/16" in show  # subnets joined space-separated
+    assert '"internet_group": "internet:msg-internet"' in show  # all schools' internet groups (OR)
 
     # update without an explicit image -> maintained default, still succeeds
     assert runner.invoke(cli.app, ["update", "s2-students"]).exit_code == 0
@@ -110,13 +127,20 @@ def test_cli_update_all(patch_client: None, instance_data: dict[str, Any]) -> No
         cli.app,
         [
             "create",
-            "--school", instance_data["school"],
-            "--role", instance_data["role"],
-            "--ad-group", instance_data["ad_group"],
-            "--realm", instance_data["realm"],
-            "--visible-hostname", instance_data["visible_hostname"],
-            "--keytab-secret", instance_data["keytab_secret"],
-            "--image", "ghcr.io/example/lmnsquid:v1",
+            "--school",
+            instance_data["school"],
+            "--role",
+            instance_data["role"],
+            "--ad-group",
+            instance_data["ad_group"],
+            "--realm",
+            instance_data["realm"],
+            "--visible-hostname",
+            instance_data["visible_hostname"],
+            "--keytab-secret",
+            instance_data["keytab_secret"],
+            "--image",
+            "ghcr.io/example/lmnsquid:v1",
         ],
     )
     r = runner.invoke(cli.app, ["update-all"])
@@ -129,19 +153,32 @@ def test_cli_edit_and_version(patch_client: None, instance_data: dict[str, Any])
         cli.app,
         [
             "create",
-            "--school", instance_data["school"], "--role", instance_data["role"],
-            "--ad-group", instance_data["ad_group"], "--realm", instance_data["realm"],
-            "--visible-hostname", instance_data["visible_hostname"],
-            "--keytab-secret", instance_data["keytab_secret"],
+            "--school",
+            instance_data["school"],
+            "--role",
+            instance_data["role"],
+            "--ad-group",
+            instance_data["ad_group"],
+            "--realm",
+            instance_data["realm"],
+            "--visible-hostname",
+            instance_data["visible_hostname"],
+            "--keytab-secret",
+            instance_data["keytab_secret"],
         ],
     )
     # switch to a global role group + add both schools' internet groups, without rm/create
     r = runner.invoke(
         cli.app,
         [
-            "edit", "default-school-teachers",
-            "--ad-group", "role-teacher",
-            "--internet-group", "internet", "--internet-group", "msg-internet",
+            "edit",
+            "default-school-teachers",
+            "--ad-group",
+            "role-teacher",
+            "--internet-group",
+            "internet",
+            "--internet-group",
+            "msg-internet",
         ],
     )
     assert r.exit_code == 0, r.output

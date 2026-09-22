@@ -64,7 +64,9 @@ def test_explicit_rollback(
     assert store.get(instance.name).image == good  # type: ignore[union-attr]
 
 
-def test_update_endpoint(client: Any, auth_headers: dict[str, str], instance_data: dict[str, Any]) -> None:
+def test_update_endpoint(
+    client: Any, auth_headers: dict[str, str], instance_data: dict[str, Any]
+) -> None:
     client.post("/v1/instances", json=instance_data, headers=auth_headers)
     resp = client.post(
         "/v1/instances/default-school-teachers/update",
@@ -92,15 +94,15 @@ def test_update_all_lifts_stale_and_skips_current(
         )
 
     reconciler.apply(_inst("a", "teachers", "ghcr.io/example/lmnsquid:v1"))  # stale
-    reconciler.apply(_inst("b", "students", DEFAULT_IMAGE))                  # already current
+    reconciler.apply(_inst("b", "students", DEFAULT_IMAGE))  # already current
     up = _updater(store, docker, reconciler)
 
     results = {r["name"]: r for r in up.update_all(DEFAULT_IMAGE)}
 
     assert results["a-teachers"]["updated"] is True
     assert store.get("a-teachers").image == DEFAULT_IMAGE  # type: ignore[union-attr]
-    assert results["b-students"].get("skipped") is True    # untouched (no recreate)
-    assert store.get("b-students").image == DEFAULT_IMAGE   # type: ignore[union-attr]
+    assert results["b-students"].get("skipped") is True  # untouched (no recreate)
+    assert store.get("b-students").image == DEFAULT_IMAGE  # type: ignore[union-attr]
 
 
 def test_update_rolls_back_when_apply_raises(
@@ -113,9 +115,9 @@ def test_update_rolls_back_when_apply_raises(
     # 'unpullable' makes the fake raise from ensure_running AFTER removing the old container
     res = up.update(instance.name, "ghcr.io/example/lmnsquid:unpullable")
 
-    assert res["updated"] is False                              # did not raise out
+    assert res["updated"] is False  # did not raise out
     assert res["rolled_back_to"] == good
-    assert store.get(instance.name).image == good              # type: ignore[union-attr]
+    assert store.get(instance.name).image == good  # type: ignore[union-attr]
     assert docker.status(instance.name)["health"] == "healthy"  # back online on the good image
 
 
@@ -124,8 +126,13 @@ def test_update_all_bad_target_rolls_back_each_and_does_not_abort(
 ) -> None:
     def _inst(school: str, image: str) -> Instance:
         return Instance(
-            school=school, role="teachers", ad_group="teachers", realm="EX.LAN",
-            visible_hostname=f"{school}.example.lan", keytab_secret=f"{school}.keytab", image=image,
+            school=school,
+            role="teachers",
+            ad_group="teachers",
+            realm="EX.LAN",
+            visible_hostname=f"{school}.example.lan",
+            keytab_secret=f"{school}.keytab",
+            image=image,
         )
 
     reconciler.apply(_inst("a", "ghcr.io/example/lmnsquid:v1"))

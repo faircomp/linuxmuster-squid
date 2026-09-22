@@ -25,9 +25,7 @@ def _get_client() -> httpx.Client:
     headers = {"Authorization": f"Bearer {settings.api_token}"} if settings.api_token else {}
     # Only skip TLS verification for a loopback API (self-signed localhost); the token
     # is a full-privilege credential, so verify certs for any off-host api_url.
-    loopback = any(
-        s in settings.api_url for s in ("://127.0.0.1", "://localhost", "://[::1]")
-    )
+    loopback = any(s in settings.api_url for s in ("://127.0.0.1", "://localhost", "://[::1]"))
     # `update` / `update-all` are health-gated server-side (up to ~90s per instance,
     # times the instance count), so cap only connect and let reads run as long as the
     # (bounded) server operation needs — otherwise the CLI aborts a working update.
@@ -88,7 +86,9 @@ def create(
     ),
     cache_size_mb: int = typer.Option(1000),
     log_retention_days: int = typer.Option(30, help="access-log retention (days)"),
-    access_log_enabled: bool = typer.Option(True, help="log requests (privacy: --no-access-log-enabled)"),
+    access_log_enabled: bool = typer.Option(
+        True, help="log requests (privacy: --no-access-log-enabled)"
+    ),
 ) -> None:
     """Create (and reconcile) an instance."""
     body: dict[str, Any] = {
@@ -124,7 +124,9 @@ def rm(
 ) -> None:
     """Remove an instance: container, cache + log volumes, blocklist and definition."""
     with _get_client() as c:
-        _emit(c.delete(f"/v1/instances/{name}", params={"keep_logs": "true"} if keep_logs else None))
+        _emit(
+            c.delete(f"/v1/instances/{name}", params={"keep_logs": "true"} if keep_logs else None)
+        )
 
 
 blocklist_app = typer.Typer(
@@ -283,7 +285,9 @@ def edit(
     name: str,
     ad_group: Optional[str] = typer.Option(None),
     internet_group: list[str] = typer.Option(
-        [], "--internet-group", help="one 'internet' group per school (repeat); replaces the current set"
+        [],
+        "--internet-group",
+        help="one 'internet' group per school (repeat); replaces the current set",
     ),
     realm: Optional[str] = typer.Option(None),
     visible_hostname: Optional[str] = typer.Option(None),
@@ -325,7 +329,9 @@ def edit(
     if access_log_enabled is not None:
         body["access_log_enabled"] = access_log_enabled
     if not body:
-        typer.secho("nothing to change — pass at least one option", fg=typer.colors.YELLOW, err=True)
+        typer.secho(
+            "nothing to change — pass at least one option", fg=typer.colors.YELLOW, err=True
+        )
         raise typer.Exit(1)
     with _get_client() as c:
         _emit(c.patch(f"/v1/instances/{name}", json=body))

@@ -20,9 +20,7 @@ def test_pull_keeps_sha256_digest_intact() -> None:
     digest = "sha256:" + "a" * 64
     ds._pull(f"ghcr.io/faircomp/linuxmuster-squid@{digest}")
     # the whole 'sha256:<hex>' must survive as the tag (not truncated to '<hex>')
-    ds.client.images.pull.assert_called_once_with(
-        "ghcr.io/faircomp/linuxmuster-squid", tag=digest
-    )
+    ds.client.images.pull.assert_called_once_with("ghcr.io/faircomp/linuxmuster-squid", tag=digest)
 
 
 def test_pull_handles_plain_tag() -> None:
@@ -42,8 +40,12 @@ def test_env_for_passes_internet_group() -> None:
 
     ds = _service_with_mock_client()
     base = dict(
-        school="s", role="students", ad_group="students",
-        realm="EX.LAN", visible_hostname="p.example.lan", keytab_secret="k.keytab",
+        school="s",
+        role="students",
+        ad_group="students",
+        realm="EX.LAN",
+        visible_hostname="p.example.lan",
+        keytab_secret="k.keytab",
     )
     assert ds.env_for(Instance(**base, internet_group="internet"))["INTERNET_GROUP"] == "internet"
-    assert ds.env_for(Instance(**base))["INTERNET_GROUP"] == ""   # unset -> empty (feature off)
+    assert ds.env_for(Instance(**base))["INTERNET_GROUP"] == ""  # unset -> empty (feature off)

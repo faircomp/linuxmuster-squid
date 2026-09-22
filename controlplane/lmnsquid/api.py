@@ -265,9 +265,7 @@ def create_app(
         """Query the retained (gzip-rotated) access-log history in the log volume."""
         _require(name)
         _check_log_params(tail, grep)
-        return {
-            "logs": docker.access_logs(name, since=since, until=until, grep=grep, tail=tail)
-        }
+        return {"logs": docker.access_logs(name, since=since, until=until, grep=grep, tail=tail)}
 
     # ---------------------------------------------------- digest-pinned updates
     @app.post("/v1/instances/{name}/update", dependencies=auth)
@@ -283,8 +281,6 @@ def create_app(
         try:
             return updater.rollback(name)
         except FileNotFoundError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     return app
