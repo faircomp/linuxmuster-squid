@@ -15,6 +15,10 @@ from docker.types import LogConfig
 from .blocklist import CONTAINER_DIR, Blocklist
 from .models import Instance
 
+# The config entrypoint.sh renders and starts squid with (`squid -k` must read the same
+# file to find pid_filename).
+_SQUID_CONF = "/run/lmnsquid/squid.conf"
+
 
 class DockerService:
     """Manage one Squid container per instance through the Docker Engine API.
@@ -197,11 +201,15 @@ class DockerService:
     def reload(self, name: str) -> dict[str, Any]:
         """Make the running squid re-read squid.conf and its ACL list files (the blocklist).
 
-        Sends SIGHUP to the container's PID 1, which is squid itself (entrypoint.sh
-        ``exec``s it) -- the signal ``squid -k reconfigure`` sends. No ``docker exec``,
-        so it also works behind the socket proxy (``EXEC: 0``, ADR-012); no restart,
-        the cache and open client connections survive, the auth/group helpers restart.
-        Raises ``LookupError`` when there is no running container.
+        Runs ``squid -k reconfigure`` inside the container: squid parses the config and
+        signals its running copy (SIGHUP). No restart -- the cache and open client
+        connections survive, the auth/group helpers are restarted. Deliberately NOT
+        ``container.kill(signal="SIGHUP")``: Docker records every kill(), whatever the
+        signal, as a manual stop, and an ``unless-stopped`` container is then no longer
+        started after a reboot (seen in the lab). Like ``access_logs`` this needs
+        ``docker exec`` (not available behind the socket proxy with ``EXEC: 0``).
+        Raises ``LookupError`` when there is no running container, ``RuntimeError``
+        when squid refuses.
         """
         container = self._get(name)
         if container is None:
@@ -210,7 +218,12 @@ class DockerService:
         state: dict[str, Any] = container.attrs.get("State", {}) or {}
         if not state.get("Running", False):
             raise LookupError(f"instance {name!r} is not running")
-        container.kill(signal="SIGHUP")
+        exit_code, output = container.exec_run(["squid", "-k", "reconfigure", "-f", _SQUID_CONF])
+        text = (
+            output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+        )
+        if exit_code != 0:
+            raise RuntimeError(f"squid -k reconfigure exited {exit_code}: {text.strip()}")
         return {"name": name, "reloaded": True}
 
     # -- introspection -----------------------------------------------------

@@ -72,8 +72,9 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
 
 - `add`/`remove` write the file (sorted, one `.domain` per line; comments are not
   preserved) and take effect on the next **`reload`** — batch your changes, then reload once.
-  `reload` sends the running squid the reconfigure signal (SIGHUP, what `squid -k reconfigure`
-  sends); the auth/group helpers restart, the cache stays. API:
+  `reload` runs `squid -k reconfigure` inside the container (docker exec, like
+  `access-logs` — not available behind the socket proxy with `EXEC: 0`); the auth/group
+  helpers restart, the cache stays. API:
   `GET/POST /v1/instances/{name}/blocklist`, `DELETE …/blocklist/{domain}`, `POST …/blocklist/reload`.
 - **What the user sees:** HTTP → **403** (Squid error page, also for teachers). HTTPS → the
   proxy peeks at the SNI and **terminates the TLS handshake**: the browser shows a

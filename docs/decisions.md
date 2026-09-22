@@ -113,22 +113,25 @@ the proxy listens on `127.0.0.1:2375` without auth → any local process has the
 access (like the `docker` group with the direct socket). In-app TLS is NOT implemented;
 off-host only via an operator-owned TLS reverse proxy. The host is the
 trust boundary. **Side effect:** `access-logs` (historical) uses `docker exec` →
-does **not** work behind the proxy with `EXEC:0`; the live `logs` path (container.logs)
-and `blocklist reload` (container kill signal, ADR-014) do.
+does **not** work behind the proxy with `EXEC:0`, and neither does `blocklist reload`
+(`squid -k reconfigure` via exec, ADR-014); the live `logs` path (container.logs) does.
 ### ADR-014 — Blocklist per instance on the host, directory-mounted, reload by signal
 **Status:** Accepted (2026-09-22, campaign fix 7.3.1). **Decision:** each instance owns
 `<blocklists_dir>/<name>/blocked.domains` on the proxy host; the control plane creates it
 empty on create/reconcile and bind-mounts the **directory** read-only at `/etc/squid/lists`
 (the path the template already reads). Managed via `lmnsquid blocklist <name>
 list|add|remove|reload`; entries are normalized to `.example.org` (domain + subdomains);
-`reload` sends SIGHUP to the container's PID 1 (= squid, `exec`'d by the entrypoint), which
-is the signal `squid -k reconfigure` sends. `lmnsquid rm` deletes the list with the instance.
+`reload` runs `squid -k reconfigure` inside the container (docker exec). `lmnsquid rm`
+deletes the list with the instance.
 **Why:** the image stays read-only and unchanged; the list is a per-instance policy like the
 group, so it lives beside the other config under `/etc`; a *directory* mount survives the
 atomic replace an editor or `blocklist-refresh.sh` does (a single-file bind mount pins the
-inode); the signal needs no `docker exec`, so it works behind the socket proxy (`EXEC: 0`,
-ADR-012) and keeps the cache and client connections. **Limit (documented):** a blocked HTTPS
-name is terminated at the TLS handshake, there is no 403 page without decryption (ADR-002).
+inode); reconfigure keeps the cache and client connections. **Not** `docker kill -s HUP`,
+although squid is PID 1 and would reconfigure: Docker records every kill(), whatever the
+signal, as a manual stop, and an `unless-stopped` container then stays down after a reboot
+(seen in the lab). Price: like `access-logs`, `reload` needs `docker exec` (ADR-012).
+**Limit (documented):** a blocked HTTPS name is terminated at the TLS handshake, there is
+no 403 page without decryption (ADR-002).
 
 ### ADR-013 — Image registry: GHCR (default)
 **Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:**

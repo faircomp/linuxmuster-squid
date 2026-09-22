@@ -185,13 +185,17 @@ def create_app(
 
     @app.post("/v1/instances/{name}/blocklist/reload", dependencies=auth)
     def reload_blocklist(name: str) -> dict[str, Any]:
-        """Make the running squid re-read the list (SIGHUP = ``squid -k reconfigure``)."""
+        """Make the running squid re-read the list (``squid -k reconfigure`` in the container)."""
         _require(name)
         audit.info("blocklist reload name=%s", name)
         try:
             return docker.reload(name)
         except LookupError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            ) from exc
 
     # ----------------------------------------------------------- lifecycle ops
     @app.post("/v1/instances/{name}/start", dependencies=auth)

@@ -7,8 +7,9 @@ linuxmuster-squid (7.3.1) lmn73; urgency=medium
     already reads. New `lmnsquid blocklist <name> list|add <domain>|remove
     <domain>|reload` (GET/POST/DELETE /v1/instances/{name}/blocklist,
     POST .../blocklist/reload). `add` stores `.example.org` = the domain and all
-    subdomains; `reload` sends the running squid the reconfigure signal (SIGHUP,
-    what `squid -k reconfigure` sends) -- no restart, no cache loss. A blocked
+    subdomains; `reload` runs `squid -k reconfigure` inside the container -- no
+    restart, no cache loss (not a docker kill signal: Docker treats any kill as a
+    manual stop and would not restart the container after a reboot). A blocked
     HTTP request gets 403; a blocked HTTPS host is cut at the TLS handshake
     (peek + terminate), the browser shows a connection error, not a block page.
   * Upgrade from 7.3.0: containers created before 7.3.1 run without the mount

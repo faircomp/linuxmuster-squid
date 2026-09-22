@@ -112,7 +112,7 @@ def test_blocklist_endpoints(
     )
     assert resp.status_code == 422
 
-    # reload -> SIGHUP delivered to the running container
+    # reload -> squid -k reconfigure run in the running container
     resp = client.post(f"/v1/instances/{name}/blocklist/reload", headers=auth_headers)
     assert resp.status_code == 200 and resp.json() == {"name": name, "reloaded": True}
     assert docker.reloaded == [name]

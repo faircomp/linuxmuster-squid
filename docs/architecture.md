@@ -71,8 +71,8 @@ Status document. Keep it up to date with every substantive change (see
   (`/etc/linuxmuster-squid/blocklists/…`), the directory bind-mounted read-only at
   `/etc/squid/lists` — the path the template reads for `dstdomain` and
   `ssl::server_name`. Managed via `lmnsquid blocklist <name> add|remove|list|reload`
-  (the API endpoints below); `reload` = SIGHUP to squid (= `squid -k reconfigure`),
-  no restart. Entries are `.example.org` = domain + subdomains. UT Capitole/Toulouse
+  (the API endpoints below); `reload` = `squid -k reconfigure` inside the container
+  (docker exec), no restart. Entries are `.example.org` = domain + subdomains. UT Capitole/Toulouse
   category lists via `blocklist-refresh.sh` (host cron) into the same file.
 - **Hardening:** `cache_effective_user proxy`; Keytab as a secret (tmpfs, readable by
   `proxy`); `KRB5CCNAME=FILE:` (the kernel-keyring ccache fails when unprivileged);
