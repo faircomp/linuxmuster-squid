@@ -15,6 +15,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from lmnsquid.api import create_app
+from lmnsquid.blocklist import Blocklist
 from lmnsquid.config import Settings
 from lmnsquid.models import Instance
 from lmnsquid.reconciler import Reconciler
@@ -36,13 +37,17 @@ class FakeDockerService:
         self,
         docker_host: str | None = None,
         secrets_dir: str = "/etc/linuxmuster-squid/secrets",
+        blocklists_dir: str = "/etc/linuxmuster-squid/blocklists",
     ) -> None:
         self.docker_host = docker_host
         self.secrets_dir = secrets_dir
+        self.blocklist = Blocklist(blocklists_dir)
         self.containers: dict[str, dict[str, Any]] = {}
+        self.volumes: set[str] = set()
         # Test-observability hooks.
         self.ensure_calls: list[str] = []
         self.removed: list[str] = []
+        self.reloaded: list[str] = []
 
     def env_for(self, inst: Instance) -> dict[str, str]:
         return {
@@ -62,10 +67,13 @@ class FakeDockerService:
     def ensure_running(self, inst: Instance) -> dict[str, Any]:
         self.ensure_calls.append(inst.name)
         if "unpullable" in inst.image:
-            # Mirror the real service: the old container is force-removed before the new
-            # one is created, so a pull/run failure leaves NO container and raises.
-            self.containers.pop(inst.name, None)
+            # Mirror the real service: the replacement is created first, so a failure
+            # leaves the previous container exactly as it was and raises.
             raise RuntimeError("simulated pull failure")
+        # Mirror the real service: the blocklist is created (empty) and mounted, and the
+        # cache/log volumes come into existence with the container.
+        self.blocklist.ensure(inst.name)
+        self.volumes.update({f"lmnsquid-cache-{inst.name}", f"lmnsquid-logs-{inst.name}"})
         self.containers[inst.name] = {
             "running": True,
             "image": inst.image,
@@ -97,9 +105,20 @@ class FakeDockerService:
             container["running"] = True
         return self.status(name)
 
-    def remove(self, name: str) -> None:
+    def remove(self, name: str, keep_logs: bool = False) -> None:
         self.removed.append(name)
         self.containers.pop(name, None)
+        self.volumes.discard(f"lmnsquid-cache-{name}")
+        if not keep_logs:
+            self.volumes.discard(f"lmnsquid-logs-{name}")
+        self.blocklist.delete(name)
+
+    def reload(self, name: str) -> dict[str, Any]:
+        container = self.containers.get(name)
+        if container is None or not container["running"]:
+            raise LookupError(f"instance {name!r} is not running")
+        self.reloaded.append(name)
+        return {"name": name, "reloaded": True}
 
     def status(self, name: str) -> dict[str, Any]:
         container = self.containers.get(name)
@@ -163,6 +182,7 @@ def settings(tmp_path: Any, token: str) -> Settings:
         api_token=token,
         instances_dir=str(tmp_path / "instances"),
         secrets_dir=str(tmp_path / "secrets"),
+        blocklists_dir=str(tmp_path / "blocklists"),
     )
 
 
@@ -173,7 +193,9 @@ def store(settings: Settings) -> Store:
 
 @pytest.fixture
 def docker(settings: Settings) -> FakeDockerService:
-    return FakeDockerService(secrets_dir=settings.secrets_dir)
+    return FakeDockerService(
+        secrets_dir=settings.secrets_dir, blocklists_dir=settings.blocklists_dir
+    )
 
 
 @pytest.fixture

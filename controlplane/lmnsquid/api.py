@@ -13,9 +13,10 @@ from docker.errors import DockerException
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
+from .blocklist import Blocklist
 from .config import Settings
 from .docker_service import DockerService
-from .models import DEFAULT_IMAGE, Instance, InstancePatch, UpdateRequest
+from .models import DEFAULT_IMAGE, BlocklistEntry, Instance, InstancePatch, UpdateRequest
 from .reconciler import Reconciler
 from .security import make_verify_token
 from .store import Store
@@ -36,6 +37,7 @@ def create_app(
 ) -> FastAPI:
     """Build the FastAPI app wiring routes to the store, reconciler and docker service."""
     verify = make_verify_token(settings)
+    blocklist = Blocklist(settings.blocklists_dir)
     app = FastAPI(title="linuxmuster-squid control plane")
 
     @app.exception_handler(DockerException)
@@ -61,6 +63,19 @@ def create_app(
                 detail=f"instance {name!r} not found",
             )
         return inst
+
+    def _apply(inst: Instance) -> dict[str, Any]:
+        """Apply ``inst``; report a container that refuses to come up legibly.
+
+        ``ensure_running`` keeps/restores the previous container and raises with the
+        reason — pass that on instead of a bare "Internal Server Error".
+        """
+        try:
+            return reconciler.apply(inst)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            ) from exc
 
     def _check_log_params(tail: int, grep: str | None) -> None:
         if not 1 <= tail <= 10000:
@@ -90,9 +105,17 @@ def create_app(
     # loop (an `update-all` can otherwise hold it for minutes and hang /v1/health).
     @app.post("/v1/reconcile", dependencies=auth)
     def reconcile() -> dict[str, Any]:
-        """Re-apply every stored instance (reconverge drift / restore on a fresh host)."""
+        """Re-apply every stored instance (reconverge drift / restore on a fresh host).
+
+        Always 200 with every instance's status; ``failed`` lists the names whose
+        container could not be brought up (their entries carry ``error``).
+        """
         audit.info("reconcile all instances")
-        return {"reconciled": reconciler.reconcile_all()}
+        results = reconciler.reconcile_all()
+        failed = [r["name"] for r in results if "error" in r]
+        if failed:
+            audit.warning("reconcile failed for %s", ", ".join(failed))
+        return {"reconciled": results, "failed": failed}
 
     @app.post("/v1/update-all", dependencies=auth)
     def update_all() -> dict[str, Any]:
@@ -106,8 +129,8 @@ def create_app(
         dependencies=auth,
         status_code=status.HTTP_201_CREATED,
     )
-    async def create_instance(inst: Instance) -> dict[str, Any]:
-        result = reconciler.apply(inst)
+    def create_instance(inst: Instance) -> dict[str, Any]:
+        result = _apply(inst)
         audit.info("create instance name=%s image=%s", inst.name, inst.image)
         return {"instance": inst, "status": result}
 
@@ -120,7 +143,7 @@ def create_app(
         return _require(name)
 
     @app.patch("/v1/instances/{name}", dependencies=auth)
-    async def patch_instance(name: str, patch: InstancePatch) -> dict[str, Any]:
+    def patch_instance(name: str, patch: InstancePatch) -> dict[str, Any]:
         existing = _require(name)
         updates = patch.model_dump(exclude_unset=True)
         # Re-validate the merged instance through Instance validators; school/role
@@ -128,7 +151,7 @@ def create_app(
         merged = Instance.model_validate(
             {**existing.model_dump(exclude={"name", "container_name"}), **updates}
         )
-        result = reconciler.apply(merged)
+        result = _apply(merged)
         audit.info(
             "patch instance name=%s fields=%s",
             merged.name,
@@ -141,10 +164,59 @@ def create_app(
         dependencies=auth,
         status_code=status.HTTP_204_NO_CONTENT,
     )
-    async def delete_instance(name: str) -> None:
+    def delete_instance(name: str, keep_logs: bool = False) -> None:
+        """Remove the instance: container, cache + log volumes, blocklist, definition.
+
+        ``keep_logs=true`` retains the access-log volume ``lmnsquid-logs-<name>``.
+        """
         _require(name)
-        reconciler.remove(name)
-        audit.info("delete instance name=%s", name)
+        reconciler.remove(name, keep_logs=keep_logs)
+        audit.info("delete instance name=%s keep_logs=%s", name, keep_logs)
+
+    # ---------------------------------------------------------------- blocklist
+    @app.get("/v1/instances/{name}/blocklist", dependencies=auth)
+    async def get_blocklist(name: str) -> dict[str, Any]:
+        _require(name)
+        return {"name": name, "domains": blocklist.read(name)}
+
+    @app.post("/v1/instances/{name}/blocklist", dependencies=auth)
+    async def add_blocked_domain(name: str, entry: BlocklistEntry) -> dict[str, Any]:
+        """Block ``entry.domain`` and its subdomains (takes effect after ``reload``)."""
+        _require(name)
+        domains = blocklist.add(name, entry.domain)
+        audit.info("blocklist add name=%s domain=%s", name, entry.domain)
+        return {"name": name, "domains": domains}
+
+    @app.delete("/v1/instances/{name}/blocklist/{domain}", dependencies=auth)
+    async def remove_blocked_domain(name: str, domain: str) -> dict[str, Any]:
+        _require(name)
+        try:
+            domains = blocklist.remove(name, domain)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            ) from exc
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{domain!r} is not on the blocklist of {name!r}",
+            ) from exc
+        audit.info("blocklist remove name=%s domain=%s", name, domain)
+        return {"name": name, "domains": domains}
+
+    @app.post("/v1/instances/{name}/blocklist/reload", dependencies=auth)
+    def reload_blocklist(name: str) -> dict[str, Any]:
+        """Make the running squid re-read the list (``squid -k reconfigure`` in the container)."""
+        _require(name)
+        audit.info("blocklist reload name=%s", name)
+        try:
+            return docker.reload(name)
+        except LookupError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            ) from exc
 
     # ----------------------------------------------------------- lifecycle ops
     @app.post("/v1/instances/{name}/start", dependencies=auth)

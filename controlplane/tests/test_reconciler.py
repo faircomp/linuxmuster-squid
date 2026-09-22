@@ -73,3 +73,126 @@ def test_reconcile_all_ensures_every_stored_instance(
     assert len(results) == 2
     assert set(docker.ensure_calls) == {instance.name, second.name}
     assert all(r["running"] is True for r in results)
+
+
+def _inst(school: str, image: str) -> Instance:
+    return Instance(
+        school=school,
+        role="teachers",
+        ad_group="teachers",
+        realm="EXAMPLE.LAN",
+        visible_hostname=f"{school}.example.lan",
+        keytab_secret=f"{school}.keytab",
+        image=image,
+    )
+
+
+def test_reconcile_all_isolates_a_failing_instance(
+    reconciler: Reconciler, store: Store, docker: Any
+) -> None:
+    # 'unpullable' makes the fake raise from ensure_running (like a missing image)
+    store.put(_inst("a", "ghcr.io/example/lmnsquid:v1"))
+    store.put(_inst("b", "ghcr.io/example/lmnsquid:unpullable"))
+    store.put(_inst("c", "ghcr.io/example/lmnsquid:v1"))
+
+    results = {r["name"]: r for r in reconciler.reconcile_all()}
+
+    assert set(results) == {"a-teachers", "b-teachers", "c-teachers"}  # loop carried on
+    assert results["a-teachers"]["running"] is True
+    assert results["c-teachers"]["running"] is True
+    assert "simulated pull failure" in results["b-teachers"]["error"]
+    assert results["b-teachers"]["running"] is False
+
+
+def test_a_failing_instance_keeps_its_running_container(
+    reconciler: Reconciler, store: Store, docker: Any
+) -> None:
+    """The container of the instance that fails must survive (create-first replacement)."""
+    healthy = _inst("a", "ghcr.io/example/lmnsquid:v1")
+    broken = _inst("b", "ghcr.io/example/lmnsquid:v1")
+    reconciler.apply(healthy)
+    reconciler.apply(broken)
+    before = dict(docker.containers["b-teachers"])
+
+    # b is re-defined onto an image that cannot be brought up
+    store.put(broken.model_copy(update={"image": "ghcr.io/example/lmnsquid:unpullable"}))
+    results = {r["name"]: r for r in reconciler.reconcile_all()}
+
+    assert "error" in results["b-teachers"]
+    assert docker.containers["b-teachers"] == before  # old container untouched
+    assert docker.containers["a-teachers"]["running"] is True  # the healthy one is fine
+    assert results["a-teachers"]["running"] is True
+
+
+def test_reconcile_reports_even_when_status_is_unavailable(
+    reconciler: Reconciler, store: Store, docker: Any
+) -> None:
+    """A daemon that is down for status() too must not abort the whole run."""
+    store.put(_inst("a", "ghcr.io/example/lmnsquid:unpullable"))
+    store.put(_inst("b", "ghcr.io/example/lmnsquid:v1"))
+
+    def boom(name: str) -> dict[str, Any]:
+        raise RuntimeError("daemon gone")
+
+    original = docker.status
+    docker.status = boom
+    try:
+        results = {r["name"]: r for r in reconciler.reconcile_all()}
+    finally:
+        docker.status = original
+
+    assert "simulated pull failure" in results["a-teachers"]["error"]
+    assert results["a-teachers"]["exists"] is None
+    assert "b-teachers" in results  # the loop carried on
+
+
+def test_reconcile_api_and_cli_report_failures(
+    client: Any, auth_headers: dict[str, str], store: Store, monkeypatch: Any
+) -> None:
+    from starlette.testclient import TestClient
+    from typer.testing import CliRunner
+
+    from lmnsquid import cli
+
+    store.put(_inst("a", "ghcr.io/example/lmnsquid:v1"))
+    store.put(_inst("b", "ghcr.io/example/lmnsquid:unpullable"))
+
+    resp = client.post("/v1/reconcile", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["failed"] == ["b-teachers"]
+    assert {r["name"] for r in resp.json()["reconciled"]} == {"a-teachers", "b-teachers"}
+
+    def factory() -> TestClient:
+        tc = TestClient(client.app)
+        tc.headers.update(auth_headers)
+        return tc
+
+    monkeypatch.setattr(cli, "_get_client", factory)
+    r = CliRunner().invoke(cli.app, ["reconcile"])
+    assert r.exit_code == 1 and "b-teachers" in r.output
+
+    store.delete("b-teachers")
+    assert CliRunner().invoke(cli.app, ["reconcile"]).exit_code == 0
+
+
+def test_update_all_cli_exits_nonzero_on_rollback(
+    client: Any, auth_headers: dict[str, str], store: Store, monkeypatch: Any
+) -> None:
+    from starlette.testclient import TestClient
+    from typer.testing import CliRunner
+
+    from lmnsquid import api, cli
+
+    store.put(_inst("a", "ghcr.io/example/lmnsquid:v1"))
+    # a default image the fake reports as unhealthy -> every update rolls back
+    monkeypatch.setattr(api, "DEFAULT_IMAGE", "ghcr.io/example/lmnsquid:bad")
+
+    def factory() -> TestClient:
+        tc = TestClient(client.app)
+        tc.headers.update(auth_headers)
+        return tc
+
+    monkeypatch.setattr(cli, "_get_client", factory)
+    r = CliRunner().invoke(cli.app, ["update-all"])
+    assert r.exit_code == 1 and "a-teachers" in r.output
+    assert store.get("a-teachers").image == "ghcr.io/example/lmnsquid:v1"  # type: ignore[union-attr]

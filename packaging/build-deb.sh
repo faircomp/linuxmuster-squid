@@ -28,11 +28,16 @@ python3 -m venv "$VENV"
 
 echo "== staging tree =="
 mkdir -p "$STAGE/opt/linuxmuster-squid" "$STAGE/lib/systemd/system" "$STAGE/DEBIAN" \
-         "$STAGE/usr/bin"
+         "$STAGE/usr/bin" "$STAGE/usr/share/linuxmuster-squid/scripts"
 cp -a "$VENV" "$STAGE/opt/linuxmuster-squid/venv"
 # Operator CLI onto PATH: the venv keeps the hermetic interpreter, the packaged symlink
 # makes `lmnsquid` available without a manual `ln -s` (dpkg removes it on purge).
 ln -s /opt/linuxmuster-squid/venv/bin/lmnsquid "$STAGE/usr/bin/lmnsquid"
+# Admin scripts the docs refer to (run on the DC / from cron), so an admin with only the
+# .deb has them: docs/install.md, docs/keytab-and-dns.md, docs/operations.md.
+for s in provision-keytab.sh discover-ad-facts.sh blocklist-refresh.sh; do
+    install -m 0755 "$ROOT/scripts/$s" "$STAGE/usr/share/linuxmuster-squid/scripts/$s"
+done
 cp "$ROOT/packaging/systemd/linuxmuster-squid.service" \
    "$STAGE/lib/systemd/system/linuxmuster-squid.service"
 sed "s/@VERSION@/$VERSION/" "$ROOT/packaging/debian/control" > "$STAGE/DEBIAN/control"
@@ -40,6 +45,11 @@ for f in postinst prerm postrm; do
     cp "$ROOT/packaging/debian/$f" "$STAGE/DEBIAN/$f"
     chmod 0755 "$STAGE/DEBIAN/$f"
 done
+# md5sums (what dh_md5sums writes): every regular file outside DEBIAN/, paths relative to
+# the package root, so `dpkg --verify linuxmuster-squid` can check the installed files.
+( cd "$STAGE" && find . -type f ! -path './DEBIAN/*' -printf '%P\0' | LC_ALL=C sort -z \
+    | xargs -0r md5sum > DEBIAN/md5sums )
+chmod 0644 "$STAGE/DEBIAN/md5sums"
 
 OUT="$ROOT/linuxmuster-squid_${VERSION}_all.deb"
 echo "== dpkg-deb -> $OUT =="

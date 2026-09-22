@@ -37,7 +37,8 @@ the same AD/Kerberos infrastructure the school already operates.
   (Kerberos proxy auth is technically impossible in transparent mode),
   authentication via `negotiate_kerberos_auth`, authorization via
   `ext_kerberos_ldap_group_acl` against the instance's AD group. HTTPS is
-  **not decrypted** (SNI peek/splice or CONNECT `dstdomain`).
+  **not decrypted** (SNI peek/splice or CONNECT `dstdomain`). Per-instance domain
+  blocklist: HTTP → 403, HTTPS → the TLS handshake is cut (no block page without decryption).
 - **Control Plane:** hardened systemd service with **REST API** (FastAPI) and
   **CLI** (Typer, thin client) — creates instances, configures policies, and
   **updates digest-pinned with health-check auto-rollback**. Shipped as a
@@ -54,8 +55,11 @@ gh release download -R faircomp/linuxmuster-squid -p 'linuxmuster-squid_*.deb'
 sudo apt install -y ./linuxmuster-squid_*.deb     # postinst: user + config, starts on 127.0.0.1:8080
 sudo lmnsquid health                              # {"status":"ok"} (CLI is on PATH: /usr/bin/lmnsquid)
 ```
-The keytab is created **once on the Samba AD DC** and copied to
+The keytab is created **once on the Samba AD DC** (service account + `provision-keytab.sh`,
+shipped under `/usr/share/linuxmuster-squid/scripts/`) and copied to
 `/etc/linuxmuster-squid/secrets/` on the proxy host — see [`docs/keytab-and-dns.md`](docs/keytab-and-dns.md).
+The complete procedure as tested against a real linuxmuster.net 7.3 domain — prerequisites,
+keytab, instances, checks, blocklist, updates, removal — is [`docs/install.md`](docs/install.md).
 
 **2. Create the proxies.** Use the **global role groups** (`role-teacher` / `role-student`)
 so a visitor from another school is accepted at the local proxy, and list **one `internet`
@@ -72,8 +76,9 @@ sudo lmnsquid create --school all --role students --ad-group role-student \
   --realm EXAMPLE.ORG --visible-hostname proxy.example.org \
   --keytab-secret proxy.keytab --http-port 3129 --school-subnets 10.0.0.0/8
 ```
-> `REALM=EXAMPLE.ORG bash scripts/discover-ad-facts.sh` (on the DC) prints your exact group
-> names + ready-made `create` commands. `--image` defaults to the maintained, digest-pinned image.
+> `REALM=EXAMPLE.ORG bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh` (on the DC)
+> prints the global role groups, the internet groups per school and the two `create` commands.
+> `--image` defaults to the maintained, digest-pinned image.
 
 **3. Everyday commands:**
 ```bash
@@ -85,6 +90,9 @@ lmnsquid update all-teachers               # -> maintained default image (health
 lmnsquid update-all                        # every instance -> default image
 lmnsquid rollback all-teachers             # to the last known-good
 lmnsquid reconcile                         # re-apply stored state (restore / after a crash)
+lmnsquid blocklist all-students add example.org    # block a domain + subdomains (HTTP 403, HTTPS TLS abort)
+lmnsquid blocklist all-students reload             # apply without restart; list / remove likewise
+lmnsquid rm all-students                   # container + cache/log volumes + blocklist (--keep-logs keeps the logs)
 lmnsquid version
 ```
 

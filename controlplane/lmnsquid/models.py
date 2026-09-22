@@ -15,6 +15,8 @@ import re
 
 from pydantic import BaseModel, computed_field, field_validator
 
+from .blocklist import normalize_domain
+
 # school/role -> name -> filename + container/volume name: no '/', '..' (case allowed).
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,30}$")
 # keytab_secret -> bind-mount source basename inside secrets_dir: no path separators.
@@ -198,3 +200,15 @@ class UpdateRequest(BaseModel):
         if not _IMAGE_RE.match(v):
             raise ValueError("image must carry an explicit :tag or @sha256:<digest> (no bare repo)")
         return v
+
+
+class BlocklistEntry(BaseModel):
+    """Body for ``POST /v1/instances/{name}/blocklist``: one domain to block."""
+
+    domain: str
+
+    @field_validator("domain")
+    @classmethod
+    def _v_domain(cls, v: str) -> str:
+        # Normalized here so an invalid name is a 422 at the boundary, not a 500.
+        return normalize_domain(v)

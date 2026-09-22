@@ -28,21 +28,26 @@ the `/test` skill). **Core proof** (P1), assertions on `%{http_code}`:
 |---|---|---|
 | Teacher allowed | `kinit teacher1`; via teacher instance | **200** |
 | Student denied (authN ok, authZ fail) | `kinit student1`; via teacher instance | **403** (not 407) |
-| Blocked domain | Teacher → entry from `blocked.domains` | **403** |
+| Blocked domain (HTTP) | Teacher → entry from `blocked.domains` | **403** |
+| Blocked domain (HTTPS) | Teacher → CONNECT to a blocked name | **not 200**: TLS handshake terminated (curl exit ≠ 0), no 403 page |
 | No ticket | `kdestroy`; request | **407** |
 
 The 403-vs-407 split is the actual proof (authenticated-but-unauthorized
-vs. not-authenticated).
+vs. not-authenticated). The compose stack bind-mounts `deploy/e2e/blocked.domains`; the
+**product path** (`lmnsquid blocklist <name> add … && … reload` on a managed instance →
+403) is proven against a real domain in the lab (7.3.1 campaign fix) and is part of the
+acceptance list in `deployment-gpo.md`.
 
 ## Negative/security catalog (grows per phase; part of the DoD)
 
 - **P1:** no ticket→407; student→403; SPN mismatch/FQDN-as-IP → no 200.
-- **P2:** blocked HTTPS domain (SNI/CONNECT)→403 **without** client CA; allowed→200;
-  behavior on missing SNI defined.
+- **P2:** blocked HTTPS domain (SNI/CONNECT)→TLS handshake terminated, never 200,
+  **without** client CA; allowed→200; behavior on missing SNI defined.
 - **P3:** teacher of school A via school-B instance→403; prefixed group names take effect;
   subnet scope takes effect.
 - **P4:** API without token→401, wrong token→403; invalid instance definition
-  rejected; reconcile idempotent.
+  rejected; reconcile idempotent (matching container untouched); one instance failing to
+  come up does not block the others (`failed` list) and the previous container is kept.
 - **P5:** update to a broken image→auto-rollback, service stays available;
   `rollback` deterministic.
 - **P9:** `.deb` install→systemd `active`, API/CLI smoke; package upgrade/rollback.

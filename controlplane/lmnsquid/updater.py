@@ -56,10 +56,12 @@ class Updater:
         try:
             self.reconciler.apply(inst.model_copy(update={"image": new_image}))
         except Exception as exc:
-            # apply() rewrote the store and removed the old container BEFORE the new
-            # one could start (e.g. the new image is unpullable). Broad catch on
-            # purpose: any failure here must restore the known-good image, not leave
-            # the school offline pinned to a broken image.
+            # apply() rewrote the store but could not bring the new image up (e.g. it is
+            # unpullable or the container never turns healthy). ensure_running already
+            # put the previous container back; re-applying `inst` pins the store to the
+            # known-good image again (a no-op for the container, it already matches).
+            # Broad catch on purpose: no failure here may leave the school pinned to a
+            # broken image.
             audit.warning(
                 "update apply failed name=%s (%s) -> rollback to %s", name, exc, previous_image
             )
