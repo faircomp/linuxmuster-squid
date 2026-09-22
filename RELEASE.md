@@ -35,7 +35,9 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   `@sha256` digest** (instance validation enforces tag/digest). Which digest goes live is decided by
   a **merged Renovate PR** (`automerge:false`), never automatically.
 - **`.deb` (control-plane tooling):** built by CI (`release.yml`) on every `v*` tag — in the
-  `ghcr.io/linuxmuster/lmndev-runner:24.04` container, install-smoked on `ubuntu-24.04` — and
+  `ghcr.io/linuxmuster/lmndev-runner:24.04` container, install-smoked and upgrade-smoked on
+  `ubuntu-24.04` (the upgrade smoke installs the newest published release, gives it an
+  admin's config and state and upgrades onto it) — and
   attached to the GitHub Release (`gh release download … && apt install ./linuxmuster-squid_*.deb`).
   The version is the top entry of `debian/changelog` (`7.3.N`, distribution `lmn73`); the
   workflow refuses a tag that does not match it. Build locally with `make deb` (as root, or in
@@ -49,6 +51,6 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
 ## Ongoing releases
 
 Code + docs + a `debian/changelog` bullet in the same commit (Conventional Commits) → push →
-CI green (`ci.yml`: fast tier, container build, install smoke) → Kevin sets the release version
-in the changelog head and tags `v<version>` → `release.yml` builds, smokes and publishes the
-GitHub Release with generated notes → update the image/`.deb` digest in the docs.
+CI green (`ci.yml`: fast tier, container build, install smoke, upgrade smoke) → Kevin sets the
+release version in the changelog head and tags `v<version>` → `release.yml` builds, smokes and
+publishes the GitHub Release with generated notes → update the image/`.deb` digest in the docs.
