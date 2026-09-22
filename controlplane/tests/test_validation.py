@@ -36,16 +36,16 @@ def _base(**over: Any) -> dict[str, Any]:
         ("role", "a b"),
         ("keytab_secret", "../../../../etc/shadow"),
         ("keytab_secret", "sub/dir.keytab"),
-        ("image", "ubuntu"),                       # bare repo -> pull-all-tags DoS
+        ("image", "ubuntu"),  # bare repo -> pull-all-tags DoS
         ("image", "registry.local/proxy"),
-        ("realm", "example.lan"),                  # must be uppercase
+        ("realm", "example.lan"),  # must be uppercase
         ("visible_hostname", "bad host name"),
         ("school_subnets", "not-a-cidr"),
         ("http_port", 0),
         ("http_port", 70000),
         ("log_retention_days", 0),
         ("log_retention_days", 4000),
-        ("internet_group", "bad/group"),          # path-ish -> invalid
+        ("internet_group", "bad/group"),  # path-ish -> invalid
     ],
 )
 def test_instance_rejects_bad_field(field: str, bad: Any) -> None:
@@ -89,7 +89,7 @@ def test_school_subnets_accepts_multiple_and_normalizes() -> None:
 
 
 def test_internet_group_optional_and_validated() -> None:
-    assert Instance(**_base()).internet_group is None                       # off by default
+    assert Instance(**_base()).internet_group is None  # off by default
     assert Instance(**_base(internet_group="internet")).internet_group == "internet"
     assert Instance(**_base(internet_group="msg-internet")).internet_group == "msg-internet"
     # colon-separated list (one internet group per school) -> OR at the proxy
@@ -99,7 +99,7 @@ def test_internet_group_optional_and_validated() -> None:
     with pytest.raises(ValidationError):
         Instance(**_base(internet_group="bad/group"))
     with pytest.raises(ValidationError):
-        Instance(**_base(internet_group="internet:bad/group"))          # one bad -> reject
+        Instance(**_base(internet_group="internet:bad/group"))  # one bad -> reject
 
 
 def test_api_rejects_traversal_name(client: Any, auth_headers: dict[str, str]) -> None:
@@ -173,7 +173,9 @@ def test_log_query_endpoints(
     client.post("/v1/instances", json=instance_data, headers=auth_headers)
     name = "default-school-teachers"
 
-    live = client.get(f"/v1/instances/{name}/logs", params={"grep": "started"}, headers=auth_headers)
+    live = client.get(
+        f"/v1/instances/{name}/logs", params={"grep": "started"}, headers=auth_headers
+    )
     assert live.status_code == 200 and "started" in live.json()["logs"]
 
     acc = client.get(
