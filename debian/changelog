@@ -1,3 +1,45 @@
+linuxmuster-squid (7.3.1) lmn73; urgency=medium
+
+  * The domain blocklist gets a product path (it was reachable only from the
+    e2e compose stack): every instance owns
+    /etc/linuxmuster-squid/blocklists/<name>/blocked.domains, mounted read-only
+    into its container at /etc/squid/lists, the file the rendered squid.conf
+    already reads. New `lmnsquid blocklist <name> list|add <domain>|remove
+    <domain>|reload` (GET/POST/DELETE /v1/instances/{name}/blocklist,
+    POST .../blocklist/reload). `add` stores `.example.org` = the domain and all
+    subdomains; `reload` sends the running squid the reconfigure signal (SIGHUP,
+    what `squid -k reconfigure` sends) -- no restart, no cache loss. A blocked
+    HTTP request gets 403; a blocked HTTPS host is cut at the TLS handshake
+    (peek + terminate), the browser shows a connection error, not a block page.
+  * Upgrade from 7.3.0: containers created before 7.3.1 run without the mount
+    until they are recreated once. The postinst runs `lmnsquid reconcile` for
+    that when the previous version is < 7.3.1 (same image and definition, a
+    few seconds per instance); run it yourself if the postinst could not.
+  * `lmnsquid rm` now removes the instance's cache and log volumes (the access
+    log is personal data), its blocklist and the updater's .prev note;
+    `--keep-logs` keeps the log volume (DELETE ...?keep_logs=true).
+  * The git change log of /var/lib/linuxmuster-squid/instances works. The
+    postinst configured the repository after handing it to lmnsquid, git refused
+    ("dubious ownership") and no commit was ever written. It now initialises
+    and configures the repository first, adds safe.directory for root, commits
+    definitions left uncommitted by 7.3.0 on upgrade, and the store logs git
+    failures at ERROR instead of debug (author identity passed explicitly).
+  * Ship the admin scripts the docs refer to under
+    /usr/share/linuxmuster-squid/scripts/ (provision-keytab.sh,
+    discover-ad-facts.sh, blocklist-refresh.sh).
+  * discover-ad-facts.sh lists the global role groups role-teacher/role-student/
+    role-staff and the per-school internet groups; it matched every class and
+    project group ending in -teachers/-students before.
+  * The .deb carries md5sums, so `dpkg --verify linuxmuster-squid` checks it.
+  * docs: new docs/install.md with the procedure tested against a real
+    linuxmuster.net 7.3 domain (service account + keytab via
+    provision-keytab.sh, one instance per role, group names, checks, blocklist,
+    update, removal); keytab-and-dns.md names the account commands (incl.
+    setexpiry --noexpiry); architecture, threat model, test strategy and the
+    GPO acceptance list describe the blocklist as shipped.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Tue, 22 Sep 2026 15:00:00 +0200
+
 linuxmuster-squid (7.3.0) lmn73; urgency=medium
 
   * Switch to the linuxmuster.net version scheme (7.<line>.<n>, distribution lmn73).

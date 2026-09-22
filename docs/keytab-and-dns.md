@@ -18,10 +18,21 @@ the `HTTP/<fqdn>` tickets using the same account key.
 the domain. The AD admin creates the keytab **once on the DC** and delivers the
 file; the control plane does **not** provision it itself (least privilege).
 
-1. **Recommended — service account + `samba-tool` on the DC (join-free, as proven in the E2E).**
-   Create a kinit-capable service account (exists only as an AD object — no join), attach the
-   `HTTP/<proxy-fqdn>` SPN to it, export its keytab → file into `secrets_dir`.
-   See `scripts/provision-keytab.sh` (checks for duplicate SPNs, idempotent).
+1. **Recommended — service account + `samba-tool` on the DC (join-free, proven in the E2E and
+   against a real linuxmuster.net 7.3 domain).** Create a kinit-capable service account
+   (exists only as an AD object — no join) with a **non-expiring password** — otherwise the
+   domain password policy expires it and the group helper's LDAP bind fails
+   (`KDC_ERR_KEY_EXP`), taking SSO down — attach the `HTTP/<proxy-fqdn>` SPN to it and export
+   its keytab → file into `secrets_dir`:
+   ```bash
+   samba-tool user create svc-squid "$(openssl rand -base64 24)" --description="linuxmuster-squid proxy service account"
+   samba-tool user setexpiry svc-squid --noexpiry
+   bash /usr/share/linuxmuster-squid/scripts/provision-keytab.sh <proxy-fqdn> svc-squid /root/proxy.keytab
+   ```
+   `provision-keytab.sh` (installed by the .deb, also in the repo under `scripts/`) checks for
+   duplicate SPNs and is idempotent. The group helper `ext_kerberos_ldap_group_acl` binds to
+   LDAP as this account via GSSAPI — no bind password, no admin credentials anywhere. Full
+   walk-through incl. the copy to the proxy host: [`install.md`](install.md).
 2. *(Alternative, only if the proxy host is a domain member anyway.)* `net ads keytab`
    or `msktutil` (with `--auto-update` against password rotation) uses the machine-account
    keytab. **Not needed** for the pure container model — and a join per instance would even
@@ -37,7 +48,8 @@ file; the control plane does **not** provision it itself (least privilege).
   root, with `DAC_OVERRIDE`) copies the keytab once to `/run/lmnsquid/keytab`
   (proxy-readable, `0600`), so that Squid, running as `proxy`, can read it — the
   mounted keytab stays `0600`. **Never into the env/log.**
-- **Separate per instance** — no shared keytab across schools.
+- **One keytab per proxy host** (ADR-008: the instances share the FQDN, the SPN is
+  port-independent) — but no shared keytab across proxy hosts/schools.
 - **Rotation:** `net ads` keytabs become invalid through machine-password rotation
   → `msktutil --auto-update` or re-export; re-export service-account keytabs on a
   password change. After rotation, recreate the instance (re-mount the secret) or
