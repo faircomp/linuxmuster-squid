@@ -144,14 +144,19 @@ no 403 page without decryption (ADR-002).
 **Status:** Accepted (2026-09-23, stage A "supply chain" of the linuxmusterDEV archive plan).
 **Decision:** every input of the `.deb` build is an immutable reference. The venv's Python
 packages (pip included) come from `controlplane/requirements.lock`, compiled with `uv pip
-compile --generate-hashes` for Python 3.12 on linux/x86_64 and installed with
-`--require-hashes --no-deps`; `lmnsquid` itself is built as a wheel in a throwaway venv whose
+compile --generate-hashes --exclude-newer=P7D` for Python 3.12 on linux/x86_64 (nothing
+younger than 7 days is picked) and installed with `--require-hashes --no-deps --only-binary
+:all:` (wheels only: building an sdist would fetch its build backend unverified); `lmnsquid` itself is built as a wheel in a throwaway venv whose
 setuptools comes from `packaging/requirements-build.lock` (no build isolation, no index), so
 nothing unpinned is downloaded while the package is built. The build container
 (`lmndev-runner`), the data-plane base image and every GitHub Action are pinned by digest or
 commit SHA. Releases are created as drafts, get their assets, are checked against the build and
 only then published (the order GitHub's immutable releases need). Renovate
-(`renovate.yml`, weekly, self-hosted) proposes every change as a PR; nothing is automerged.
+(`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run)
+proposes every change as a PR, PyPI releases only once 7 days old; nothing is automerged.
+The CI gate (`lock-deps.sh --check`) accepts only lines uv writes, re-resolves the pins
+without the 7-day cutoff (the cutoff picks versions, it does not judge a reviewed lock), checks
+that every pin has a cp312 manylinux wheel and that every hash is one PyPI lists.
 **Why:** the `.deb` is installed as root on school servers and vouches for everything that ran
 in its build; before, each build took whatever PyPI and the moving image/action tags served.
 **Tool:** `uv pip compile` over pip-tools because it compiles for a Python version other than
