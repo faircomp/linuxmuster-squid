@@ -1,3 +1,25 @@
+linuxmuster-squid (7.3.4) lmn73; urgency=medium
+
+  * Fix an intermittent failure of the package configuration, present since
+    7.3.1: "chown: changing ownership of '/var/lib/linuxmuster-squid/
+    instances/.git/objects/maintenance.lock': No such file or directory",
+    after which dpkg reports that the post-installation script failed. The
+    script committed the instance change log as root and changed the
+    ownership afterwards, while git was still running its maintenance in the
+    background (git 2.47 and later do that after a commit; Ubuntu 24.04's own
+    git 2.43 does not, the git-core PPA's does). Ownership is now set first,
+    every git command runs as the service user lmnsquid, and background
+    maintenance is off for this repository, so no git process outlives the
+    installation. On upgrade, files in the repository that belong to root
+    (written by the old script, or by git commands an admin ran as root) are
+    handed to lmnsquid before git runs; the change log keeps its history.
+  * 7.3.3 was tagged but never released: the install check of its release
+    run caught this failure. 7.3.4 contains all changes listed under 7.3.3.
+    Admins who hit the chown error with 7.3.1 or 7.3.2 can finish that
+    installation with `dpkg --configure -a`, or install 7.3.4 over it.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Wed, 23 Sep 2026 16:00:00 +0200
+
 linuxmuster-squid (7.3.3) lmn73; urgency=medium
 
   * Reproducible builds with verified dependencies. The Python packages in
