@@ -45,6 +45,9 @@ conventions are `../../docs/paket-konventionen.md` there. The rules that bite he
   in the same PR, written for admins in English. There is no `CHANGELOG.md`.
 - **Build:** `make deb` (wraps `packaging/build-deb.sh`; needs root, so run it in
   `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`).
+- **Supply chain (ADR-015):** Python deps only via `controlplane/requirements.lock` (hashes;
+  regenerate with `bash packaging/lock-deps.sh`, never hand-edit); actions by commit SHA
+  with `# vN`, images by digest. Renovate PRs move them; do not unpin anything.
 - **Maintainer string** everywhere: `Kevin Stenzel <mail@kevin-stenzel.de>`.
 
 **Security pitfalls (from the threat model — do not violate):**

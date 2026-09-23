@@ -140,6 +140,26 @@ signal, as a manual stop, and an `unless-stopped` container then stays down afte
 **Limit (documented):** a blocked HTTPS name is terminated at the TLS handshake, there is
 no 403 page without decryption (ADR-002).
 
+### ADR-015 — Build inputs pinned: hashed Python locks, digests, action SHAs, draft-first releases
+**Status:** Accepted (2026-09-23, stage A "supply chain" of the linuxmusterDEV archive plan).
+**Decision:** every input of the `.deb` build is an immutable reference. The venv's Python
+packages (pip included) come from `controlplane/requirements.lock`, compiled with `uv pip
+compile --generate-hashes` for Python 3.12 on linux/x86_64 and installed with
+`--require-hashes --no-deps`; `lmnsquid` itself is built as a wheel in a throwaway venv whose
+setuptools comes from `packaging/requirements-build.lock` (no build isolation, no index), so
+nothing unpinned is downloaded while the package is built. The build container
+(`lmndev-runner`), the data-plane base image and every GitHub Action are pinned by digest or
+commit SHA. Releases are created as drafts, get their assets, are checked against the build and
+only then published (the order GitHub's immutable releases need). Renovate
+(`renovate.yml`, weekly, self-hosted) proposes every change as a PR; nothing is automerged.
+**Why:** the `.deb` is installed as root on school servers and vouches for everything that ran
+in its build; before, each build took whatever PyPI and the moving image/action tags served.
+**Tool:** `uv pip compile` over pip-tools because it compiles for a Python version other than
+the host's and Renovate's pip-compile manager can re-run it from the lock header. Renovate
+rejects `--python-platform`, so the lock is compiled on linux/x86_64 (CI, Renovate, dev box)
+with `--python-version=3.12`; environment markers then evaluate as on the target.
+**Price:** dependency updates need a merged PR; the lock is regenerated, never hand-edited.
+
 ---
 
 ## Site facts to be verified (P0, enter with source/date)
