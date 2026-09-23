@@ -1,3 +1,26 @@
+linuxmuster-squid (7.3.3) lmn73; urgency=medium
+
+  * Reproducible builds with verified dependencies. The Python packages in
+    /opt/linuxmuster-squid/venv (and pip itself) now come from a lock file
+    with SHA-256 hashes instead of "whatever PyPI serves at build time": two
+    builds of the same version ship the same dependency versions, and a file
+    whose hash does not match stops the build. Only prebuilt wheels are
+    installed; nothing is compiled from source during the build. The build
+    container, the GitHub Actions and the base of the data-plane image are
+    pinned by digest; updates to any of them arrive only as reviewed
+    Renovate pull requests.
+  * The build only takes Python releases that have been public for at least
+    a week. Two bundled libraries are therefore one release older than in
+    7.3.2, whose versions were then only days old: idna 3.19 (was 3.20) and
+    watchfiles 1.2.0 (was 1.3.0). Neither changes what the service does
+    (watchfiles is only used by uvicorn's auto-reload, which is off; idna
+    only for non-ASCII host names). All other library versions are those of
+    7.3.2; configuration, service, CLI and upgrade path are unchanged.
+  * Releases are created as drafts, get their .deb attached and are
+    published only then, so a release never appears without its package.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Wed, 23 Sep 2026 13:30:00 +0200
+
 linuxmuster-squid (7.3.2) lmn73; urgency=medium
 
   * CI gains an `upgrade-smoke` job (ci.yml and release.yml): it installs the

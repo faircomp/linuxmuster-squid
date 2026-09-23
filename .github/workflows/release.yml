@@ -6,6 +6,19 @@
 # it. The release is gated on the same install AND upgrade smoke as ci.yml, so no tag can
 # be published that does not install on top of the version a school is running. No publish
 # job yet (no faircomp/deb archive); add the upstream publish job when the archive exists.
+#
+# Supply chain (stage A, work/plans/paketarchiv.md §2): every input of the build is pinned to
+# an immutable reference, because a released .deb vouches for everything that ran in its build.
+#  * Build image by digest. ghcr.io/linuxmuster/lmndev-runner:24.04 is a mutable tag of another
+#    org, rebuilt every Monday, and runs as root; `:<tag>@sha256:<digest>` pulls exactly that
+#    image (the digest wins, the tag only tells Renovate which tag's digest to follow).
+#  * Every action by full commit SHA with a `# vN` comment: a tag can be moved, a SHA cannot.
+#  * Keep ci.yml and release.yml on the SAME digests, or CI proves a different build than the
+#    one that is released.
+#  * Python dependencies from hash-pinned lock files (packaging/lock-deps.sh); pip never
+#    resolves or downloads anything unpinned while the .deb is built.
+# Renovate (renovate.json + renovate.yml) opens reviewable PRs for new digests, SHAs and
+# locks; nothing is automerged.
 name: release
 
 on:
@@ -25,7 +38,7 @@ jobs:
       image: ${{ steps.meta.outputs.image }}
       version: ${{ steps.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: meta
         run: |
           VERSION=$(dpkg-parsechangelog -S Version)
@@ -33,7 +46,10 @@ jobs:
           TAGVER="${GITHUB_REF_NAME#v}"; TAGVER="${TAGVER//-rc/~rc}"   # v7.3.1-rc1 -> 7.3.1~rc1
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$TAGVER" != "$VERSION" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match debian/changelog version $VERSION"; exit 1; fi
-          if [ "${NUM:-0}" -ge 74 ] 2>/dev/null; then IMG=ghcr.io/linuxmuster/lmndev-runner:latest; else IMG=ghcr.io/linuxmuster/lmndev-runner:24.04; fi
+          # Pinned by digest (see the header); Renovate bumps both lines here and in ci.yml.
+          IMG_LMN73=ghcr.io/linuxmuster/lmndev-runner:24.04@sha256:6b0c8ac994cf1d2da44b0b36ebd7b3b125094886e78293e04b9db5e515b8209e
+          IMG_LMN74=ghcr.io/linuxmuster/lmndev-runner:latest@sha256:d735e6ccc6fd9df71b2552b06ac6f5cb4bf2d03f40e14bafe47213325b7b801b
+          if [ "${NUM:-0}" -ge 74 ] 2>/dev/null; then IMG=$IMG_LMN74; else IMG=$IMG_LMN73; fi
           echo "image=$IMG" >> "$GITHUB_OUTPUT"; echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build:
@@ -43,7 +59,7 @@ jobs:
       image: ${{ needs.gate.outputs.image }}
       options: --user root
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build package (make deb wraps packaging/build-deb.sh)
         run: |
           # No debian/control at the root yet (that is the debian/ conversion PR), so
@@ -55,7 +71,7 @@ jobs:
           deb=$(ls output/*.deb)
           dpkg-deb --ctrl-tarfile "$deb" | tar -tf - | grep -qx './md5sums'
           test "$(dpkg-deb -c "$deb" | grep -c '^-')" = "$(dpkg-deb --ctrl-tarfile "$deb" | tar -xOf - ./md5sums | wc -l)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages
           path: output/
@@ -65,7 +81,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: packages
           path: packages/
@@ -103,8 +119,9 @@ jobs:
     permissions:
       contents: read        # restrictive org defaults: the job only reads our releases
     steps:
-      - uses: actions/checkout@v4          # needed for the fixtures below
-      - uses: actions/download-artifact@v4
+      # the checkout is needed for the fixtures below
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: packages
           path: packages/
@@ -378,14 +395,48 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: packages
           path: packages/
-      - uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ github.ref_name }}
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
-          # .changes/.buildinfo join the assets with the debian/ conversion (dpkg-buildpackage).
-          files: packages/*.deb
-          generate_release_notes: true
+      # Draft -> assets -> digest check -> publish: with GitHub's immutable releases publishing
+      # freezes tag and assets, so all assets go onto the draft first. The gh CLI ships with
+      # the runner; ids and digests are read through `gh api` so an older gh works as well.
+      - name: Publish the GitHub release (draft first)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}     # through env, never interpolated into the script
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # The files this repo publishes (.changes/.buildinfo join them with the debian/
+          # conversion, dpkg-buildpackage).
+          assets=(packages/*.deb)
+          compgen -G 'packages/*.deb' > /dev/null || { echo "::error::no .deb to publish"; exit 1; }
+          pre=(); case "$TAG" in *-rc*) pre=(--prerelease) ;; esac
+          lookup() { gh api "repos/$GH_REPO/releases?per_page=100" \
+                       --jq '.[] | select(.tag_name == env.TAG) | "\(.id) \(.draft)"'; }
+          found=$(lookup)
+          case "$found" in
+            "")      gh release create "$TAG" --draft --verify-tag --title "$TAG" \
+                       --generate-notes "${pre[@]}"
+                     found=$(lookup) ;;
+            *" true") echo "::notice::re-run: completing the draft a failed run left behind" ;;
+            *)       echo "::error::$TAG is already published; its assets are never replaced"; exit 1 ;;
+          esac
+          if [ "$(printf '%s\n' "$found" | wc -l)" != 1 ] || [ "${found#* }" != true ]; then
+            echo "::error::expected exactly one draft for $TAG, got: $found"; exit 1
+          fi
+          rid=${found%% *}
+          gh release upload "$TAG" "${assets[@]}" --clobber
+          # Publish only what was built: GitHub's sha256 of every asset on the draft must equal
+          # the built files, as a set (GitHub may rename files, e.g. `~` in a version).
+          sha256sum "${assets[@]}" | cut -d' ' -f1 | sort > built.sha256
+          gh api "repos/$GH_REPO/releases/$rid/assets?per_page=100" \
+            --jq '.[].digest | ltrimstr("sha256:")' | sort > uploaded.sha256
+          diff built.sha256 uploaded.sha256 \
+            || { echo "::error::assets on the draft differ from the build, not publishing"; exit 1; }
+          gh release edit "$TAG" --draft=false
+          immutable=$(gh api "repos/$GH_REPO/releases/$rid" --jq '.immutable' || true)
+          [ "$immutable" = true ] || echo "::warning::$TAG is published but not immutable (immutable=$immutable)"

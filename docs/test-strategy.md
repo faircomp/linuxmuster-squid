@@ -14,7 +14,18 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
 ## Fast tier (everywhere)
 
 - **Python:** `ruff check`, `ruff format --check`, `mypy`, `pytest`
-  (control-plane logic, API handlers with the httpx TestClient, CLI client).
+  (control-plane logic, API handlers with the httpx TestClient, CLI client). CI runs them
+  against the locked dependency versions the `.deb` ships (`controlplane/requirements.lock`).
+- **Lock files:** `bash packaging/lock-deps.sh --check` — every line is one uv writes, the
+  header is the canonical command, the locks still satisfy `controlplane/pyproject.toml` and
+  the `.in` files, every pin has a CPython 3.12 manylinux x86_64 wheel, and every committed
+  hash is one PyPI lists for that pin (negative cases: direct-URL line with the hash in the
+  fragment, option line, requirement without hashes, added dependency, dropped pin,
+  unsatisfiable constraint, edited header, pin younger than 7 days, pin without a cp312
+  wheel, foreign hash). The
+  package build itself fails when a download does not match its hash, when a pin has no
+  wheel (sdist-only), or when `pip freeze` of the venv differs from the lock or lists anything
+  but `name==version`.
 - **Shell:** `shellcheck` for `image/*.sh`, `scripts/**`.
 - **Squid config:** `squid -k parse` against rendered templates (in the container;
   green only with `squid-openssl` once `ssl_bump` is active).

@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Build backend of controlplane/ (its [build-system] requires). packaging/build-deb.sh
+# installs it from packaging/requirements-build.lock into a throwaway venv and builds the
+# lmnsquid wheel there without build isolation, so no unpinned setuptools is fetched and
+# nothing of it is shipped.
+setuptools>=68

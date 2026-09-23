@@ -140,6 +140,32 @@ signal, as a manual stop, and an `unless-stopped` container then stays down afte
 **Limit (documented):** a blocked HTTPS name is terminated at the TLS handshake, there is
 no 403 page without decryption (ADR-002).
 
+### ADR-015 — Build inputs pinned: hashed Python locks, digests, action SHAs, draft-first releases
+**Status:** Accepted (2026-09-23, stage A "supply chain" of the linuxmusterDEV archive plan).
+**Decision:** every input of the `.deb` build is an immutable reference. The venv's Python
+packages (pip included) come from `controlplane/requirements.lock`, compiled with `uv pip
+compile --generate-hashes --exclude-newer=P7D` for Python 3.12 on linux/x86_64 (nothing
+younger than 7 days is picked) and installed with `--require-hashes --no-deps --only-binary
+:all:` (wheels only: building an sdist would fetch its build backend unverified); `lmnsquid` itself is built as a wheel in a throwaway venv whose
+setuptools comes from `packaging/requirements-build.lock` (no build isolation, no index), so
+nothing unpinned is downloaded while the package is built. The build container
+(`lmndev-runner`), the data-plane base image and every GitHub Action are pinned by digest or
+commit SHA. Releases are created as drafts, get their assets, are checked against the build and
+only then published (the order GitHub's immutable releases need). Renovate
+(`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run)
+proposes every change as a PR, PyPI releases only once 7 days old; nothing is automerged.
+The lock is exactly what its header command produces. The CI gate (`lock-deps.sh --check`)
+accepts only lines uv writes, re-resolves the pins with the header's options including the
+7-day cutoff (preferring the locked versions, so it only moves when the lock or its inputs do),
+checks that every pin has a cp312 manylinux wheel and that every hash is one PyPI lists.
+**Why:** the `.deb` is installed as root on school servers and vouches for everything that ran
+in its build; before, each build took whatever PyPI and the moving image/action tags served.
+**Tool:** `uv pip compile` over pip-tools because it compiles for a Python version other than
+the host's and Renovate's pip-compile manager can re-run it from the lock header. Renovate
+rejects `--python-platform`, so the lock is compiled on linux/x86_64 (CI, Renovate, dev box)
+with `--python-version=3.12`; environment markers then evaluate as on the target.
+**Price:** dependency updates need a merged PR; the lock is regenerated, never hand-edited.
+
 ---
 
 ## Site facts to be verified (P0, enter with source/date)

@@ -105,7 +105,11 @@ operations, logs & on-disk paths: [`docs/operations.md`](docs/operations.md).
 
 The fast tier (lint/unit) runs locally/CI; `make deb` builds the package (as root, or in
 the `ghcr.io/linuxmuster/lmndev-runner:24.04` container exactly like CI). The version
-is the top entry of `debian/changelog` — the only place it is edited. The **heavy tier** — the real
+is the top entry of `debian/changelog` — the only place it is edited. The Python dependencies
+of the venv come only from `controlplane/requirements.lock` (exact versions with SHA-256
+hashes, pip included); never edit it by hand: change `controlplane/pyproject.toml`, then
+`bash packaging/lock-deps.sh` (needs `uv`; `--upgrade` moves every pin to the newest release
+that is at least 7 days old, `--check` is the CI gate). Only wheels are installed. Renovate proposes lock updates as PRs. The **heavy tier** — the real
 Kerberos E2E (Samba AD DC + Squid + client, proving *teacher→200 /
 student→403 / blocked→403 / no-ticket→407*) — needs a **Linux host with
 Docker**. Aggregator:
