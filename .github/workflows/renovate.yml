@@ -4,28 +4,30 @@
 # From linuxmusterDEV/templates/renovate.yml. The same self-hosted Renovate as
 # linuxmuster-radius (faircomp has no org-level Renovate app; before this workflow nothing
 # ever read renovate.json here), hardened in stage A:
-#  * actions pinned by commit SHA, and the Renovate engine pinned by version AND digest via
-#    renovate-version. Without it the action runs its default engine (Renovate 39), which
-#    rejects `managerFilePatterns`, does nothing and still ends green.
-#  * a warning when RENOVATE_TOKEN is missing (see TOKEN).
-# Weekly (after the Monday rebuild of lmndev-runner) and on demand. It opens PRs for the
-# action SHAs, the build image and data-plane digests, the Renovate engine, the CI gate tools
-# and the Python lock files; a human MUST merge them (automerge is off in renovate.json).
+#  * actions pinned by commit SHA, and the Renovate engine pinned by version AND digest
+#    (RENOVATE_VERSION below). Without it the action runs its default engine (Renovate 39),
+#    which rejects `managerFilePatterns`, does nothing and still ends green.
+#  * the job fails instead of ending green without effect: a scheduled run without
+#    RENOVATE_TOKEN, a renovate.json the pinned engine rejects (validated before the run), and
+#    an open "Action Required: Fix Renovate Configuration" issue after the run.
+# Thursday and on demand: three days after the Monday rebuild of lmndev-runner, so a digest
+# PR never proposes an image younger than that (ghcr.io has no release timestamps, so
+# minimumReleaseAge cannot do it). It opens PRs for the action SHAs, the build image and
+# data-plane digests, the Renovate engine, the CI gate tools and the Python lock files; a
+# human MUST merge them (automerge is off in renovate.json).
 #
-# TOKEN: repo secret RENOVATE_TOKEN is REQUIRED as soon as an update touches
-# .github/workflows/ (most do here): GitHub never lets GITHUB_TOKEN push workflow files,
-# PRs opened with GITHUB_TOKEN start no CI, and "Allow GitHub Actions to create and approve
-# pull requests" is off in this repository. Use a fine-grained PAT limited to this repo with
-# Contents, Pull requests, Issues and Workflows: read and write. Without the secret the job
-# falls back to GITHUB_TOKEN, can look up and plan, but cannot push the bumps.
-# After the first merge: `gh workflow run renovate.yml -f dryRun=true` and check the log for
-# "Found renovate config errors" (the job stays green even then).
+# TOKEN: repo secret RENOVATE_TOKEN is REQUIRED: GitHub never lets GITHUB_TOKEN push
+# workflow files, PRs opened with GITHUB_TOKEN start no CI, and "Allow GitHub Actions to
+# create and approve pull requests" is off in this repository. Use a fine-grained PAT limited
+# to this repo with Contents, Pull requests, Issues and Workflows: read and write. A manual
+# run without it only warns and can look up and plan (dry run).
+# After the first merge: `gh workflow run renovate.yml -f dryRun=true` and read the log.
 
 name: Renovate
 
 on:
   schedule:
-    - cron: "0 4 * * 1" # every Monday 04:00 UTC
+    - cron: "0 4 * * 4" # Thursday 04:00 UTC
   workflow_dispatch:
     inputs:
       dryRun:
@@ -52,22 +54,50 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       HAS_RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN != '' }}
+      # The engine, by version and digest, used for the validation and the run alike;
+      # Renovate proposes new versions of this line (regex manager in renovate.json).
+      RENOVATE_VERSION: 44.105.4@sha256:e155ebea05260c388f12afa521fc23a485f119b32b0108ed9b17616f079e7519
     steps:
-      - name: Warn when RENOVATE_TOKEN is missing
+      - name: Require RENOVATE_TOKEN for scheduled runs
         if: env.HAS_RENOVATE_TOKEN != 'true'
-        run: echo "::warning::RENOVATE_TOKEN is not set; Renovate cannot push changes to .github/workflows/ with GITHUB_TOKEN"
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = schedule ]; then
+            echo "::error::RENOVATE_TOKEN is not set: Renovate cannot push .github/workflows/ changes or open PRs; see the header of renovate.yml"
+            exit 1
+          fi
+          echo "::warning::RENOVATE_TOKEN is not set; this manual run can only look up and plan"
 
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate renovate.json with the pinned engine
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo --entrypoint renovate-config-validator \
+            "ghcr.io/renovatebot/renovate:$RENOVATE_VERSION" --strict
 
       - name: Renovate
         uses: renovatebot/github-action@f24426972367551f3391720e34317783a92fd32b # v41.0.8
         with:
           token: ${{ secrets.RENOVATE_TOKEN || github.token }}
-          renovate-version: 44.105.4@sha256:e155ebea05260c388f12afa521fc23a485f119b32b0108ed9b17616f079e7519
+          renovate-version: ${{ env.RENOVATE_VERSION }}
         env:
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_PLATFORM: github
           RENOVATE_ONBOARDING: "false" # renovate.json already present -> no onboarding PR
           RENOVATE_DRY_RUN: ${{ inputs.dryRun == true && 'full' || '' }}
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
+
+      # Renovate reports some configuration problems only as this issue and still exits 0.
+      - name: Fail on an open Renovate configuration issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+                   --search 'in:title "Action Required: Fix Renovate Configuration"' \
+                   --json number --jq length)
+          if [ "$open" != 0 ]; then
+            echo "::error::Renovate opened 'Action Required: Fix Renovate Configuration'; it does nothing until that is fixed"
+            exit 1
+          fi

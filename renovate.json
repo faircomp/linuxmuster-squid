@@ -38,12 +38,12 @@
     },
     {
       "customType": "regex",
-      "description": "The Renovate engine itself, pinned as renovate-version: <version>@sha256:<digest> in renovate.yml (the action's default engine is too old for this config).",
+      "description": "The Renovate engine itself, pinned as RENOVATE_VERSION: <version>@sha256:<digest> in renovate.yml (validation and run use the same line; the action's default engine is too old for this config).",
       "managerFilePatterns": [
         "/^\\.github/workflows/renovate\\.ya?ml$/"
       ],
       "matchStrings": [
-        "renovate-version: (?<currentValue>\\d+\\.\\d+\\.\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+        "RENOVATE_VERSION: (?<currentValue>\\d+\\.\\d+\\.\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})"
       ],
       "depNameTemplate": "ghcr.io/renovatebot/renovate",
       "datasourceTemplate": "docker"
@@ -68,6 +68,13 @@
       ],
       "pinDigests": true,
       "automerge": false
+    },
+    {
+      "description": "PyPI releases (CI gate tools, lock dependencies) are proposed only once they are 7 days old, the window in which a compromised upload is usually still unnoticed. PyPI only: ghcr.io has no release timestamps, a docker rule would hold those updates back forever without a word (the Thursday schedule is the brake there). The weekly lock refresh gets the same age from --exclude-newer=P7D in the lock header.",
+      "matchDatasources": [
+        "pypi"
+      ],
+      "minimumReleaseAge": "7 days"
     },
     {
       "description": "Build image: never change the tag (24.04 -> 26.04 would be a new linuxmuster line, not an update), only follow its digest.",
@@ -138,7 +145,7 @@
       "automerge": false
     },
     {
-      "description": "The github-actions manager reads renovate-version natively but expects a plain version there; on <version>@<digest> it would append a second digest. The regex manager above owns the engine.",
+      "description": "The github-actions manager reads renovate-version natively; it now holds ${{ env.RENOVATE_VERSION }}, and the regex manager above owns the engine. Kept off so a later literal value cannot be bumped twice.",
       "matchManagers": [
         "github-actions"
       ],
