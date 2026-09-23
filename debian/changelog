@@ -4,10 +4,13 @@ linuxmuster-squid (7.3.3) lmn73; urgency=medium
     /opt/linuxmuster-squid/venv (and pip itself) now come from a lock file
     with SHA-256 hashes instead of "whatever PyPI serves at build time": two
     builds of the same version ship the same dependency versions, and a file
-    whose hash does not match stops the build. The build container, the
-    GitHub Actions and the base of the data-plane image are pinned by
-    digest; updates to any of them arrive only as reviewed Renovate pull
-    requests. No behaviour change for the proxy or the CLI.
+    whose hash does not match stops the build. Only prebuilt wheels are
+    installed; nothing is compiled from source during the build. The
+    versions are exactly those of 7.3.2, and later updates pick only
+    releases that are at least 7 days old. The build container, the GitHub
+    Actions and the base of the data-plane image are pinned by digest;
+    updates to any of them arrive only as reviewed Renovate pull requests.
+    No behaviour change for the proxy or the CLI.
   * Releases are created as drafts, get their .deb attached and are
     published only then, so a release never appears without its package.
 
