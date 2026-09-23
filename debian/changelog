@@ -17,6 +17,11 @@ linuxmuster-squid (7.3.4) lmn73; urgency=medium
     run caught this failure. 7.3.4 contains all changes listed under 7.3.3.
     Admins who hit the chown error with 7.3.1 or 7.3.2 can finish that
     installation with `dpkg --configure -a`, or install 7.3.4 over it.
+  * CI now configures the package 30 times in a row on every change (15 purge
+    and fresh install, 15 reinstall or dpkg-reconfigure) and fails on the
+    first error, so a race like this one no longer passes on a lucky run. The
+    upgrade check leaves root-owned files in the change log repository before
+    upgrading and verifies that they are handed back and the history is kept.
 
  -- Kevin Stenzel <mail@kevin-stenzel.de>  Wed, 23 Sep 2026 16:00:00 +0200
 

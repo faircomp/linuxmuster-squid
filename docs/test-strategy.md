@@ -61,7 +61,12 @@ acceptance list in `deployment-gpo.md`.
   come up does not block the others (`failed` list) and the previous container is kept.
 - **P5:** update to a broken image→auto-rollback, service stays available;
   `rollback` deterministic.
-- **P9:** `.deb` install→systemd `active`, API/CLI smoke; package upgrade/rollback.
+- **P9:** `.deb` install→systemd `active`, API/CLI smoke; package upgrade/rollback;
+  the same `.deb` configured 30 times in a row (`scripts/tests/install_loop.sh`, CI
+  install-smoke: 15× purge + fresh install, 15× reinstall/`dpkg-reconfigure`, stop at the
+  first failure) — an intermittent postinst race (7.3.1–7.3.3) passed single installs;
+  upgrade over a release with root-owned files in the change log repository → handed
+  back to `lmnsquid`, history kept.
 - **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;
   bypass/traversal; DC outage does not stall (ttl/grace).
 
