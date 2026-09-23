@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# What the shipped venv holds besides the dependencies of controlplane/pyproject.toml:
+# pip itself, pinned with a hash like everything else. Compiled together with
+# pyproject.toml into controlplane/requirements.lock by packaging/lock-deps.sh.
+pip

@@ -39,14 +39,27 @@ jobs:
       # pipeline red without a single line of our code changing (ruff 0.16 did exactly
       # that here). Pinned == the developer's local result == CI's result. Renovate
       # proposes bumps as PRs (customManager in renovate.json).
-      - name: Install control-plane + tools
+      #
+      # The locked runtime dependencies are installed AFTER the tools, with their hashes:
+      # the tests then run against exactly what the .deb ships (a Renovate lock PR is
+      # tested against the versions it proposes), and `pip check` fails if a tool cannot
+      # live with a locked version instead of the tool quietly moving it.
+      - name: Install tools + locked dependencies + control-plane
         run: |
           pip install \
             ruff==0.15.21 \
             mypy==2.2.0 \
             reuse==6.2.0 \
             pytest==9.1.1 \
-            pytest-asyncio httpx types-PyYAML ./controlplane
+            uv==0.12.18 \
+            pytest-asyncio types-PyYAML
+          pip install --require-hashes --no-deps -r controlplane/requirements.lock
+          pip install --no-deps ./controlplane
+          pip check
+      # The locks must still satisfy controlplane/pyproject.toml and the .in files, and
+      # every hash in them must be one PyPI lists for that pin.
+      - name: lock files match their inputs
+        run: bash packaging/lock-deps.sh --check
       - name: ruff check
         run: ruff check .
       # Formatting is a gate, not a suggestion: without it the tree drifts away from
