@@ -35,10 +35,15 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   `@sha256` digest** (instance validation enforces tag/digest). Which digest goes live is decided by
   a **merged Renovate PR** (`automerge:false`), never automatically.
 - **`.deb` (control-plane tooling):** built by CI (`release.yml`) on every `v*` tag — in the
-  `ghcr.io/linuxmuster/lmndev-runner:24.04` container, install-smoked and upgrade-smoked on
+  `ghcr.io/linuxmuster/lmndev-runner:24.04` container (pinned by digest), with the venv's Python
+  packages installed only from `controlplane/requirements.lock` (`--require-hashes`),
+  install-smoked and upgrade-smoked on
   `ubuntu-24.04` (the upgrade smoke installs the newest published release, gives it an
   admin's config and state and upgrades onto it) — and
   attached to the GitHub Release (`gh release download … && apt install ./linuxmuster-squid_*.deb`).
+  The release is created as a **draft**, the `.deb` is uploaded and its SHA-256 compared with
+  the build, and only then is it published: GitHub's immutable releases freeze tag and assets
+  at publication.
   The version is the top entry of `debian/changelog` (`7.3.N`, distribution `lmn73`); the
   workflow refuses a tag that does not match it. Build locally with `make deb` (as root, or in
   the same container: see `Makefile`). An
