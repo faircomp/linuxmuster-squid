@@ -59,3 +59,6 @@ Code + docs + a `debian/changelog` bullet in the same commit (Conventional Commi
 CI green (`ci.yml`: fast tier, container build, install smoke, upgrade smoke) → Kevin sets the
 release version in the changelog head and tags `v<version>` → `release.yml` builds, smokes and
 publishes the GitHub Release with generated notes → update the image/`.deb` digest in the docs.
+Build inputs (action SHAs, build-image and base-image digests, the Python lock files, the
+Renovate engine) change only through Renovate PRs (`.github/workflows/renovate.yml`, weekly)
+that a human merges; they then ship with the next release like any other change.
