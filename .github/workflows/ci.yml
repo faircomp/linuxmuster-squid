@@ -66,7 +66,7 @@ jobs:
             pytest==9.1.1 \
             uv==0.12.18 \
             pytest-asyncio types-PyYAML
-          pip install --require-hashes --no-deps -r controlplane/requirements.lock
+          pip install --require-hashes --no-deps --only-binary :all: -r controlplane/requirements.lock
           pip install --no-deps ./controlplane
           pip check
       # The locks must still satisfy controlplane/pyproject.toml and the .in files, and
