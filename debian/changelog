@@ -1,3 +1,18 @@
+linuxmuster-squid (7.3.3) lmn73; urgency=medium
+
+  * Reproducible builds with verified dependencies. The Python packages in
+    /opt/linuxmuster-squid/venv (and pip itself) now come from a lock file
+    with SHA-256 hashes instead of "whatever PyPI serves at build time": two
+    builds of the same version ship the same dependency versions, and a file
+    whose hash does not match stops the build. The build container, the
+    GitHub Actions and the base of the data-plane image are pinned by
+    digest; updates to any of them arrive only as reviewed Renovate pull
+    requests. No behaviour change for the proxy or the CLI.
+  * Releases are created as drafts, get their .deb attached and are
+    published only then, so a release never appears without its package.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Wed, 23 Sep 2026 13:30:00 +0200
+
 linuxmuster-squid (7.3.2) lmn73; urgency=medium
 
   * CI gains an `upgrade-smoke` job (ci.yml and release.yml): it installs the
