@@ -154,9 +154,10 @@ commit SHA. Releases are created as drafts, get their assets, are checked agains
 only then published (the order GitHub's immutable releases need). Renovate
 (`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run)
 proposes every change as a PR, PyPI releases only once 7 days old; nothing is automerged.
-The CI gate (`lock-deps.sh --check`) accepts only lines uv writes, re-resolves the pins
-without the 7-day cutoff (the cutoff picks versions, it does not judge a reviewed lock), checks
-that every pin has a cp312 manylinux wheel and that every hash is one PyPI lists.
+The lock is exactly what its header command produces. The CI gate (`lock-deps.sh --check`)
+accepts only lines uv writes, re-resolves the pins with the header's options including the
+7-day cutoff (preferring the locked versions, so it only moves when the lock or its inputs do),
+checks that every pin has a cp312 manylinux wheel and that every hash is one PyPI lists.
 **Why:** the `.deb` is installed as root on school servers and vouches for everything that ran
 in its build; before, each build took whatever PyPI and the moving image/action tags served.
 **Tool:** `uv pip compile` over pip-tools because it compiles for a Python version other than

@@ -99,14 +99,11 @@ case "$mode" in
         ;;
     --check)
         # 1. every line is one uv writes; 2. the header is the canonical command; 3. the pins
-        # still satisfy the inputs; 4. every pin has a wheel for the target (CPython 3.12,
-        # glibc 2.39, x86_64), since build-deb.sh installs wheels only; 5. every committed
-        # hash is one PyPI lists for that pin (PyPI may list more: files added later).
-        # 3 and 4 re-resolve WITHOUT --exclude-newer: the cutoff decides which versions are
-        # picked (lock-deps.sh, Renovate), not whether a reviewed lock is consistent. With it, a
-        # lock that carries a release younger than 7 days (7.3.3 ships 7.3.2's versions, two of
-        # them younger than that until 2026-09-28) would fail although nothing is wrong with it.
-        CHECK_OPTS=(--python-version=3.12 --generate-hashes)
+        # still satisfy the inputs AND the header's cutoff (a pin younger than 7 days fails);
+        # 4. every pin has a wheel for the target (CPython 3.12, glibc 2.39, x86_64), since
+        # build-deb.sh installs wheels only; 5. every committed hash is one PyPI lists for that
+        # pin (PyPI may list more: files added later). 3 and 4 prefer the locked versions, so
+        # the gate stays green as time passes and only moves when the lock or its inputs do.
         rc=0
         for lock in "${LOCKS[@]}"; do
             bad=0
@@ -118,11 +115,11 @@ case "$mode" in
             if [ "$(sed -n 2p "$lock")" != "#    $(command_for "$lock")" ]; then
                 fail "header is not: $(command_for "$lock")"
             fi
-            resolve "$lock" pins "$TMP/inputs.lock" "${CHECK_OPTS[@]}"
+            resolve "$lock" pins "$TMP/inputs.lock" "${HEADER_OPTS[@]}"
             if ! diff -u <(pins "$lock") <(pins "$TMP/inputs.lock"); then
-                fail "pins no longer match the inputs; run: bash packaging/lock-deps.sh"
+                fail "pins no longer match the inputs or are younger than 7 days; run: bash packaging/lock-deps.sh"
             fi
-            resolve "$lock" pins "$TMP/target.lock" "${CHECK_OPTS[@]}" \
+            resolve "$lock" pins "$TMP/target.lock" "${HEADER_OPTS[@]}" \
                 --python-platform=x86_64-manylinux_2_39 --only-binary=:all:
             if ! diff -u <(pins "$lock") <(pins "$TMP/target.lock"); then
                 fail "a pinned version has no wheel for CPython 3.12 on Ubuntu 24.04 x86_64"
