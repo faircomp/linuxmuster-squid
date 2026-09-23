@@ -6,6 +6,19 @@
 # the same container upstream CI uses (proves it builds on the target Ubuntu/Python),
 # an install smoke on ubuntu-24.04 and an upgrade smoke on top of the newest published
 # release. The heavy Kerberos + docker-py E2E runs on crabbox, not in GitHub CI.
+#
+# Supply chain (stage A, work/plans/paketarchiv.md §2): every input of the build is pinned to
+# an immutable reference, because a released .deb vouches for everything that ran in its build.
+#  * Build image by digest. ghcr.io/linuxmuster/lmndev-runner:24.04 is a mutable tag of another
+#    org, rebuilt every Monday, and runs as root; `:<tag>@sha256:<digest>` pulls exactly that
+#    image (the digest wins, the tag only tells Renovate which tag's digest to follow).
+#  * Every action by full commit SHA with a `# vN` comment: a tag can be moved, a SHA cannot.
+#  * Keep ci.yml and release.yml on the SAME digests, or CI proves a different build than the
+#    one that is released.
+#  * Python dependencies from hash-pinned lock files (packaging/lock-deps.sh); pip never
+#    resolves or downloads anything unpinned while the .deb is built.
+# Renovate (renovate.json + renovate.yml) opens reviewable PRs for new digests, SHAs and
+# locks; nothing is automerged.
 name: ci
 
 on:
@@ -30,8 +43,8 @@ jobs:
   fast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"        # = Ubuntu 24.04 / lmn73
       # The gate tools are PINNED on purpose: an unpinned `pip install ruff` picks up
@@ -84,11 +97,14 @@ jobs:
       image: ${{ steps.image.outputs.image }}
       version: ${{ steps.image.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: image
         run: |
           DIST=$(dpkg-parsechangelog -S Distribution); NUM="${DIST#lmn}"
-          if [ "${NUM:-0}" -ge 74 ] 2>/dev/null; then IMG=ghcr.io/linuxmuster/lmndev-runner:latest; else IMG=ghcr.io/linuxmuster/lmndev-runner:24.04; fi
+          # Pinned by digest (see the header); Renovate bumps both lines here and in release.yml.
+          IMG_LMN73=ghcr.io/linuxmuster/lmndev-runner:24.04@sha256:6b0c8ac994cf1d2da44b0b36ebd7b3b125094886e78293e04b9db5e515b8209e
+          IMG_LMN74=ghcr.io/linuxmuster/lmndev-runner:latest@sha256:d735e6ccc6fd9df71b2552b06ac6f5cb4bf2d03f40e14bafe47213325b7b801b
+          if [ "${NUM:-0}" -ge 74 ] 2>/dev/null; then IMG=$IMG_LMN74; else IMG=$IMG_LMN73; fi
           echo "image=$IMG" >> "$GITHUB_OUTPUT"
           echo "version=$(dpkg-parsechangelog -S Version)" >> "$GITHUB_OUTPUT"
 
@@ -99,7 +115,7 @@ jobs:
       image: ${{ needs.resolve.outputs.image }}
       options: --user root
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build package (make deb wraps packaging/build-deb.sh)
         run: |
           # No debian/control at the root yet (that is the debian/ conversion PR), so
@@ -112,7 +128,7 @@ jobs:
           dpkg-deb --ctrl-tarfile "$deb" | tar -tf - | grep -qx './md5sums'
           test "$(dpkg-deb -c "$deb" | grep -c '^-')" = "$(dpkg-deb --ctrl-tarfile "$deb" | tar -xOf - ./md5sums | wc -l)"
           echo "md5sums: $(dpkg-deb --ctrl-tarfile "$deb" | tar -xOf - ./md5sums | wc -l) files"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages
           path: output/
@@ -122,7 +138,7 @@ jobs:
     needs: package
     runs-on: ubuntu-24.04              # the target OS; the venv python must match
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: packages
           path: packages/
@@ -165,8 +181,9 @@ jobs:
     permissions:
       contents: read        # restrictive org defaults: the job only reads our releases
     steps:
-      - uses: actions/checkout@v4          # needed for the fixtures below
-      - uses: actions/download-artifact@v4
+      # the checkout is needed for the fixtures below
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: packages
           path: packages/

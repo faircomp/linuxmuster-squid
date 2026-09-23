@@ -7,6 +7,8 @@
 # /opt/linuxmuster-squid/venv). Build like CI does, in the lmndev-runner container:
 #   docker run --rm -u root -v "$PWD":/src -w /src ghcr.io/linuxmuster/lmndev-runner:24.04 \
 #     bash -c 'apt-get update -qq && apt-get install -y -qq python3-venv && make deb'
+# For a build identical to CI, use the digest-pinned reference (IMG_LMN73 in
+# .github/workflows/ci.yml) instead of the moving :24.04 tag.
 # The version comes from debian/changelog (dpkg-parsechangelog); VERSION=<x> overrides it.
 
 .PHONY: deb clean

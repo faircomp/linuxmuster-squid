@@ -11,7 +11,8 @@
 # SNI filtering in P2) are impossible with it. `squid-openssl` provides the full
 # SSL feature set AND still ships every Kerberos/LDAP helper we use. `squidclient`
 # is a separate package (used by the healthcheck).
-FROM ubuntu:24.04
+# The base is pinned by digest; Renovate proposes new digests as PRs (docker:pinDigests).
+FROM ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
 
 ENV DEBIAN_FRONTEND=noninteractive
 
