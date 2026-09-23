@@ -50,7 +50,9 @@ fail() {
 }
 
 # git in the store as its owner: a root `git` could write root-owned files into it.
-store_git() { runuser -u lmnsquid -- git -C "$INST" "$@"; }
+# XDG_CONFIG_HOME may point into root's home (GitHub runners set it), as in the postinst.
+as_owner() { runuser -u lmnsquid -- env -u XDG_CONFIG_HOME "$@"; }
+store_git() { as_owner git -C "$INST" "$@"; }
 
 # $1 = label, rest = the dpkg command that configures the package.
 configure() {
@@ -88,7 +90,7 @@ done
 
 # The seed itself must not leave a maintenance process behind for the next check to find.
 # shellcheck disable=SC2016  # expanded by the inner sh
-runuser -u lmnsquid -- sh -c 'cd "$1" && for j in $(seq 1 "$2"); do
+as_owner sh -c 'cd "$1" && for j in $(seq 1 "$2"); do
         printf "# history %s\n" "$j" > "history-$j.yaml"
         git add -- "history-$j.yaml" &&
             git -c maintenance.auto=false commit -q -m "history $j" || exit 1

@@ -59,7 +59,9 @@ if command -v git >/dev/null 2>&1; then
     if ! git config --system --get-all safe.directory 2>/dev/null | grep -qx "$INST_DIR"; then
         git config --system --add safe.directory "$INST_DIR" || true
     fi
-    as_lmnsquid() { runuser -u lmnsquid -- git -C "$INST_DIR" "$@"; }
+    # runuser resets HOME, not XDG_CONFIG_HOME: an admin environment pointing it into /root
+    # would make every call warn "unable to access '/root/.config/git/...'".
+    as_lmnsquid() { runuser -u lmnsquid -- env -u XDG_CONFIG_HOME git -C "$INST_DIR" "$@"; }
     if [ ! -d "$INST_DIR/.git" ]; then
         as_lmnsquid init -q || true
     fi
