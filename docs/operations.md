@@ -200,9 +200,13 @@ Access logs show **who visited/was blocked from which site** = personal data
 - `/etc/linuxmuster-squid/config.yml` (API token!), `/etc/linuxmuster-squid/secrets/` (keytabs),
   `/etc/linuxmuster-squid/blocklists/` (per-instance blocklists),
 - `instances_dir` (`/var/lib/linuxmuster-squid/instances/*.yaml` — git-versioned = change log;
-  the postinst creates and configures the repo; every create/edit/update/rm is one commit:
+  the postinst creates and configures the repo as its owner `lmnsquid`, with git's background
+  maintenance off; every create/edit/update/rm is one commit:
   `git -C /var/lib/linuxmuster-squid/instances log --oneline` works as root, the postinst
-  registers the directory as `safe.directory`),
+  registers the directory as `safe.directory`; run *writing* git commands as the owner
+  (`sudo -u lmnsquid git -C /var/lib/linuxmuster-squid/instances …`): what root writes there
+  belongs to root, and the service's commits can fail on it until the next package configure
+  hands it back),
 - Log **volumes** (`lmnsquid-logs-<name>`) only if the access history is subject to retention
   requirements — the cache volume (`lmnsquid-cache-<name>`) is **disposable**.
 

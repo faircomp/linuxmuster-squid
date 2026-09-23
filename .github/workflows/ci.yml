@@ -138,6 +138,8 @@ jobs:
     needs: package
     runs-on: ubuntu-24.04              # the target OS; the venv python must match
     steps:
+      # the checkout is needed for scripts/tests/install_loop.sh
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: packages
@@ -169,6 +171,14 @@ jobs:
           # every installed file matches the shipped md5sums (silent = ok)
           test -z "$(sudo dpkg --verify linuxmuster-squid)"
           test -x /usr/share/linuxmuster-squid/scripts/provision-keytab.sh
+
+      # Regression guard for an intermittent configure failure: 7.3.1-7.3.3 committed to the
+      # instance store as root and chowned the tree afterwards, racing the maintenance that
+      # git >= 2.47 (the runner's git-core PPA git) detaches after a commit; the 7.3.3 release
+      # run failed on it after earlier runs had passed. One install proves nothing about a
+      # race, so the same .deb is configured 30 more times, failing on the first error.
+      - name: Configure loop (15x purge + fresh install, 15x reinstall/dpkg-reconfigure)
+        run: sudo bash scripts/tests/install_loop.sh packages/linuxmuster-squid_*_all.deb 15
 
   # Kevin's rule: a release must still install cleanly ON TOP OF the version that is
   # already running on a school server. This job installs the newest published release
@@ -281,6 +291,17 @@ jobs:
             sudo chmod 644 "$BL/blocked.domains"
           fi
           sudo grep -qx '\.example\.org' "$BL/blocked.domains"
+
+          # Root-owned files in the change log repository, as git writes by root leave them: the
+          # 7.3.1-7.3.3 postinst committed as root (its detached maintenance could still write
+          # behind the chown), and safe.directory lets an admin run writing git commands as root
+          # (gc rewrites packs, refs and reflogs). The upgrade must hand them to lmnsquid before
+          # any git runs as lmnsquid, or the change log commits of the upgrade fail.
+          GITDIR=/var/lib/linuxmuster-squid/instances
+          if sudo test -d "$GITDIR/.git"; then
+            sudo git -c safe.directory=$GITDIR -C $GITDIR gc -q
+            test -n "$(sudo find $GITDIR ! -user lmnsquid | head -n 1)"
+          fi
 
           # --- snapshot everything that must survive ----------------------------
           mkdir -p before after
@@ -429,6 +450,15 @@ jobs:
           sudo git -c safe.directory=$GITDIR -C $GITDIR log -1 --format='%an' \
             | grep -qx 'linuxmuster-squid'
           sudo git -c safe.directory=$GITDIR -C $GITDIR log --oneline -5
+          # the history of the released version is kept (the upgrade only adds commits), the
+          # root-owned files left before the upgrade belong to lmnsquid again, and background
+          # maintenance is off in the repository, so no git process outlives a configure
+          if [ "$(cat before/head)" != none ]; then
+            sudo git -c safe.directory=$GITDIR -C $GITDIR merge-base --is-ancestor "$(cat before/head)" HEAD
+          fi
+          test -z "$(sudo find /etc/linuxmuster-squid /var/lib/linuxmuster-squid ! -user lmnsquid)"
+          test "$(sudo git -c safe.directory=$GITDIR -C $GITDIR config --local maintenance.auto)" = false
+          test "$(sudo git -c safe.directory=$GITDIR -C $GITDIR config --local gc.auto)" = 0
 
           # 9. the package database is consistent and every file matches its md5sum
           test -z "$(dpkg --audit)"
@@ -442,6 +472,7 @@ jobs:
             sudo sha256sum -c before/sha256
             echo "modes/ownership under /etc/linuxmuster-squid: unchanged"
             echo "instance record: all 12 admin-set keys identical, all-teachers.prev present"
+            echo "change log: history kept, root-owned leftovers handed to lmnsquid, maintenance off"
             echo "dpkg log: $(grep ' upgrade linuxmuster-squid:' /var/log/dpkg.log | tail -1)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
