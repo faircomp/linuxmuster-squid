@@ -5,12 +5,17 @@ linuxmuster-squid (7.3.3) lmn73; urgency=medium
     with SHA-256 hashes instead of "whatever PyPI serves at build time": two
     builds of the same version ship the same dependency versions, and a file
     whose hash does not match stops the build. Only prebuilt wheels are
-    installed; nothing is compiled from source during the build. The
-    versions are exactly those of 7.3.2, and later updates pick only
-    releases that are at least 7 days old. The build container, the GitHub
-    Actions and the base of the data-plane image are pinned by digest;
-    updates to any of them arrive only as reviewed Renovate pull requests.
-    No behaviour change for the proxy or the CLI.
+    installed; nothing is compiled from source during the build. The build
+    container, the GitHub Actions and the base of the data-plane image are
+    pinned by digest; updates to any of them arrive only as reviewed
+    Renovate pull requests.
+  * The build only takes Python releases that have been public for at least
+    a week. Two bundled libraries are therefore one release older than in
+    7.3.2, whose versions were then only days old: idna 3.19 (was 3.20) and
+    watchfiles 1.2.0 (was 1.3.0). Neither changes what the service does
+    (watchfiles is only used by uvicorn's auto-reload, which is off; idna
+    only for non-ASCII host names). All other library versions are those of
+    7.3.2; configuration, service, CLI and upgrade path are unchanged.
   * Releases are created as drafts, get their .deb attached and are
     published only then, so a release never appears without its package.
 
