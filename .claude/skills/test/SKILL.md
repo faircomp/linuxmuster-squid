@@ -27,7 +27,7 @@ gitignored `.claude/settings.local.json`). Confirm with `crabbox doctor`.
    Samba-AD-DC image + client tooling):
    `crabbox run --id <slug> -- 'bash scripts/tests/crabbox_bootstrap.sh'`
 3. **Run** the aggregator — one command, dependency-gated:
-   - `crabbox run --id <slug> -- 'bash scripts/tests/run.sh quick'`                       (ruff + mypy + pytest + shellcheck)
+   - `crabbox run --id <slug> -- 'bash scripts/tests/run.sh quick'`                       (lock gate first, stops on a rejected lock; then ruff + shellcheck + mypy + pytest + lock regression + blocklist smoke)
    - `crabbox run --id <slug> -- 'LMNSQUID_ALLOW_REAL=1 bash scripts/tests/run.sh e2e'`   (docker-compose Kerberos E2E)
    - `crabbox run --id <slug> -- 'LMNSQUID_ALLOW_REAL=1 bash scripts/tests/run.sh all'`   (quick + e2e + smoke)
 4. **Inspect** on failure: `crabbox ssh --id <slug>` (live), or read the newest

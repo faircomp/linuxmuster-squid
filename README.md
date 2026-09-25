@@ -104,11 +104,11 @@ operations, logs & on-disk paths: [`docs/operations.md`](docs/operations.md).
 ## Development & Tests
 
 The fast tier (lint/unit) runs locally/CI; `make deb` builds the package with
-dpkg-buildpackage (no root needed; in the `ghcr.io/linuxmuster/lmndev-runner:24.04` container
-exactly like CI, see the `Makefile`, which also shows the mount a git worktree needs). It builds
-the tracked files only, as they are in the working tree: uncommitted edits are built under the
-changelog's version, and `make deb` warns and lists every modified, deleted, staged or new (not
-added, so not built) file. The version
+dpkg-buildpackage (which needs no root; in the `ghcr.io/linuxmuster/lmndev-runner:24.04`
+container exactly like CI, started as root for `apt-get build-dep`: the command, with the mount a
+git worktree needs, is in the `Makefile`). It builds the tracked files only, as they are in the
+working tree: uncommitted edits are built under the changelog's version, and `make deb` warns
+and lists every modified, deleted, staged, removed or new (not added, so not built) file. The version
 is the top entry of `debian/changelog` — the only place it is edited. The Python dependencies
 of the venv come only from `controlplane/requirements.lock` (exact versions with SHA-256
 hashes, pip included); never edit it by hand: change `controlplane/pyproject.toml`, then

@@ -50,7 +50,8 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   releases are off; `GITHUB_TOKEN` cannot read that setting.
   The version is the top entry of `debian/changelog` (`7.3.N`, distribution `lmn73`); the
   workflow refuses a tag that does not match it. Build locally with `make deb`
-  (dpkg-buildpackage, no root needed; in the same container: see `Makefile`). An
+  (dpkg-buildpackage, which needs no root; in the same container, started as root for
+  `apt-get build-dep`: the command is in the `Makefile`). An
   `apt install` of the new `.deb` **automatically restarts the service** (postinst `try-restart`),
   so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). Distribution:
   the GitHub release is the only channel for now. ⏸ An apt archive of our own

@@ -47,12 +47,16 @@ conventions are `../../docs/paket-konventionen.md` there. The rules that bite he
   tracked files with git's modes (`packaging/make-deb.sh`), so the source package holds nothing
   untracked; the `.deb` and the source package land one level above the tree. Uncommitted
   changes are built as they are in the working tree, under the changelog's version: `make deb`
-  prints a WARNING listing every modified, deleted, staged and new (not added, so not built)
-  file — commit before building anything for the lab. Build it in the digest-pinned
-  `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`; in a
-  git worktree (`bin/wt`) it mounts the repository's git directory too, or `make deb` stops.
-  The build runs with a fixed PATH and none of the caller's venv/Python/pip/uv/git settings
-  (`packaging/clean-env.sh`), whatever shell starts it.
+  prints a WARNING listing every modified, deleted, staged, removed and new (not added, so not
+  built) file — commit before building anything for the lab. Build it in the digest-pinned
+  `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`
+  (`docker run -u root …`: the image's user cannot run apt-get, the results then belong to
+  root); in a git worktree (`bin/wt`) it mounts the repository's git directory too, or
+  `make deb` stops. The build runs with a fixed PATH and without the caller's venv, `PYTHON*`,
+  `UV_*`, `PIP_*`, `GIT_*`, `CDPATH`, `BASH_ENV` and shell functions; `packaging/clean-env.sh`
+  names what it leaves to the caller (proxies, CA bundles, `DEB_*`, git's global config) and
+  what it cannot undo (what the first shell already read: `BASH_ENV`, exported functions;
+  `LD_PRELOAD`).
   `debian/venv-relocate` is byte-identical in squid, radius and readonlydc: change it in the
   hub (`linuxmusterDEV/work/plans/venv-debian-umbau/`) and copy it to all three.
 - **Supply chain (ADR-015):** Python deps only via `controlplane/requirements.lock` (hashes;
@@ -206,7 +210,8 @@ update/rollback, and `.deb` install tests — needs real Linux with **Docker**.
 
 - **One aggregate runner:** `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]`
   (created in P0/P1). `quick` (default) = lock gate first (stops everything if it rejects a
-  lock), then lint + unit + lock regression + blocklist smoke; `e2e`/`all` run the
+  lock), then lint + unit + lock regression + blocklist smoke; `lint` and `unit` alone run
+  without the gate (with `.venv/bin` first on PATH); `e2e`/`all` run the
   Docker suites and **refuse without `LMNSQUID_ALLOW_REAL=1`**. Summary:
   `N passed, M failed, K skipped` (exit ≠ 0 on failure); steps dep-gated.
 - **Box lifecycle:** `crabbox warmup` → `crabbox run --id <slug> -- 'bash scripts/tests/crabbox_bootstrap.sh'`
