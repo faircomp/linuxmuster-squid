@@ -16,8 +16,9 @@
 #   bash packaging/make-deb.sh --source   the source package only (no venv, no network)
 #
 # Uncommitted work is built as it is in the working tree: a modified tracked file with its
-# changes, a deleted one not at all, a new file only once `git add`ed. The package still carries
-# the version of debian/changelog, so the build warns and lists every such file.
+# changes, a deleted one or one removed from the index (git rm --cached) not at all, a new file
+# only once `git add`ed. The package still carries the version of debian/changelog, so the build
+# warns and lists every such file.
 #
 # A .git that git cannot use (a git worktree whose repository is not mounted into the container,
 # see the Makefile) stops the build: it never falls back to packing whatever lies in the tree.
@@ -87,24 +88,26 @@ while IFS= read -r -d '' entry; do
     meta="${entry%%$'\t'*}" path="${entry#*$'\t'}"
     in_head[$path]="${meta%% *} ${meta##* }"          # "<mode> <object>"
 done < "$WORK/head"
-files=() regular=() modes=() deleted=() modified=() staged=() unmerged=()
+files=() regular=() modes=() deleted=() modified=() staged=() removed=() unmerged=()
 while IFS= read -r -d '' entry; do
     meta="${entry%%$'\t'*}" path="${entry#*$'\t'}"
     read -r mode object stage <<< "$meta"
     if [ "$stage" != 0 ]; then unmerged+=("$path"); continue; fi
     in_index[$path]=1
-    if [ "${in_head[$path]:-}" != "$mode $object" ]; then staged+=("$path"); fi
     if [ ! -e "$ROOT/$path" ] && [ ! -L "$ROOT/$path" ]; then deleted+=("$path"); continue; fi
+    if [ "${in_head[$path]:-}" != "$mode $object" ]; then staged+=("$path"); fi
     files+=("$path") modes+=("$mode")
     case "$mode" in
         100644 | 100755)
             if [ -L "$ROOT/$path" ] || [ ! -f "$ROOT/$path" ]; then
-                echo "make deb: $path is a file in git but not in the working tree" >&2; exit 1
+                echo "make deb: $path is a regular file in git, but a symlink or directory in the" \
+                     "working tree; commit or undo that change first" >&2; exit 1
             fi
             regular+=("$path $object") ;;
         120000)   # a symlink: git's object is its target
             if [ ! -L "$ROOT/$path" ]; then
-                echo "make deb: $path is a symlink in git but not in the working tree" >&2; exit 1
+                echo "make deb: $path is a symlink in git, but not in the working tree; commit or" \
+                     "undo that change first" >&2; exit 1
             fi
             if [ "$(printf '%s' "$(readlink "$ROOT/$path")" | git_ hash-object --no-filters --stdin)" \
                  != "$object" ]; then
@@ -117,8 +120,10 @@ done < "$WORK/index"
 if [ "${#unmerged[@]}" != 0 ]; then
     printf 'make deb: unmerged path, resolve the conflict first: %s\n' "${unmerged[@]}" >&2; exit 1
 fi
+# in the commit, but no longer in the index (git rm, git rm --cached): not built
+declare -A is_removed=()
 for path in "${!in_head[@]}"; do
-    if [ -z "${in_index[$path]:-}" ]; then staged+=("$path"); fi
+    if [ -z "${in_index[$path]:-}" ]; then removed+=("$path") is_removed[$path]=1; fi
 done
 # the content of every regular tracked file, hashed without any filter, against the index
 if [ "${#regular[@]}" != 0 ]; then
@@ -131,9 +136,13 @@ if [ "${#regular[@]}" != 0 ]; then
         if [ "${hashes[$i]}" != "${regular[$i]##* }" ]; then modified+=("${regular[$i]% *}"); fi
     done
 fi
-mapfile -d '' -t untracked < <(git_ ls-files -z --others --exclude-standard --directory --no-empty-directory)
+untracked=()
+while IFS= read -r -d '' path; do
+    # a file git rm --cached took out of the index is listed once, as removed
+    if [ -z "${is_removed[$path]:-}" ]; then untracked+=("$path"); fi
+done < <(git_ ls-files -z --others --exclude-standard --directory --no-empty-directory)
 
-if [ "${#modified[@]}${#deleted[@]}${#staged[@]}${#untracked[@]}" != 0000 ]; then
+if [ "${#modified[@]}${#deleted[@]}${#staged[@]}${#removed[@]}${#untracked[@]}" != 00000 ]; then
     {
         echo "make deb: WARNING: the working tree is not commit ${head:-(none yet)}."
         echo "make deb: WARNING: built are the tracked files AS THEY ARE IN THE WORKING TREE, and"
@@ -145,6 +154,7 @@ if [ "${#modified[@]}${#deleted[@]}${#staged[@]}${#untracked[@]}" != 0000 ]; the
         list "modified, built as they are now:" "${modified[@]}"
         list "staged, not committed (built):  " "${staged[@]}"
         list "deleted, left out:              " "${deleted[@]}"
+        list "removed from the index, NOT built:" "${removed[@]}"
         list "new, not added, NOT built:      " "${untracked[@]}"
     } >&2
 fi
