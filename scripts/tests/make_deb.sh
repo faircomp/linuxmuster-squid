@@ -13,10 +13,12 @@
 #    and ignored secrets, venvs and junk, and git configuration that runs programs (fsmonitor,
 #    clean/smudge/process filters, textconv, hooks). It is started from a shell with an
 #    activated venv whose bin/ shadows every tool, a .venv/ like it, PYTHONPATH, CONDA_PREFIX,
-#    UV_*/PIP_* pointing elsewhere, GIT_DIR, BASH_ENV. None of it may run (no marker) or reach
+#    UV_*/PIP_* pointing elsewhere, GIT_DIR, BASH_ENV, CDPATH, exported shell functions named like
+#    the build's tools. None of it may run (no marker) or reach
 #    the packages; the one untracked, not ignored file is named as not built.
-#  * dirty: a modified, a deleted, a staged and a new file: make deb warns, names each, says the
-#    version stays the changelog's, and builds exactly that (source package only).
+#  * dirty: a modified, a deleted, a staged, a staged-then-deleted, a `git rm --cached` and a new
+#    file: make deb warns, names each once under the right heading, says the version stays the
+#    changelog's, and builds exactly that (source package only).
 #  * symlink: a tracked symlink reaches the source package as that symlink.
 #  * worktree-unreachable: a worktree whose repository is not there stops the build, with the
 #    fix in the message, and writes nothing; the same for a .git that points elsewhere.
@@ -28,9 +30,9 @@
 # Build-Depends and PyPI (the build image, like CI's lock-gates-build job).
 set -uo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 # shellcheck source=packaging/clean-env.sh
-. "$ROOT/packaging/clean-env.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 PKG=linuxmuster-squid
 REFERENCE=
 if [ "${1:-}" = --reference ]; then REFERENCE="$(cd "${2:?--reference <dir>}" && pwd)"; fi
@@ -54,8 +56,9 @@ VERSION="$(dpkg-parsechangelog -l "$ROOT/debian/changelog" -S Version)"
 # The repository: the tracked files of this tree, committed.
 REPO="$TMP/repo"
 mkdir -p "$REPO"
-git -c safe.directory="$ROOT" -c core.fsmonitor=false -C "$ROOT" ls-files -z \
-    | (cd "$ROOT" && xargs -0 cp --parents -a -t "$REPO")
+# listed with the guards of make deb (nothing the checkout's git config names runs)
+GIT_OPTIONAL_LOCKS=0 git --no-pager -c safe.directory="$ROOT" -c core.fsmonitor=false \
+    -c core.hooksPath=/dev/null -C "$ROOT" ls-files -z | (cd "$ROOT" && xargs -0 cp --parents -a -t "$REPO")
 g -C "$REPO" init -q && g -C "$REPO" add -A -f && g -C "$REPO" commit -q -m fixture \
     || { echo "cannot create the fixture repository"; exit 1; }
 # What the source package must hold: the tracked files without .github/, .claude/ and
@@ -123,8 +126,17 @@ printf 'import os; open(%s, "a").write(".pth of the caller ran\\n")\n' "'$MARKER
 mkdir -p "$TMP/shadow/venv"
 printf 'open(%s, "a").write("venv module of the caller ran\\n")\n' "'$MARKER'" \
     | tee "$TMP/shadow/venv/__init__.py" > "$TMP/shadow/venv/__main__.py"
+# exported shell functions named like tools, and a CDPATH with a packaging/ of its own
+mkdir -p "$TMP/cdpath/packaging"
+printf 'echo "a script of the CDPATH ran" >> %s\n' "$MARKER" \
+    | tee "$TMP/cdpath/packaging/clean-env.sh" > "$TMP/cdpath/packaging/make-deb.sh"
+FUNCS=()
+for t in awk sort git tar dpkg-buildpackage mktemp find chmod mv; do
+    FUNCS+=("BASH_FUNC_$t%%=() { echo \"function $t of the caller ran: \$*\" >> $MARKER; }")
+done
 caller() {
-    /usr/bin/env PATH="$CALLER/bin:$PATH" VIRTUAL_ENV="$CALLER" CONDA_PREFIX="$CALLER" \
+    /usr/bin/env "${FUNCS[@]}" CDPATH="$TMP/cdpath" \
+        PATH="$CALLER/bin:$PATH" VIRTUAL_ENV="$CALLER" CONDA_PREFIX="$CALLER" \
         PYTHONPATH="$TMP/shadow" PYTHONHOME="$CALLER" UV_PYTHON="$CALLER/bin/python" \
         UV_DEFAULT_INDEX=http://127.0.0.1:9/simple UV_INDEX=evil=http://127.0.0.1:9/simple \
         PIP_INDEX_URL=http://127.0.0.1:9/simple PIP_REQUIRE_VIRTUALENV=1 \
@@ -203,6 +215,8 @@ mkdir -p "$TMP/dirty"
 g clone -q "$REPO" "$D" &&
     echo 'LOCAL EDIT' >> "$D/README.md" && rm "$D/docs/install.md" &&
     echo 'staged' > "$D/staged.txt" && g -C "$D" add staged.txt &&
+    echo 'gone' > "$D/staged-gone.txt" && g -C "$D" add staged-gone.txt && rm "$D/staged-gone.txt" &&
+    g -C "$D" rm -q --cached docs/references.md &&
     echo 'print("new")' > "$D/new_module.py" && arm_git "$D" || { echo "cannot prepare dirty"; exit 1; }
 rm -f "$MARKER"
 source_only "$D"; rc=$?
@@ -215,9 +229,13 @@ if [ "$rc" = 0 ] && [ ! -e "$MARKER" ] &&
     grep -q 'deleted, left out: *docs/install.md$' "$D.log" &&
     grep -q 'staged, not committed (built): *staged.txt$' "$D.log" &&
     grep -q 'new, not added, NOT built: *new_module.py$' "$D.log" &&
+    grep -q 'removed from the index, NOT built: *docs/references.md$' "$D.log" &&
+    grep -q 'deleted, left out: *staged-gone.txt$' "$D.log" &&
+    [ "$(grep -c 'docs/references.md$' "$D.log")" = 1 ] && ! grep -q 'built): *staged-gone.txt$' "$D.log" &&
     [ "$(tail -n 1 "$TMP/dirty.readme")" = 'LOCAL EDIT' ] && grep -qx "$PKG/staged.txt" "$TMP/dirty.list" &&
-    ! grep -q -e "^$PKG/docs/install.md$" -e "^$PKG/new_module.py$" "$TMP/dirty.list"; then
-    ok "dirty: warned with the version, named all four, built exactly the working tree"
+    ! grep -q -e "^$PKG/docs/install.md$" -e "^$PKG/new_module.py$" -e "^$PKG/docs/references.md$" \
+        -e "^$PKG/staged-gone.txt$" "$TMP/dirty.list"; then
+    ok "dirty: warned with the version, named each file once and rightly, built exactly the working tree"
 else
     wrong "dirty: exit $rc" "$D.log"
 fi

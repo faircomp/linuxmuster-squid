@@ -29,8 +29,10 @@
 # The caller cases (cold-debian-*-r2.md: squid F3, readonlydc F1, radius F3): the gate, `make
 # deb` and `run.sh quick` started from an activated venv holding the K1 wheel (in front of PATH,
 # VIRTUAL_ENV, CONDA_PREFIX, UV_PYTHON pointing at it, a PYTHONPATH with a `venv` module of its
-# own) and with such a venv as .venv/ (and a `venv/` package) in the checkout: nothing of it may
-# run, and a manipulated lock is still rejected. Their counter-proofs switch the protection off
+# own, a CDPATH with a packaging/ of its own, exported shell functions named like the gate's
+# tools) and with such a venv as .venv/ (and a `venv/` package) in the checkout: nothing of it
+# may run, and a manipulated lock is still rejected. (The caller's BASH_ENV is not among them:
+# the first bash a caller starts reads it, which packaging/clean-env.sh names as its limit.) Their counter-proofs switch the protection off
 # in a copy (the gate's fixed PATH and clean environment; the gate in the build) and must see a
 # marker from one of the wheel's bin/ tools, so the test cannot pass on an unarmed wheel.
 #
@@ -44,9 +46,9 @@
 # LOCK_GATES_VERBOSE=1 prints the gate's own words for each rejected case.
 set -uo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=packaging/clean-env.sh
-. "$ROOT/packaging/clean-env.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON=/usr/bin/python3
 LOCK_DEPS="$ROOT/packaging/lock-deps.sh"
 CP=controlplane/requirements.lock
@@ -58,7 +60,7 @@ trap '[ -z "$INDEX_PID" ] || kill "$INDEX_PID" 2>/dev/null; rm -rf "$TMP"' EXIT
 PASS=0; FAIL=0; SKIP=0
 MARKER="$TMP/k1-marker"
 
-# ok <label> <command...>: must exit 0.
+# ok <label> <command...>: must exit 0 (and returns whether it did).
 # rejects <label> <reason ERE> <command...>: must exit non-zero AND print the reason, so a
 # case cannot pass because something unrelated broke. Output goes to $TMP/out.
 ok() {
@@ -70,6 +72,7 @@ ok() {
     else
         echo "WRONG $label (expected exit 0, got $rc)"; sed 's/^/      /' "$TMP/out"; FAIL=$((FAIL + 1))
     fi
+    return "$rc"
 }
 rejects() {
     local label=$1 reason=$2 rc
@@ -238,8 +241,10 @@ PIN="$(awk '/^[a-z0-9]/ { order[++k] = $1; next } /^    --hash=/ { n[order[k]]++
             END { for (i = 1; i <= k; i++) if (n[order[i]] == 2) { print order[i]; exit } }' \
             "$ROOT/$CP")"
 [ -n "$PIN" ] || { echo "no pin with two hashes in $CP"; exit 1; }
-# A uv release younger than 7 days, if there is one right now (for tool-lock-young-uv).
-YOUNG_UV="$("$PYTHON" -I -S - <<'PY' || true
+# A uv release younger than 7 days, if there is one right now (for tool-lock-young-uv). A failed
+# query is an error of every case that needs it, never a skip.
+YOUNG_UV_FAILED=
+if ! YOUNG_UV="$("$PYTHON" -I -S - 2> "$TMP/young-uv.err" <<'PY'
 import datetime, json, urllib.request
 cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=6, hours=12)
 with urllib.request.urlopen("https://pypi.org/pypi/uv/json", timeout=60) as r:
@@ -253,7 +258,18 @@ if young:
     print(" \\\n".join(f"    --hash=sha256:{h}" for h in hashes))
     print("    # via -r packaging/requirements-uv.in")
 PY
-)"
+)"; then
+    YOUNG_UV='' YOUNG_UV_FAILED="$(tail -n 1 "$TMP/young-uv.err")"
+fi
+# young_uv_case <label>: 0 if the young-uv case can run; otherwise says why not: an error when
+# PyPI could not be asked, a skip only when there is no uv release younger than 7 days
+young_uv_case() {
+    if [ -n "$YOUNG_UV_FAILED" ]; then
+        echo "WRONG $1: cannot ask PyPI for young uv releases: $YOUNG_UV_FAILED"; FAIL=$((FAIL + 1)); return 1
+    elif [ -z "$YOUNG_UV" ]; then
+        echo "SKIP  $1: no uv release younger than 7 days right now"; SKIP=$((SKIP + 1)); return 1
+    fi
+}
 
 # case -> the step that must stop it; its words
 declare -A STOP=(
@@ -322,11 +338,12 @@ apply() {
     ! cmp -s "$ROOT/$CP" "$d/$CP" || ! cmp -s "$ROOT/$BL" "$d/$BL" || ! cmp -s "$ROOT/$UL" "$d/$UL"
 }
 
-# copy <dest>: the tracked files of the repository (what CI checks out)
+# copy <dest>: the tracked files of the repository (what CI checks out), listed by git with the
+# guards of make deb (nothing the checkout's git config names runs)
 copy() {
     mkdir -p "$1"
-    git -c safe.directory="$ROOT" -c core.fsmonitor=false -C "$ROOT" ls-files -z \
-        | (cd "$ROOT" && xargs -0 cp --parents -a -t "$1")
+    GIT_OPTIONAL_LOCKS=0 git --no-pager -c safe.directory="$ROOT" -c core.fsmonitor=false \
+        -c core.hooksPath=/dev/null -C "$ROOT" ls-files -z | (cd "$ROOT" && xargs -0 cp --parents -a -t "$1")
 }
 # commit <tree>: a git repository with everything in it committed, as a pull request brings it
 # (make deb then exports exactly these files)
@@ -345,14 +362,24 @@ poison "$TMP/caller" || { echo "WRONG could not create the caller's venv"; exit 
 infest() {  # <tree>: .venv/ and venv/ of the caller in it
     poison "$1/.venv" && cp -a "$SHADOW/venv" "$1/venv"
 }
+# A CDPATH with a packaging/ of its own would take a relative `cd packaging/..` there, and an
+# exported shell function named like a tool runs in every bash instead of that tool.
+mkdir -p "$TMP/cdpath/packaging"
+printf 'echo "clean-env.sh of the CDPATH ran" >> %s\n' "$MARKER" > "$TMP/cdpath/packaging/clean-env.sh"
+FUNCS=()
+for t in awk sort diff comm git mktemp tar cp; do
+    FUNCS+=("BASH_FUNC_$t%%=() { echo \"function $t of the caller ran: \$*\" >> $MARKER; }")
+done
 caller() {  # <command...> started from the activated venv, as a developer would
     /usr/bin/env PATH="$TMP/caller/bin:$PATH" VIRTUAL_ENV="$TMP/caller" CONDA_PREFIX="$TMP/caller" \
-        UV_PYTHON="$TMP/caller/bin/python" PYTHONPATH="$SHADOW" "$@"
+        UV_PYTHON="$TMP/caller/bin/python" PYTHONPATH="$SHADOW" CDPATH="$TMP/cdpath" "${FUNCS[@]}" "$@"
 }
 # gate_open <tree>: the counter-proof, the gate without its fixed PATH and clean environment
 gate_open() {
     local f="$1/packaging/lock-deps.sh"
-    sed -i -e '/^PATH=\/usr\/sbin:\/usr\/bin:\/sbin:\/bin$/d' -e '/^\. packaging\/clean-env\.sh$/d' "$f" &&
+    # shellcheck disable=SC2016  # a literal line of lock-deps.sh
+    sed -i -e '/^PATH=\/usr\/sbin:\/usr\/bin:\/sbin:\/bin$/d' \
+        -e '/^\. "\$(dirname "\${BASH_SOURCE\[0\]}")\/clean-env\.sh"$/d' "$f" &&
         [ "$(diff "$ROOT/packaging/lock-deps.sh" "$f" | grep -c '^[<>]')" = 2 ]
 }
 tool_ran() { grep -Eq '^[^ ]+ ran instead of the real one' "$MARKER" 2>/dev/null; }
@@ -381,9 +408,7 @@ build_stops() {
 
 if [ "${1:-}" = --build ]; then
     for c in "${CASES[@]}"; do
-        if [ "$c" = tool-lock-young-uv ] && [ -z "$YOUNG_UV" ]; then
-            echo "SKIP  build $c: no uv release younger than 7 days right now"; SKIP=$((SKIP + 1)); continue
-        fi
+        if [ "$c" = tool-lock-young-uv ] && ! young_uv_case "build $c"; then continue; fi
         d="$TMP/build-$c"
         if ! { copy "$d/src" && apply "$c" "$d/src" && { [[ $c != k1-* ]] || publish "$d/src"; } &&
                commit "$d/src"; }; then
@@ -488,7 +513,13 @@ rejects "verify-freeze: build venv with an extra package" "not exactly" \
     bash -c 'bash "$1" --verify-freeze "$2" pip==24.0 < "$3"' _ "$LOCK_DEPS" "$ROOT/$BL" "$TMP/fb2"
 
 # --- --gate (PyPI) --------------------------------------------------------------------------
-ok "gate: the committed lock files" bash "$LOCK_DEPS" --gate
+# Nothing of the committed locks is installed here unless the gate passed them (the tool lock is
+# installed just below), so a rejection ends the run.
+if ! ok "gate: the committed lock files" bash "$LOCK_DEPS" --gate; then
+    echo "the committed locks are rejected: nothing of them is installed, the remaining cases do not run"
+    echo "lock gates: $PASS passed, $FAIL failed, $SKIP skipped"
+    exit 1
+fi
 # The simulation works: through the local index, the uv of the (just proven) tool lock finds
 # zzzevil2 1.0 with its sha256, within the 7-day cutoff, and a gate asking that index passes the
 # committed locks (everything else comes from PyPI).
@@ -507,9 +538,7 @@ else
     echo "WRONG gate: could not point a copy at the local index"; FAIL=$((FAIL + 1))
 fi
 for c in "${CASES[@]}"; do
-    if [ "$c" = tool-lock-young-uv ] && [ -z "$YOUNG_UV" ]; then
-        echo "SKIP  gate: $c: no uv release younger than 7 days right now"; SKIP=$((SKIP + 1)); continue
-    fi
+    if [ "$c" = tool-lock-young-uv ] && ! young_uv_case "gate: $c"; then continue; fi
     d="$TMP/gate-$c"
     if ! { copy "$d" && apply "$c" "$d" && { [[ $c != k1-* ]] || publish "$d"; }; }; then
         echo "WRONG gate $c: could not prepare"; FAIL=$((FAIL + 1)); continue
