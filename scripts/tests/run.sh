@@ -8,17 +8,33 @@
 # e2e/all refuse without LMNSQUID_ALLOW_REAL=1 (protection against accidental runs).
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Nothing on the caller's PATH runs before the lock gate (see gate below), not even dirname.
+here="${BASH_SOURCE[0]%/*}"; [ "$here" != "${BASH_SOURCE[0]}" ] || here=.
+ROOT="$(cd "$here/../.." && pwd)"
 cd "$ROOT" || exit 1
-
-# Prefer control-plane tools from the venv (created by crabbox_bootstrap)
-[ -x "$ROOT/.venv/bin/ruff" ] && export PATH="$ROOT/.venv/bin:$PATH"
 
 PASS=0; FAIL=0; SKIP=0
 pass(){ PASS=$((PASS + 1)); printf '  [PASS] %s\n' "$1"; }
 fail(){ FAIL=$((FAIL + 1)); printf '  [FAIL] %s\n' "$1"; }
 skip(){ SKIP=$((SKIP + 1)); printf '  [SKIP] %s (%s)\n' "$1" "$2"; }
 have(){ command -v "$1" >/dev/null 2>&1; }
+summary(){ echo; echo "$PASS passed, $FAIL failed, $SKIP skipped"; }
+
+# The lock gate comes first, before any tool of a venv runs (the fast tier of CI does the same):
+# a lock-filled venv's bin/ may shadow the gate's tools and its .pth runs in every interpreter of
+# it. The gate cleans its own environment (packaging/clean-env.sh) and is started by absolute
+# path; if it rejects a lock, nothing else runs.
+gate(){
+  echo "== lock gate =="
+  if /bin/bash packaging/lock-deps.sh --gate; then
+    pass "lock gate"
+  else
+    fail "lock gate"; echo "  the locks are not proven: no further step runs"; summary; exit 1
+  fi
+}
+
+# Only then the control-plane tools of the project venv (created by crabbox_bootstrap), if any.
+dev_venv(){ if [ -x "$ROOT/.venv/bin/ruff" ]; then export PATH="$ROOT/.venv/bin:$PATH"; fi; }
 
 # run_step <name> <required-tool> <command...>
 run_step(){
@@ -89,9 +105,9 @@ e2e(){
 }
 
 locks(){
-  echo "== lock gates =="
-  # --lint/--verify-freeze cases offline; the --check cases skip themselves without uv.
-  run_step "lock-gates" bash bash scripts/tests/lock_gates.sh
+  echo "== lock gates (regression) =="
+  # Needs PyPI and /usr/bin/python3 with venv; cleans its own environment.
+  run_step "lock-gates" bash /bin/bash scripts/tests/lock_gates.sh
 }
 
 blocklist(){
@@ -105,14 +121,13 @@ blocklist(){
 
 mode="${1:-quick}"
 case "$mode" in
-  lint)  lint ;;
-  unit)  unit ;;
-  quick) lint; unit; locks; blocklist ;;
+  lint)  dev_venv; lint ;;
+  unit)  dev_venv; unit ;;
+  quick) gate; dev_venv; lint; unit; locks; blocklist ;;
   e2e)   e2e ;;
-  all)   lint; unit; locks; blocklist; e2e ;;
+  all)   gate; dev_venv; lint; unit; locks; blocklist; e2e ;;
   *) echo "usage: run.sh [lint|unit|quick|e2e|all]" >&2; exit 2 ;;
 esac
 
-echo
-echo "$PASS passed, $FAIL failed, $SKIP skipped"
+summary
 [ "$FAIL" -eq 0 ]

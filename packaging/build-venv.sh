@@ -8,6 +8,12 @@
 # it correct for its installed path /opt/linuxmuster-squid/venv. The version of the lmnsquid
 # wheel is the top entry of debian/changelog (controlplane/setup.py reads it).
 set -euo pipefail
+# A fixed PATH and none of the caller's venv, Python, pip, uv or git settings; Python is
+# /usr/bin/python3 -I (packaging/clean-env.sh).
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# shellcheck source=packaging/clean-env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+PYTHON=/usr/bin/python3
 
 VENV="${1:?usage: build-venv.sh <venv directory>}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,9 +22,6 @@ trap 'rm -rf "$BUILD"' EXIT
 LOCK_DEPS="$ROOT/packaging/lock-deps.sh"
 LOCK="$ROOT/controlplane/requirements.lock"
 BUILD_LOCK="$ROOT/packaging/requirements-build.lock"
-# A fresh cache for the gate's uv: nothing a previous run left behind takes part, and a build
-# as a user without a writable home works.
-export UV_CACHE_DIR="$BUILD/uv-cache"
 
 # Every third-party file in the package comes from a lock file with sha256 hashes: pip
 # resolves nothing and never takes "the newest" (--require-hashes --no-deps), so two builds
@@ -38,11 +41,11 @@ export UV_CACHE_DIR="$BUILD/uv-cache"
 echo "== lock gate =="
 bash "$LOCK_DEPS" --gate
 echo "== build venv (throwaway, not shipped): lmnsquid wheel =="
-python3 -m venv "$BUILD/venv"
+"$PYTHON" -I -m venv "$BUILD/venv"
 "$BUILD/venv/bin/pip" install --quiet --require-hashes --no-deps --only-binary :all: -r "$BUILD_LOCK"
 # Second layer after installing, as for the shipped venv below: the build venv holds exactly
 # the build lock plus the pip that ensurepip put there.
-PIP_BUNDLED="pip==$(python3 -I -c 'import ensurepip; print(ensurepip.version())')"
+PIP_BUNDLED="pip==$("$PYTHON" -I -c 'import ensurepip; print(ensurepip.version())')"
 FREEZE="$("$BUILD/venv/bin/pip" freeze --all)"
 bash "$LOCK_DEPS" --verify-freeze "$BUILD_LOCK" "$PIP_BUNDLED" <<< "$FREEZE"
 # No build isolation: it would fetch an unpinned setuptools from PyPI to run here.
@@ -58,7 +61,7 @@ OWN="lmnsquid==${OWN%%-*}"
 echo "== venv @ $VENV =="
 rm -rf "$VENV"
 mkdir -p "$(dirname "$VENV")"
-python3 -m venv "$VENV"
+"$PYTHON" -I -m venv "$VENV"
 "$VENV/bin/pip" install --quiet --require-hashes --no-deps --only-binary :all: -r "$LOCK"
 # By name from the wheel directory, not by path: a path install records the (random)
 # build directory in direct_url.json, which would make two builds differ.

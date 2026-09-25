@@ -12,7 +12,6 @@
 #                                          still fits is kept (what Renovate does for a bump)
 #   bash packaging/lock-deps.sh --upgrade  resolve from scratch (what Renovate's weekly refresh does)
 #   bash packaging/lock-deps.sh --gate     THE gate of the fast tier and of every build, see below
-#   bash packaging/lock-deps.sh --check    the uv part of --gate with the uv in $UV or on PATH
 #   bash packaging/lock-deps.sh --lint     only the grammar of the locks: offline, no uv
 #   pip freeze --all | bash packaging/lock-deps.sh --verify-freeze <lock> <name==version>...
 #                                          after installing: the venv is exactly <lock> plus the
@@ -24,12 +23,25 @@
 # the environment). --exclude-newer=P7D: nothing uploaded in the last 7 days is picked, the
 # window in which a compromised release usually is still unnoticed. Needs a linux/x86_64 host:
 # markers are evaluated for the host, the Python version is forced to the target's 3.12 (Ubuntu
-# 24.04). --gate and --check need PyPI; --lint and --verify-freeze need neither uv nor network.
-# uv copies the hashes of an existing output file over without fetching them again, so every
-# compile here starts from an empty file or from bare pins, never from the committed lock.
+# 24.04). --gate and a re-resolve need PyPI; --lint and --verify-freeze need neither uv nor
+# network. uv copies the hashes of an existing output file over without fetching them again, so
+# every compile here starts from an empty file or from bare pins, never from the committed lock.
+#
+# Every mode runs with a fixed PATH and none of the caller's venv, Python, pip, uv or git
+# settings (packaging/clean-env.sh); Python is /usr/bin/python3 -I, and uv is always the one of
+# packaging/requirements-uv.lock, proven first and run by absolute path, with /usr/bin/python3
+# as its interpreter and PyPI as its only index.
 set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-export UV_NO_CONFIG=1
+# shellcheck source=packaging/clean-env.sh
+. packaging/clean-env.sh
+PYTHON=/usr/bin/python3
+# The index the hashes and the closure are checked against. uv reads it from the environment,
+# which clean-env.sh emptied, so nothing but this line decides it (the lock tests change this
+# line, and only this line, in a copy of the tree to "publish" a package of their own).
+PYPI_SIMPLE=https://pypi.org/simple
+export UV_DEFAULT_INDEX="$PYPI_SIMPLE" UV_PYTHON="$PYTHON"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -121,7 +133,7 @@ verify_freeze() {  # <lock> <name==version>...: the lock plus these (the own pac
 # cutoff --exclude-newer=P7D applies to the other locks). Standard library only, in an isolated
 # interpreter without site-packages, so nothing a lock brought in can take part.
 tool_lock() {  # <lock>, after grammar()
-    python3 -I -S - "$1" <<'PY'
+    "$PYTHON" -I -S - "$1" <<'PY'
 import datetime
 import json
 import re
@@ -139,7 +151,8 @@ if [name for name, _ in pins] != ["uv"] or not hashes:
     sys.exit(f"::error file={path}::must pin uv and nothing else, with hashes; pins: {pins}")
 name, version = pins[0]
 url = f"https://pypi.org/pypi/{name}/{version}/json"
-with urllib.request.urlopen(url, timeout=60) as r:
+# A short timeout: without network the gate fails within a minute instead of hanging.
+with urllib.request.urlopen(url, timeout=30) as r:
     published = {f["digests"]["sha256"]: f["upload_time_iso_8601"] for f in json.load(r)["urls"]}
 cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
 unknown = sorted(hashes - published.keys())
@@ -244,12 +257,25 @@ lint_locks() {  # <lock>...
     return "$rc"
 }
 
-UV="${UV:-uv}"
+# uv from the uv-only lock, proven before it is installed (grammar, uv alone, hashes PyPI
+# publishes, older than 7 days), into a venv of its own; run only as $UV, by absolute path, and
+# with a fresh cache, so nothing an earlier run left behind takes part.
+proven_uv() {
+    grammar "$TOOL_LOCK"
+    tool_lock "$TOOL_LOCK"
+    "$PYTHON" -I -m venv "$TMP/uv"
+    "$TMP/uv/bin/python" -I -m pip install --quiet \
+        --require-hashes --no-deps --only-binary :all: -r "$TOOL_LOCK"
+    UV="$TMP/uv/bin/uv"
+    export UV_CACHE_DIR="$TMP/uv-cache"
+}
+
 mode="${1:-}"
 case "$mode" in
     "" | --upgrade)
         seed=pins
         if [ "$mode" = --upgrade ]; then seed=empty; fi
+        proven_uv
         for lock in "${LOCKS[@]}"; do
             resolve "$lock" "$seed" "$lock" "${HEADER_OPTS[@]}"
             echo "$lock: $(pins "$lock" | wc -l) pins"
@@ -260,20 +286,11 @@ case "$mode" in
         # anything from a lock is installed anywhere. Nothing a lock brings in runs until all
         # locks are proven: no program or interpreter of a venv filled from a lock, and no such
         # bin/ on PATH (a wheel may ship its own diff, comm or python3, and a .pth runs in every
-        # interpreter of its venv). The tools are the host's (the pinned build image, or the
-        # runner's Python in the fast tier) plus uv, which comes from a lock holding uv alone,
-        # proven with the standard library first, installed into a venv of its own and run by
-        # absolute path.
-        unset VIRTUAL_ENV
+        # interpreter of its venv). The tools are the host's, from the fixed PATH (the pinned
+        # build image, or the runner in the fast tier), /usr/bin/python3 -I, and uv from a lock
+        # holding uv alone (proven_uv).
         lint_locks "${LOCKS[@]}"
-        tool_lock "$TOOL_LOCK"
-        python3 -m venv "$TMP/uv"
-        "$TMP/uv/bin/python" -I -m pip install --quiet --disable-pip-version-check \
-            --require-hashes --no-deps --only-binary :all: -r "$TOOL_LOCK"
-        UV="$TMP/uv/bin/uv"
-        check_locks
-        ;;
-    --check)
+        proven_uv
         check_locks
         ;;
     --lint)
