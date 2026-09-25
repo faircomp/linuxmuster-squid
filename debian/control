@@ -1,0 +1,26 @@
+Source: linuxmuster-squid
+Section: admin
+Priority: optional
+Maintainer: Kevin Stenzel <mail@kevin-stenzel.de>
+Build-Depends: debhelper-compat (= 13),
+               python3 (>= 3.12),
+               python3 (<< 3.13),
+               python3-venv
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/faircomp/linuxmuster-squid
+
+Package: linuxmuster-squid
+Architecture: amd64
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         python3 (>= 3.12),
+         python3 (<< 3.13),
+         adduser,
+         openssl,
+         git
+Recommends: docker.io | docker-ce
+Description: Control plane for containerized linuxmuster-squid proxies
+ REST API + CLI to manage per-school Squid proxy containers (Kerberos SSO,
+ AD group ACLs, SNI filtering) with digest-pinned, health-checked, auto-rolling
+ updates. Ships a self-contained Python virtualenv under /opt/linuxmuster-squid.

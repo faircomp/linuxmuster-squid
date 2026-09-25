@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Operator CLI onto PATH: the venv keeps the hermetic interpreter, the packaged symlink makes
+# `lmnsquid` available without a manual `ln -s` (dpkg removes it on purge).
+opt/linuxmuster-squid/venv/bin/lmnsquid	usr/bin/lmnsquid
