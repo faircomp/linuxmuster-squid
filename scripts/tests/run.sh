@@ -12,7 +12,7 @@ set -uo pipefail
 
 # Nothing on the caller's PATH runs before the lock gate (see gate below), not even dirname, and
 # the caller's BASH_ENV and CDPATH reach none of the scripts started from here.
-unset BASH_ENV ENV CDPATH
+builtin unset BASH_ENV ENV CDPATH
 here="${BASH_SOURCE[0]%/*}"; [ "$here" != "${BASH_SOURCE[0]}" ] || here=.
 ROOT="$(cd "$here/../.." && pwd)"
 cd "$ROOT" || exit 1

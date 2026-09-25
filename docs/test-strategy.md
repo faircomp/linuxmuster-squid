@@ -26,8 +26,8 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   CPython 3.12 manylinux x86_64 wheel, and the header is the canonical command. No program,
   interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that, also when
   started from a developer's venv (fixed PATH, `/usr/bin/python3 -I`, the caller's venv,
-  `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`, `CDPATH`, `BASH_ENV` and shell functions removed:
-  `packaging/clean-env.sh`, which names its limits). After
+  `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`, `PERL5*`, `CDPATH`, `BASH_ENV` and exported shell
+  functions removed: `packaging/clean-env.sh`, which names its limits). After
   installing, the build venv must be exactly the build lock plus ensurepip's pip and the
   shipped venv exactly the lock plus lmnsquid, every line `name==version` (`--verify-freeze`).
   `bash scripts/tests/lock_gates.sh` keeps the manipulations of the cold verifications

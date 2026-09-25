@@ -26,9 +26,9 @@
 # and .claude/ (CI and developer tooling) and dpkg-source's default ignore list (.gitignore and
 # the like). Without any .git (an unpacked source package) the tree is built as it is; a .git
 # that git cannot use stops the build. The build runs with a fixed PATH; the caller's venv,
-# PYTHON*, UV_*, PIP_*, GIT_*, CDPATH and BASH_ENV settings and exported shell functions are
-# removed first thing (packaging/clean-env.sh, which also names what it leaves to the caller and
-# what it cannot undo).
+# PYTHON*, UV_*, PIP_*, GIT_*, PERL5*, CDPATH and BASH_ENV settings and its exported shell
+# functions are removed first thing (packaging/clean-env.sh, which also names what it leaves to
+# the caller and what it cannot undo, such as a function the caller exported as `builtin`).
 .PHONY: all deb clean
 
 # BASH_ENV would run in every recipe shell before the build could clean its environment.

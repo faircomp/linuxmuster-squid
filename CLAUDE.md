@@ -53,10 +53,11 @@ conventions are `../../docs/paket-konventionen.md` there. The rules that bite he
   (`docker run -u root …`: the image's user cannot run apt-get, the results then belong to
   root); in a git worktree (`bin/wt`) it mounts the repository's git directory too, or
   `make deb` stops. The build runs with a fixed PATH and without the caller's venv, `PYTHON*`,
-  `UV_*`, `PIP_*`, `GIT_*`, `CDPATH`, `BASH_ENV` and shell functions; `packaging/clean-env.sh`
-  names what it leaves to the caller (proxies, CA bundles, `DEB_*`, git's global config) and
-  what it cannot undo (what the first shell already read: `BASH_ENV`, exported functions;
-  `LD_PRELOAD`).
+  `UV_*`, `PIP_*`, `GIT_*`, `PERL5*`, `CDPATH` and `BASH_ENV` settings; `packaging/clean-env.sh`
+  also removes the caller's exported shell functions and names what it leaves to the caller
+  (among others proxies, CA bundles, `DEB_*`, `DH_*`, git's global config) and what it cannot
+  undo (what the first shell already read: `BASH_ENV`, exported functions, one exported as
+  `builtin` even after the file; `LD_PRELOAD`).
   `debian/venv-relocate` is byte-identical in squid, radius and readonlydc: change it in the
   hub (`linuxmusterDEV/work/plans/venv-debian-umbau/`) and copy it to all three.
 - **Supply chain (ADR-015):** Python deps only via `controlplane/requirements.lock` (hashes;
