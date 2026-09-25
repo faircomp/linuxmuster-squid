@@ -8,8 +8,8 @@
 # it correct for its installed path /opt/linuxmuster-squid/venv. The version of the lmnsquid
 # wheel is the top entry of debian/changelog (controlplane/setup.py reads it).
 set -euo pipefail
-# A fixed PATH and none of the caller's venv, Python, pip, uv or git settings; Python is
-# /usr/bin/python3 -I (packaging/clean-env.sh).
+# A fixed PATH and without the caller's venv, PYTHON*, UV_*, PIP_* and GIT_* settings
+# (packaging/clean-env.sh names what it removes and what it leaves); Python is /usr/bin/python3 -I.
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # shellcheck source=packaging/clean-env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"

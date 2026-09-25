@@ -168,10 +168,13 @@ first step of the fast tier and of every build, so a lock CI would reject is nev
 before anything from a lock is installed: nothing of a venv filled from a lock runs, and no such
 `bin/` is on PATH, until all locks are proven (a wheel can bring its own `diff` or `python3`
 and a `.pth`). It runs with a fixed PATH (`/usr/sbin:/usr/bin:/sbin:/bin`), Python as
-`/usr/bin/python3 -I` and none of the caller's venv, conda, `PYTHON*`, `UV_*`, `PIP_*` or `GIT_*`
-settings (`packaging/clean-env.sh`, sourced first by the gate, `build-venv.sh` and
-`make-deb.sh`), so an activated venv or a project `.venv/` cannot put its tools in front of the
-gate's or answer from another index. It accepts only lines uv writes; takes uv from
+`/usr/bin/python3 -I` and without the caller's venv, conda, `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`,
+`CDPATH` and `BASH_ENV` settings and shell functions (`packaging/clean-env.sh`, sourced first by
+the gate, `build-venv.sh` and `make-deb.sh`), so an activated venv or a project `.venv/` cannot
+put its tools in front of the gate's or answer from another index. Left to the caller on
+purpose: proxies and CA bundles (how PyPI is reached; the hashes still decide what is
+installed), `DEB_*`, git's global config; not undone: what the first shell read before the file
+(`BASH_ENV`, exported functions) and `LD_PRELOAD`, which run code as the caller anyway. It accepts only lines uv writes; takes uv from
 `packaging/requirements-uv.lock`, which must pin uv alone with hashes PyPI publishes and older
 than 7 days (checked with the standard library), installs it into a venv of its own and runs it
 by absolute path, with `/usr/bin/python3` as its interpreter and PyPI (one line of the script) as
@@ -179,9 +182,11 @@ its index; then checks that every hash is one PyPI publishes for exactly that `n
 that the pins are exactly the closure of the inputs within the 7-day cutoff (preferring the
 locked versions, so it only moves when the lock or its inputs do) and that every pin has a cp312
 manylinux wheel. After installing, each venv must hold exactly its lock (`--verify-freeze`).
-**Limit:** the closure check compares package names, so a pin moved to another real release of
-a needed package, older or newer, at least 7 days old and within the declared requirements,
-passes every gate (the uv lock likewise with another real uv); that is left to review.
+**Limit:** the closure check resolves the inputs with the locked versions as preferences and
+compares the result with the pins (`name==version`); any locked version the resolver may keep is
+kept. So a pin moved to another real release of a needed package, older or newer, at least 7
+days old and within the declared requirements, passes every gate (the uv lock likewise with
+another real uv); that is left to review.
 **Why:** the `.deb` is installed as root on school servers and vouches for everything that ran
 in its build; before, each build took whatever PyPI and the moving image/action tags served.
 **Tool:** `uv pip compile` over pip-tools because it compiles for a Python version other than

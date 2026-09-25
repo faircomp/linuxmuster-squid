@@ -27,15 +27,16 @@
 # network. uv copies the hashes of an existing output file over without fetching them again, so
 # every compile here starts from an empty file or from bare pins, never from the committed lock.
 #
-# Every mode runs with a fixed PATH and none of the caller's venv, Python, pip, uv or git
-# settings (packaging/clean-env.sh); Python is /usr/bin/python3 -I, and uv is always the one of
-# packaging/requirements-uv.lock, proven first and run by absolute path, with /usr/bin/python3
-# as its interpreter and PyPI as its only index.
+# Every mode runs with a fixed PATH and without the caller's venv, PYTHON*, UV_*, PIP_*, GIT_*
+# and CDPATH settings (packaging/clean-env.sh, which also names what it leaves to the caller);
+# Python is /usr/bin/python3 -I, and uv is always the one of packaging/requirements-uv.lock,
+# proven first and run by absolute path, with /usr/bin/python3 as its interpreter and PyPI as its
+# only index.
 set -euo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # shellcheck source=packaging/clean-env.sh
-. packaging/clean-env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PYTHON=/usr/bin/python3
 # The index the hashes and the closure are checked against. uv reads it from the environment,
 # which clean-env.sh emptied, so nothing but this line decides it (the lock tests change this
@@ -151,7 +152,8 @@ if [name for name, _ in pins] != ["uv"] or not hashes:
     sys.exit(f"::error file={path}::must pin uv and nothing else, with hashes; pins: {pins}")
 name, version = pins[0]
 url = f"https://pypi.org/pypi/{name}/{version}/json"
-# A short timeout: without network the gate fails within a minute instead of hanging.
+# A short timeout: without network the gate fails within seconds; if PyPI hangs, here after
+# 30 s, and later in uv's own requests after about 45 s per lock (uv's timeout and retries).
 with urllib.request.urlopen(url, timeout=30) as r:
     published = {f["digests"]["sha256"]: f["upload_time_iso_8601"] for f in json.load(r)["urls"]}
 cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)

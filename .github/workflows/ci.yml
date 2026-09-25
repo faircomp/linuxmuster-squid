@@ -54,7 +54,7 @@ jobs:
       # diff or python3 into bin/ on PATH and a .pth that runs in every later Python step, so the
       # locks are proven while this Python is still untouched. Same gate as every package build
       # (packaging/build-venv.sh), with the runner's own tools: a fixed PATH, /usr/bin/python3 -I
-      # (not the setup-python one), none of the caller's venv/pip/uv settings; grammar; uv from a
+      # (not the setup-python one), without the caller's venv/pip/uv settings; grammar; uv from a
       # lock of its own, proven with the standard library and run by absolute path; every hash one
       # PyPI publishes for exactly that name==version; the pins exactly the closure of
       # pyproject.toml and the .in files.

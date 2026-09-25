@@ -6,9 +6,13 @@
 # /test skill. Modes: lint | unit | quick (default) | e2e | all.
 # Each step is dependency-gated and skips cleanly when a toolchain is missing.
 # e2e/all refuse without LMNSQUID_ALLOW_REAL=1 (protection against accidental runs).
+# quick and all run the lock gate first; lint and unit alone run without it, with the tools of
+# .venv/bin first on PATH.
 set -uo pipefail
 
-# Nothing on the caller's PATH runs before the lock gate (see gate below), not even dirname.
+# Nothing on the caller's PATH runs before the lock gate (see gate below), not even dirname, and
+# the caller's BASH_ENV and CDPATH reach none of the scripts started from here.
+unset BASH_ENV ENV CDPATH
 here="${BASH_SOURCE[0]%/*}"; [ "$here" != "${BASH_SOURCE[0]}" ] || here=.
 ROOT="$(cd "$here/../.." && pwd)"
 cd "$ROOT" || exit 1
@@ -52,7 +56,9 @@ lint(){
   fi
   if have shellcheck; then
     local sh=()
-    mapfile -t sh < <(git ls-files '*.sh' 2>/dev/null)
+    # the same guards as make deb: nothing the checkout's git config names runs
+    mapfile -t sh < <(GIT_OPTIONAL_LOCKS=0 git --no-pager -c safe.directory="$ROOT" \
+      -c core.fsmonitor=false -c core.hooksPath=/dev/null -C "$ROOT" ls-files '*.sh' 2>/dev/null)
     if [ "${#sh[@]}" -gt 0 ]; then
       # Warning level only: the info tier is noise here (SC2317 unreachable in
       # trap-cleanup helpers, SC2016 intentional envsubst SHELL-FORMAT quotes).

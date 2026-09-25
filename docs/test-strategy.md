@@ -24,9 +24,10 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   is one PyPI publishes for exactly that `name==version`, the pins are exactly the closure of
   `controlplane/pyproject.toml` and the `.in` files within the 7-day cutoff, every pin has a
   CPython 3.12 manylinux x86_64 wheel, and the header is the canonical command. No program,
-  interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that, whatever
-  shell it is started from (fixed PATH, `/usr/bin/python3 -I`, the caller's venv, `PYTHON*`,
-  `UV_*`, `PIP_*` and `GIT_*` settings removed: `packaging/clean-env.sh`). After
+  interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that, also when
+  started from a developer's venv (fixed PATH, `/usr/bin/python3 -I`, the caller's venv,
+  `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`, `CDPATH`, `BASH_ENV` and shell functions removed:
+  `packaging/clean-env.sh`, which names its limits). After
   installing, the build venv must be exactly the build lock plus ensurepip's pip and the
   shipped venv exactly the lock plus lmnsquid, every line `name==version` (`--verify-freeze`).
   `bash scripts/tests/lock_gates.sh` keeps the manipulations of the cold verifications
