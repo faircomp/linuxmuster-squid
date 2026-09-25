@@ -41,9 +41,13 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   `ubuntu-24.04` (the upgrade smoke installs the newest published release, gives it an
   admin's config and state and upgrades onto it) — and
   attached to the GitHub Release (`gh release download … && apt install ./linuxmuster-squid_*.deb`).
-  The release is created as a **draft**, the `.deb` is uploaded and its SHA-256 compared with
-  the build, and only then is it published: GitHub's immutable releases freeze tag and assets
-  at publication.
+  The release is created as a **draft**, the `.deb`, the source package (`.dsc`, `.tar.xz`)
+  and the `.changes`/`.buildinfo` are uploaded and their SHA-256 compared with the build, and
+  only then is it published: GitHub's immutable releases freeze tag and assets at publication.
+  The job fails unless the published release reports `immutable: true`. With the optional
+  repository secret `IMMUTABLE_CHECK_TOKEN` (fine-grained, this repository only,
+  "Administration: Read-only") it also refuses to publish, leaving the draft, while immutable
+  releases are off; `GITHUB_TOKEN` cannot read that setting.
   The version is the top entry of `debian/changelog` (`7.3.N`, distribution `lmn73`); the
   workflow refuses a tag that does not match it. Build locally with `make deb`
   (dpkg-buildpackage, no root needed; in the same container: see `Makefile`). An

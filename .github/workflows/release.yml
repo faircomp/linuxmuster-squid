@@ -17,6 +17,20 @@
 #    one that is released.
 #  * Python dependencies from hash-pinned lock files (packaging/lock-deps.sh); pip never
 #    resolves or downloads anything unpinned while the .deb is built.
+#  * Draft first: the release is created as a DRAFT, all assets are uploaded, their sha256 as
+#    computed by GitHub is compared with the built files, and only then is it published. GitHub
+#    immutable releases require this order: publishing freezes the tag and the assets, so a
+#    release that is published first cannot receive its assets afterwards
+#    (https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases).
+#    A failed run leaves only a draft, which a re-run of the job completes.
+#  * Immutable or not at all: after publishing, the job re-reads the release and fails unless
+#    `immutable` is true (readable with GITHUB_TOKEN). The setting only acts on releases published
+#    after it was switched on, so without this check a release can come out mutable while the run
+#    is green. Checking the setting itself before publishing needs the Administration permission,
+#    which no GITHUB_TOKEN can hold (HTTP 403 even with `permissions: write-all`). With the
+#    OPTIONAL secret IMMUTABLE_CHECK_TOKEN (a fine-grained token for this repo with only
+#    "Administration: Read-only") the job also refuses to publish while the setting is off;
+#    without it, it says so in a notice and relies on the check after publishing.
 # Renovate (renovate.json + renovate.yml) opens reviewable PRs for new digests, SHAs and
 # locks; nothing is automerged.
 name: release
@@ -60,22 +74,140 @@ jobs:
       options: --user root
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Build package (make deb wraps packaging/build-deb.sh)
+      - name: Build package (make deb = dpkg-buildpackage; build deps via build-dep)
         run: |
-          # No debian/control at the root yet (that is the debian/ conversion PR), so
-          # install what build-deb.sh needs by hand instead of `apt-get build-dep`.
-          apt-get update -qq && apt-get install -y -qq python3-venv
+          # Never `2>/dev/null || true`: a build dependency that cannot be installed must fail
+          # here, where the reason is in the log.
+          apt-get update -qq && apt-get build-dep -y -qq .
           make deb
-          mkdir -p output && mv ./linuxmuster-squid_*.deb output/
+          # dpkg-buildpackage writes one level above the source tree.
+          mkdir -p output && mv ../*.deb ../*.changes ../*.buildinfo ../*.dsc ../*.tar.xz output/
           # DEBIAN/md5sums must cover every shipped regular file, or `dpkg --verify` is a no-op.
           deb=$(ls output/*.deb)
+          dpkg-deb -I "$deb"
           dpkg-deb --ctrl-tarfile "$deb" | tar -tf - | grep -qx './md5sums'
           test "$(dpkg-deb -c "$deb" | grep -c '^-')" = "$(dpkg-deb --ctrl-tarfile "$deb" | tar -xOf - ./md5sums | wc -l)"
+      - name: Lintian (the .deb only)
+        run: |
+          # Never lint the .changes: `lmn73` is not a known distribution (see ci.yml).
+          lintian --fail-on error output/*.deb
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages
           path: output/
           if-no-files-found: error
+
+  # The one failure mode of a packaging change that no other job would notice: a file quietly
+  # falls out of the package or changes mode, because debhelper treats it differently from the
+  # old hand-made staging tree (dh_fixperms would make the wheels' .so files 0644). It would
+  # only show on a school server. So every build is compared, path by path, with the newest
+  # published release: a path that disappears or changes mode/owner fails the build. Paths of
+  # third-party distributions in the venv come and go with the lock; their completeness is
+  # proven by debian/venv-relocate --verify (RECORD) and the freeze gate, so only those are
+  # reported instead of failed. Permanent, not just for the debian/ conversion; the job is the
+  # same in ci.yml and release.yml.
+  file-tree:
+    needs: build
+    runs-on: ubuntu-latest        # GitHub-hosted: gh is installed here, not in the container
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: packages
+          path: packages/
+      - name: Fetch the newest published release
+        id: prev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p previous
+          # Prefer the newest real release, fall back to the newest prerelease. Skipping is
+          # only legitimate when the repo has NO release at all: this gate stands between a
+          # silently shrunk package and a school server.
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 \
+                  --json tagName,isDraft,isPrerelease \
+                  --jq '[.[] | select(.isDraft == false and .isPrerelease == false)][0].tagName // ""')
+          if [ -z "$tag" ]; then
+            tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 \
+                    --json tagName,isDraft --jq '[.[] | select(.isDraft == false)][0].tagName // ""')
+            [ -n "$tag" ] && echo "::warning::no full release yet, comparing against prerelease $tag"
+          fi
+          if [ -z "$tag" ]; then
+            if [ "$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq 'length')" != "0" ]; then
+              echo "::error::releases exist but none could be selected - refusing to skip"; exit 1
+            fi
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "::notice::first release of this package, nothing to compare against"
+            exit 0
+          fi
+          for i in 1 2 3; do
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir previous && break
+            echo "download attempt $i failed, retrying"; sleep 10
+          done
+          test -n "$(ls previous/*.deb 2>/dev/null)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Compare the file tree with the released package
+        if: steps.prev.outputs.skip != '1'
+        env:
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+        run: |
+          set -euo pipefail          # without pipefail `tee` would swallow the exit code
+          # mode owner path, sorted. Directories are compared too (an empty one would vanish
+          # unnoticed in a file-only comparison); a symlink prints "path -> target", so a
+          # retargeted link (/usr/bin/lmnsquid, the venv's python and lib64) is drift too.
+          norm() { dpkg-deb -c "$1" | awk '{t = ($7 == "->" ? " " $7 " " $8 : ""); print $1, $2, $6 t}' | LC_ALL=C sort; }
+          norm previous/*.deb > old.txt
+          norm packages/*.deb > new.txt
+          python3 - old.txt new.txt linuxmuster-squid lmnsquid "$PREV_TAG" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import re
+          import sys
+
+          old_f, new_f, PKG, OWN = sys.argv[1:5]
+          TAG = sys.argv[5] if len(sys.argv) > 5 else "previous release"
+          SP = rf"opt/{PKG}/venv/lib/python3\.12/site-packages/"
+          # 1. the own dist-info carries the version: compare it under a fixed name.
+          DIST = re.compile(rf"^({SP}{OWN})-[^/]+\.dist-info")
+          # 2. third-party distributions come and go with every lock bump; their completeness is
+          #    proven by `debian/venv-relocate --verify` (RECORD) and the freeze == lock gate, so a
+          #    path of theirs that disappears is reported, not failed. Mode/owner is checked everywhere.
+          THIRD = re.compile(rf"^{SP}(?!{OWN}[/-])")
+          # Paths that may legitimately disappear. Add an entry ONLY together with the changelog
+          # sentence that explains it to admins.
+          ALLOW_GONE = set()
+
+
+          def read(name):
+              rows = {}
+              for line in open(name):
+                  mode, owner, path = line.rstrip("\n").split(" ", 2)
+                  if path == "./":  # the package root: dpkg never applies its mode
+                      continue
+                  rows[DIST.sub(r"\1-VERSION.dist-info", path.removeprefix("./"))] = (mode, owner)
+              return rows
+
+
+          old, new = read(old_f), read(new_f)
+          gone = sorted(set(old) - set(new))
+          added = sorted(set(new) - set(old))
+          changed = sorted(p for p in set(old) & set(new) if old[p] != new[p])
+          strict_gone = [p for p in gone if not THIRD.match(p) and p not in ALLOW_GONE]
+          print(f"## File tree vs {TAG}\n")
+          print(f"- released: {len(old)} entries, built: {len(new)} entries")
+          print(f"- third-party venv paths: {sum(1 for p in gone if THIRD.match(p))} gone, "
+                f"{sum(1 for p in added if THIRD.match(p))} added (lock changes, see RECORD check)")
+          for p in added:
+              if not THIRD.match(p):
+                  print(f"- added: `{p}`")
+          for p in strict_gone:
+              print(f"::error::file lost from the package: {p}")
+          for p in changed:
+              print(f"::error::mode or owner changed: {p}: {old[p]} -> {new[p]}")
+          if strict_gone or changed:
+              sys.exit(1)
+          print("\nfile tree: nothing lost, no mode or owner change")
+          PY
 
   install-smoke:
     needs: build
@@ -116,7 +248,7 @@ jobs:
       # run failed on it after earlier runs had passed. One install proves nothing about a
       # race, so the same .deb is configured 30 more times, failing on the first error.
       - name: Configure loop (15x purge + fresh install, 15x reinstall/dpkg-reconfigure)
-        run: sudo bash scripts/tests/install_loop.sh packages/linuxmuster-squid_*_all.deb 15
+        run: sudo bash scripts/tests/install_loop.sh packages/linuxmuster-squid_*_amd64.deb 15
 
   # Kevin's rule: a release must still install cleanly ON TOP OF the version that is
   # already running on a school server. This job installs the newest published release
@@ -420,7 +552,7 @@ jobs:
         run: sudo journalctl -u linuxmuster-squid.service --no-pager | tail -60
 
   release:
-    needs: [gate, build, install-smoke, upgrade-smoke]
+    needs: [gate, build, file-tree, install-smoke, upgrade-smoke]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
@@ -441,12 +573,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}     # through env, never interpolated into the script
+          # Optional read-only token for the immutable-releases setting, used for that one call only.
+          IMMUTABLE_CHECK_TOKEN: ${{ secrets.IMMUTABLE_CHECK_TOKEN }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          # The files this repo publishes (.changes/.buildinfo join them with the debian/
-          # conversion, dpkg-buildpackage).
-          assets=(packages/*.deb)
+          # The files this repo publishes: the .deb and what dpkg-buildpackage records about the
+          # build (.changes, .buildinfo) plus the source package it was built from (.dsc, .tar.xz).
+          assets=(packages/*.deb packages/*.changes packages/*.buildinfo packages/*.dsc packages/*.tar.xz)
           compgen -G 'packages/*.deb' > /dev/null || { echo "::error::no .deb to publish"; exit 1; }
           # GitHub renames special characters in asset names (`~` becomes `.`, `+` stays), so
           # names are compared in this normalised form, in which no two assets may collide.
@@ -520,6 +654,31 @@ jobs:
             | while read -r d n; do printf '%s %s\n' "$d" "$(norm "$n")"; done | sort > uploaded.sha256
           diff built.sha256 uploaded.sha256 \
             || { echo "::error::assets on the draft differ from the build, not publishing"; exit 1; }
+          # Immutable or not at all (why: see the header). In advance, at the last moment the release
+          # is still a draft, but only with the optional token: GITHUB_TOKEN cannot read the setting.
+          # A repo with the setting off answers {"enabled":false}; the docs also name 404. With the
+          # token, anything but enabled == true stops here and leaves the draft unpublished.
+          if [ -z "${IMMUTABLE_CHECK_TOKEN:-}" ]; then
+            echo "::notice::immutable releases could not be checked before publishing: secret IMMUTABLE_CHECK_TOKEN is not set and GITHUB_TOKEN cannot read the setting. Publishing anyway; the check after publishing fails this job if $TAG does not come out immutable."
+          else
+            if ! enabled=$(GH_TOKEN=$IMMUTABLE_CHECK_TOKEN gh api "repos/$GH_REPO/immutable-releases" --jq '.enabled'); then
+              echo "::error::cannot read the immutable-releases setting of $GH_REPO (${enabled//$'\n'/ }); draft $rid stays unpublished"; exit 1
+            fi
+            [ "$enabled" = true ] || {
+              echo "::error::immutable releases are not enabled for $GH_REPO (enabled=$enabled); draft $rid stays unpublished"; exit 1; }
+          fi
           gh api -X PATCH "repos/$GH_REPO/releases/$rid" -F draft=false --jq '"published \(.html_url)"'
-          immutable=$(gh api "repos/$GH_REPO/releases/$rid" --jq '.immutable' || true)
-          [ "$immutable" = true ] || echo "::warning::$TAG is published but not immutable (immutable=$immutable)"
+          # Re-read by id: the published release must be immutable. This check always runs (the
+          # release is readable with GITHUB_TOKEN) and is the one that guarantees a mutable release
+          # is noticed. An error, never a warning, or the run ends green with assets that can still
+          # be replaced. The retry only covers a read that lags behind the publish.
+          immutable=
+          for i in 1 2 3; do
+            immutable=$(gh api "repos/$GH_REPO/releases/$rid" --jq '.immutable') && [ "$immutable" = true ] && break
+            [ "$i" = 3 ] || sleep $((i * 5))
+          done
+          if [ "$immutable" != true ]; then
+            echo "::error::$TAG is published but NOT immutable (immutable=${immutable:-unreadable}), its assets can still be replaced: delete release $rid (the tag stays), turn immutable releases on, re-run this job"
+            exit 1
+          fi
+          echo "$TAG is published and immutable"

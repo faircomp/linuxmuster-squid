@@ -156,7 +156,8 @@ setuptools comes from `packaging/requirements-build.lock` (no build isolation, n
 nothing unpinned is downloaded while the package is built. The build container
 (`lmndev-runner`), the data-plane base image and every GitHub Action are pinned by digest or
 commit SHA. Releases are created as drafts, get their assets, are checked against the build and
-only then published (the order GitHub's immutable releases need). Renovate
+only then published (the order GitHub's immutable releases need); the release job fails unless
+the published release is immutable. Renovate
 (`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run)
 proposes every change as a PR, PyPI releases only once 7 days old; nothing is automerged.
 The lock is exactly what its header command produces. The gate (`lock-deps.sh --check`, run by
