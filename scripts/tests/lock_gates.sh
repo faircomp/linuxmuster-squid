@@ -41,8 +41,9 @@
 #                                             venv)
 #   bash scripts/tests/lock_gates.sh --build  `make deb` in a copy of the tree per lock case: it
 #                                             must stop in the lock gate, before any venv of the
-#                                             build exists. Needs the Build-Depends (CI: the
-#                                             build image, as root).
+#                                             build exists. Runs only if the committed locks pass
+#                                             the gate. Needs the Build-Depends (CI: the build
+#                                             image, as root).
 # LOCK_GATES_VERBOSE=1 prints the gate's own words for each rejected case.
 set -uo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -367,7 +368,8 @@ infest() {  # <tree>: .venv/ and venv/ of the caller in it
 mkdir -p "$TMP/cdpath/packaging"
 printf 'echo "clean-env.sh of the CDPATH ran" >> %s\n' "$MARKER" > "$TMP/cdpath/packaging/clean-env.sh"
 FUNCS=()
-for t in awk sort diff comm git mktemp tar cp; do
+# (compgen and unset too: the functions that clean-env.sh's removal itself calls)
+for t in awk sort diff comm git mktemp tar cp compgen unset; do
     FUNCS+=("BASH_FUNC_$t%%=() { echo \"function $t of the caller ran: \$*\" >> $MARKER; }")
 done
 caller() {  # <command...> started from the activated venv, as a developer would
@@ -407,6 +409,13 @@ build_stops() {
 }
 
 if [ "${1:-}" = --build ]; then
+    # The counter-proof below installs this checkout's build lock without a gate: only after the
+    # gate passed the committed locks (as in the normal mode), so a rejection ends the run.
+    if ! ok "gate: the committed lock files" bash "$LOCK_DEPS" --gate; then
+        echo "the committed locks are rejected: nothing of them is installed, the build cases do not run"
+        echo "lock gates (build): $PASS passed, $FAIL failed, $SKIP skipped"
+        exit 1
+    fi
     for c in "${CASES[@]}"; do
         if [ "$c" = tool-lock-young-uv ] && ! young_uv_case "build $c"; then continue; fi
         d="$TMP/build-$c"
@@ -446,6 +455,31 @@ if [ "${1:-}" = --build ]; then
         fi
     else
         echo "WRONG build counter-proof: could not prepare"; FAIL=$((FAIL + 1))
+    fi
+    # This script's own --build run on a checkout whose build lock the gate rejects (a real,
+    # published six that nothing needs): it stops at that gate and installs nothing of the lock,
+    # so its pip cache (a fresh HOME) never holds six. LOCK_GATES_NESTED keeps that run from
+    # starting this case again.
+    if [ -z "${LOCK_GATES_NESTED:-}" ]; then
+        d="$TMP/build-self"
+        if copy "$d/src" && apply build-lock-extra-pin "$d/src" && commit "$d/src" && mkdir -p "$d/home"; then
+            rm -f "$MARKER"
+            (cd "$d/src" && HOME="$d/home" LOCK_GATES_NESTED=1 /bin/bash scripts/tests/lock_gates.sh --build) \
+                > "$d/log" 2>&1; rc=$?
+            if [ "$rc" != 0 ] && grep -q "${WHY[build-lock-extra-pin]}" "$d/log" &&
+                grep -q '^the committed locks are rejected' "$d/log" && ! grep -Eq '^(ok|WRONG) +build ' "$d/log" &&
+                ! grep -rlaq 'six-1\.17\.0\.dist-info' "$d/home" && [ ! -e "$MARKER" ]; then
+                echo "ok    build self-check: --build on a build lock the gate rejects stops at the gate (exit $rc), installs nothing"
+                PASS=$((PASS + 1))
+            else
+                echo "WRONG build self-check: --build on a rejected build lock did not stop at the gate (exit $rc)"
+                tail -n 30 "$d/log" | sed 's/^/      /'
+                grep -rla 'six-1\.17\.0\.dist-info' "$d/home" | sed 's/^/      six in the pip cache: /'
+                FAIL=$((FAIL + 1))
+            fi
+        else
+            echo "WRONG build self-check: could not prepare"; FAIL=$((FAIL + 1))
+        fi
     fi
     echo "lock gates (build): $PASS passed, $FAIL failed, $SKIP skipped"
     [ "$FAIL" = 0 ]
