@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Compiles the hash-pinned lock files packaging/build-deb.sh installs from:
+# Compiles the hash-pinned lock files packaging/build-venv.sh installs from:
 #   controlplane/requirements.lock      <- controlplane/pyproject.toml + packaging/requirements-venv.in
 #   packaging/requirements-build.lock   <- packaging/requirements-build.in
 #
@@ -101,7 +101,7 @@ case "$mode" in
         # 1. every line is one uv writes; 2. the header is the canonical command; 3. the pins
         # still satisfy the inputs AND the header's cutoff (a pin younger than 7 days fails);
         # 4. every pin has a wheel for the target (CPython 3.12, glibc 2.39, x86_64), since
-        # build-deb.sh installs wheels only; 5. every committed hash is one PyPI lists for that
+        # build-venv.sh installs wheels only; 5. every committed hash is one PyPI lists for that
         # pin (PyPI may list more: files added later). 3 and 4 prefer the locked versions, so
         # the gate stays green as time passes and only moves when the lock or its inputs do.
         rc=0
