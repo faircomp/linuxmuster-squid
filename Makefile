@@ -18,7 +18,10 @@
 # settings) can reach the source tarball, and the checkout is left untouched. Left out on
 # purpose: .github/ and .claude/ (CI and developer tooling) and dpkg-source's default ignore
 # list (.gitignore and the like; the bare -I keeps that list, an -I<pattern> alone would
-# replace it). Without git (an unpacked source package) the tree is built as it is.
+# replace it). The copy gets fresh mtimes (tar --touch): dpkg clamps only mtimes newer than
+# the changelog date, so older ones of a long-lived checkout would reach the .deb, and two
+# checkouts of the same commit would build different packages. Without git (an unpacked
+# source package) the tree is built as it is.
 .PHONY: all deb clean
 
 # bash with pipefail: a failing `git ls-files` or tar in the copy pipeline stops the build.
@@ -37,7 +40,7 @@ deb:
 		mkdir "$$tmp/$(PKG)"; \
 		$(GIT) ls-files -z \
 			| tar -C '$(CURDIR)' --null --no-recursion --ignore-failed-read -T - -cf - \
-			| tar -C "$$tmp/$(PKG)" -xf -; \
+			| tar -C "$$tmp/$(PKG)" --touch -xf -; \
 		echo "make deb: building the $$($(GIT) ls-files | wc -l) tracked files in $$tmp/$(PKG)"; \
 		(cd "$$tmp/$(PKG)" && $(BUILDPACKAGE)); \
 		mv "$$tmp"/$(PKG)_* ..; \
