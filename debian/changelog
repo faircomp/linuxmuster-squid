@@ -1,3 +1,27 @@
+linuxmuster-squid (7.3.5) lmn73; urgency=medium
+
+  * The package is built with debhelper (dpkg-buildpackage) now and is
+    architecture-specific: linuxmuster-squid_7.3.5_amd64.deb instead of
+    _all.deb, because the bundled Python venv holds x86_64 libraries. It
+    depends on Python 3.12 (python3 >= 3.12, << 3.13), the version the venv
+    is built for, and on the C libraries those libraries use. apt upgrades
+    7.3.4 to it like any other version. No behaviour change: the service,
+    the CLI, the configuration and the files under /opt/linuxmuster-squid
+    are the same; the package additionally installs its changelog and
+    copyright under /usr/share/doc/linuxmuster-squid.
+  * Every build checks the Python lock files the same way CI does and fails
+    unless the venv holds exactly the locked packages, so a manipulated lock
+    file cannot end up in a package, not even from a tag CI never checked.
+  * The GitHub release carries the source package (.dsc, .tar.xz) and the
+    .changes and .buildinfo next to the .deb, and the release run fails
+    unless GitHub marks the published release immutable, so its files cannot
+    be replaced afterwards. The releases up to 7.3.4 are not immutable.
+  * Correction to 7.3.3: Renovate is switched off for now, so updates of the
+    pinned build inputs do not arrive as Renovate pull requests; they are
+    raised by hand in reviewed pull requests until Renovate returns.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Fri, 25 Sep 2026 12:00:00 +0200
+
 linuxmuster-squid (7.3.4) lmn73; urgency=medium
 
   * Fix an intermittent failure of the package configuration, present since
