@@ -16,26 +16,38 @@
 # a case that passes, or fails for another reason, fails this script.
 #
 # The K1 cases (cold-debian-squid.md F1): a wheel that brings its own diff, comm, sort, awk,
-# grep, cut, cp, python3 and uv into its venv's bin/ and a .pth that runs in every interpreter
-# of that venv; each writes a marker file. It is "published": a local PEP 691 index serves it
-# with its real sha256 and an upload time older than 7 days, as PyPI would serve a package an
-# attacker uploaded. Grammar and hash checks therefore pass and only the closure check can
-# stop it, and it must do so before anything of the wheel ran: no marker, no .deb.
-# The index is added through UV_INDEX and PIP_EXTRA_INDEX_URL, uv's and pip's own settings,
-# only in the environment of this script's subprocesses. Nothing in the build or the workflows
-# reads or sets a variable of its own for this; an environment that sets these in a real build
-# belongs to someone who controls that build already.
+# grep, cut, cp, python3, uv, pip and more (TOOLS below) into its venv's bin/ and a .pth that
+# runs in every interpreter of that venv; each writes a marker file. It is "published": a local
+# PEP 691 index serves it with its real sha256 and an upload time older than 7 days, as PyPI
+# would serve a package an attacker uploaded, and sends every other name on to PyPI. Grammar and
+# hash checks therefore pass and only the closure check can stop it, and it must do so before
+# anything of the wheel ran: no marker, no .deb. The gate takes its index from one line of
+# packaging/lock-deps.sh (PYPI_SIMPLE=, and nothing from the environment); these cases change
+# that line, and only that line (checked), in their copy of the tree. Nothing a real build reads
+# is touched.
+#
+# The caller cases (cold-debian-*-r2.md: squid F3, readonlydc F1, radius F3): the gate, `make
+# deb` and `run.sh quick` started from an activated venv holding the K1 wheel (in front of PATH,
+# VIRTUAL_ENV, CONDA_PREFIX, UV_PYTHON pointing at it, a PYTHONPATH with a `venv` module of its
+# own) and with such a venv as .venv/ (and a `venv/` package) in the checkout: nothing of it may
+# run, and a manipulated lock is still rejected. Their counter-proofs switch the protection off
+# in a copy (the gate's fixed PATH and clean environment; the gate in the build) and must see a
+# marker from one of the wheel's bin/ tools, so the test cannot pass on an unarmed wheel.
 #
 #   bash scripts/tests/lock_gates.sh          --lint and --verify-freeze cases (offline) and the
-#                                             --gate cases (need PyPI and python3 -m venv)
+#                                             --gate cases (need PyPI and /usr/bin/python3 with
+#                                             venv)
 #   bash scripts/tests/lock_gates.sh --build  `make deb` in a copy of the tree per lock case: it
 #                                             must stop in the lock gate, before any venv of the
 #                                             build exists. Needs the Build-Depends (CI: the
 #                                             build image, as root).
 # LOCK_GATES_VERBOSE=1 prints the gate's own words for each rejected case.
 set -uo pipefail
-
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=packaging/clean-env.sh
+. "$ROOT/packaging/clean-env.sh"
+PYTHON=/usr/bin/python3
 LOCK_DEPS="$ROOT/packaging/lock-deps.sh"
 CP=controlplane/requirements.lock
 BL=packaging/requirements-build.lock
@@ -76,12 +88,18 @@ rejects() {
 }
 
 # --- the K1 wheel and the index that publishes it -----------------------------------------
-python3 - "$TMP/wheels" "$MARKER" <<'PY'
+# Everything the gate, the build and run.sh might look up on PATH, and what a lock-filled venv
+# could shadow: the gate's text tools, python3, uv, pip, the build's own programs, the fast
+# tier's tools.
+TOOLS=(diff comm sort awk grep cut cp python3 uv pip sed tar git mktemp env find xargs wc mv rm
+       mkdir cat head tail tr dirname basename readlink chmod touch ln sha256sum make bash sh
+       dpkg-buildpackage dpkg-source dpkg-parsechangelog ruff mypy pytest shellcheck reuse curl)
+"$PYTHON" -I - "$TMP/wheels" "$MARKER" "${TOOLS[@]}" <<'PY'
 import base64, hashlib, os, sys, zipfile
 
 out, marker = sys.argv[1:3]
+tools = sys.argv[3:]
 os.makedirs(out)
-tools = ["diff", "comm", "sort", "awk", "grep", "cut", "cp", "python3", "uv"]
 files = {"zzzevil2/__init__.py": b""}
 files["zzzevil2.pth"] = (
     f"import os, sys; open({marker!r}, 'a').write('.pth ran in %s (pid %d)\\n' "
@@ -109,20 +127,33 @@ with zipfile.ZipFile(os.path.join(out, "zzzevil2-1.0-py3-none-any.whl"), "w") as
         info.external_attr = (0o100755 if "/scripts/" in path else 0o100644) << 16
         z.writestr(info, data)
 PY
-EVIL_HASH="$(sha256sum "$TMP/wheels/zzzevil2-1.0-py3-none-any.whl" | cut -d' ' -f1)"
-# The wheel is armed, or a missing marker proves nothing: installed into a throwaway venv (never
-# on PATH), its bin/diff is executable and runs, and its .pth runs in an interpreter that reads
-# that site-packages (the venv's own python3 is the wheel's script by now).
+WHEEL="$TMP/wheels/zzzevil2-1.0-py3-none-any.whl"
+EVIL_HASH="$(sha256sum "$WHEEL" | cut -d' ' -f1)"
+# poison <dir>: a venv with the K1 wheel installed (never on this script's PATH): every TOOLS
+# name in its bin/ is the wheel's marker script, and its .pth runs in its interpreter. The venv's
+# python pointed at python3, which is the wheel's script now; it becomes a real interpreter of
+# the venv again, so the .pth has one to run in.
+poison() {
+    "$PYTHON" -I -m venv "$1" && "$1/bin/python" -I -m pip install --quiet --no-deps "$WHEEL" &&
+        ln -sfn "$PYTHON" "$1/bin/python"
+}
+# The wheel is armed, or a missing marker proves nothing: installed into a throwaway venv, every
+# one of its bin/ tools is executable and runs (pip installed them from *.data/scripts/), and
+# its .pth runs in that venv's interpreter (python3 is the wheel's script by now, python is not).
 armed() {
-    python3 -m venv "$TMP/armed" && "$TMP/armed/bin/python" -I -m pip install --quiet \
-        --disable-pip-version-check --no-deps "$TMP/wheels/zzzevil2-1.0-py3-none-any.whl" &&
-    [ -x "$TMP/armed/bin/diff" ] && [ -x "$TMP/armed/bin/python3" ] && "$TMP/armed/bin/diff" a b &&
-    python3 -I -c 'import site, sys; site.addsitedir(sys.argv[1])' \
-        "$(echo "$TMP"/armed/lib/python3*/site-packages)" &&
-    grep -q '^diff ran instead of the real one: a b$' "$MARKER" && grep -q '^.pth ran in ' "$MARKER"
+    local t
+    poison "$TMP/armed" || return 1
+    for t in "${TOOLS[@]}"; do
+        if ! { [ -x "$TMP/armed/bin/$t" ] && [ ! -L "$TMP/armed/bin/$t" ] && "$TMP/armed/bin/$t" a b &&
+               grep -qx "$t ran instead of the real one: a b" "$MARKER"; }; then
+            echo "bin/$t is not armed"; return 1
+        fi
+    done
+    "$TMP/armed/bin/python" -c pass && grep -q '^.pth ran in ' "$MARKER"
 }
 if armed; then
-    echo "ok    the K1 wheel is armed: its bin/diff and its .pth write the marker"; PASS=$((PASS + 1))
+    echo "ok    the K1 wheel is armed: its ${#TOOLS[@]} bin/ tools and its .pth write the marker"
+    PASS=$((PASS + 1))
 else
     echo "WRONG the K1 wheel is not armed"; sed 's/^/      MARKER: /' "$MARKER" 2>/dev/null; FAIL=$((FAIL + 1))
 fi
@@ -131,8 +162,9 @@ evil_block() {  # the pin as uv writes it
     printf 'zzzevil2==1.0 \\\n    --hash=sha256:%s\n    # via %s\n' "$EVIL_HASH" "$1"
 }
 cat > "$TMP/index.py" <<'PY'
-# A PEP 691 simple index for the wheels in one directory: 404 for every other project, so
-# uv and pip take everything else from PyPI. upload-time is old enough for --exclude-newer=P7D.
+# A PEP 691 simple index for the wheels in one directory; every other project is redirected to
+# PyPI's own page, so for all else uv and pip see exactly what PyPI serves. upload-time is old
+# enough for --exclude-newer=P7D.
 import hashlib, http.server, json, os, sys
 
 root, port_file = sys.argv[1:3]
@@ -163,6 +195,11 @@ class Index(http.server.BaseHTTPRequestHandler):
                 body = {"meta": {"api-version": "1.1"}, "name": parts[1], "files": files,
                         "versions": sorted({w.split("-")[1] for w in mine})}
                 return self.send(json.dumps(body).encode(), "application/vnd.pypi.simple.v1+json")
+            self.send_response(302)
+            self.send_header("Location", f"https://pypi.org/simple/{parts[1]}/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         self.send_response(404)
         self.end_headers()
 
@@ -173,12 +210,17 @@ with open(port_file + ".tmp", "w") as f:
 os.rename(port_file + ".tmp", port_file)
 server.serve_forever()
 PY
-python3 "$TMP/index.py" "$TMP/wheels" "$TMP/index.port" & INDEX_PID=$!
+"$PYTHON" -I "$TMP/index.py" "$TMP/wheels" "$TMP/index.port" & INDEX_PID=$!
 for _ in $(seq 1 50); do [ -s "$TMP/index.port" ] && break; sleep 0.1; done
 [ -s "$TMP/index.port" ] || { echo "WRONG the local index did not start"; exit 1; }
 INDEX_URL="http://127.0.0.1:$(cat "$TMP/index.port")/simple"
-published() {  # <command...> with zzzevil2 "on PyPI"
-    UV_INDEX="published=$INDEX_URL" PIP_EXTRA_INDEX_URL="$INDEX_URL" "$@"
+# publish <tree>: its gate asks the local index instead of PyPI. The one line changes, nothing
+# else (a copy whose gate differs in more would test another gate).
+publish() {
+    local f="$1/packaging/lock-deps.sh"
+    sed -i "s|^PYPI_SIMPLE=https://pypi.org/simple\$|PYPI_SIMPLE=$INDEX_URL|" "$f" &&
+        [ "$(diff "$ROOT/packaging/lock-deps.sh" "$f" | grep -c '^[<>]')" = 2 ] &&
+        grep -qx "PYPI_SIMPLE=$INDEX_URL" "$f"
 }
 
 # --- the lock cases -------------------------------------------------------------------------
@@ -197,7 +239,7 @@ PIN="$(awk '/^[a-z0-9]/ { order[++k] = $1; next } /^    --hash=/ { n[order[k]]++
             "$ROOT/$CP")"
 [ -n "$PIN" ] || { echo "no pin with two hashes in $CP"; exit 1; }
 # A uv release younger than 7 days, if there is one right now (for tool-lock-young-uv).
-YOUNG_UV="$(python3 -I -S - <<'PY' || true
+YOUNG_UV="$("$PYTHON" -I -S - <<'PY' || true
 import datetime, json, urllib.request
 cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=6, hours=12)
 with urllib.request.urlopen("https://pypi.org/pypi/uv/json", timeout=60) as r:
@@ -283,36 +325,103 @@ apply() {
 # copy <dest>: the tracked files of the repository (what CI checks out)
 copy() {
     mkdir -p "$1"
-    git -c safe.directory='*' -C "$ROOT" ls-files -z | (cd "$ROOT" && xargs -0 cp --parents -a -t "$1")
+    git -c safe.directory="$ROOT" -c core.fsmonitor=false -C "$ROOT" ls-files -z \
+        | (cd "$ROOT" && xargs -0 cp --parents -a -t "$1")
+}
+# commit <tree>: a git repository with everything in it committed, as a pull request brings it
+# (make deb then exports exactly these files)
+commit() {
+    git -C "$1" init -q && git -C "$1" add -A -f &&
+        git -C "$1" -c user.name=lock_gates -c user.email=lock_gates@invalid -c commit.gpgsign=false \
+            -c core.hooksPath=/dev/null commit -q -m fixture
+}
+# The caller cases: an activated venv holding the K1 wheel, and the same as .venv/ (with a
+# `venv` package next to it) in the tree the command runs in.
+SHADOW="$TMP/shadow"
+mkdir -p "$SHADOW/venv"
+printf 'open(%s, "a").write("venv module of the caller ran\\n")\n' "'$MARKER'" \
+    | tee "$SHADOW/venv/__init__.py" > "$SHADOW/venv/__main__.py"
+poison "$TMP/caller" || { echo "WRONG could not create the caller's venv"; exit 1; }
+infest() {  # <tree>: .venv/ and venv/ of the caller in it
+    poison "$1/.venv" && cp -a "$SHADOW/venv" "$1/venv"
+}
+caller() {  # <command...> started from the activated venv, as a developer would
+    /usr/bin/env PATH="$TMP/caller/bin:$PATH" VIRTUAL_ENV="$TMP/caller" CONDA_PREFIX="$TMP/caller" \
+        UV_PYTHON="$TMP/caller/bin/python" PYTHONPATH="$SHADOW" "$@"
+}
+# gate_open <tree>: the counter-proof, the gate without its fixed PATH and clean environment
+gate_open() {
+    local f="$1/packaging/lock-deps.sh"
+    sed -i -e '/^PATH=\/usr\/sbin:\/usr\/bin:\/sbin:\/bin$/d' -e '/^\. packaging\/clean-env\.sh$/d' "$f" &&
+        [ "$(diff "$ROOT/packaging/lock-deps.sh" "$f" | grep -c '^[<>]')" = 2 ]
+}
+tool_ran() { grep -Eq '^[^ ]+ ran instead of the real one' "$MARKER" 2>/dev/null; }
+
+# build_stops <case> <label> <dir> [caller]: `make deb` in <dir>/src must stop in the lock gate:
+# its words in the log, no build venv, no shipped venv, no .deb, nothing of the K1 wheel ran.
+build_stops() {
+    local c=$1 label=$2 d=$3 rc
+    shift 3
+    rm -f "$MARKER"
+    (cd "$d/src" && "$@" /usr/bin/make deb) > "$d/log" 2>&1; rc=$?
+    if [ "$rc" != 0 ] && grep -Eq -- "$(why "$c")" "$d/log" && grep -q '^== lock gate ==' "$d/log" \
+        && ! grep -q '^== build venv' "$d/log" && ! grep -q '^== venv @' "$d/log" \
+        && [ -z "$(find "$d" -maxdepth 1 -name '*.deb' -print -quit)" ] && [ ! -e "$MARKER" ] \
+        && { [[ $c != k1-* ]] || ! grep -Eq -- "$NOT_WHY" "$d/log"; }; then
+        echo "ok    build $label: make deb exit $rc, stopped by the gate (${STOP[$c]}), no .deb, no marker"
+        PASS=$((PASS + 1))
+        if [ -n "${LOCK_GATES_VERBOSE:-}" ]; then grep -E -- "$(why "$c")|:[0-9]+: " "$d/log" | head -n 3 | sed 's/^/      /'; fi
+    else
+        echo "WRONG build $label: make deb exit $rc (want: non-zero, /$(why "$c")/ in the log, stopped in the gate, no .deb, no marker)"
+        tail -n 30 "$d/log" | sed 's/^/      /'
+        if [ -e "$MARKER" ]; then sed 's/^/      MARKER: /' "$MARKER"; fi
+        FAIL=$((FAIL + 1))
+    fi
 }
 
 if [ "${1:-}" = --build ]; then
-    # The gate words must appear in the build log, no case may get past the gate (no build venv,
-    # no shipped venv), leave a .deb or run anything of the K1 wheel.
     for c in "${CASES[@]}"; do
         if [ "$c" = tool-lock-young-uv ] && [ -z "$YOUNG_UV" ]; then
             echo "SKIP  build $c: no uv release younger than 7 days right now"; SKIP=$((SKIP + 1)); continue
         fi
         d="$TMP/build-$c"
-        if ! { copy "$d/src" && apply "$c" "$d/src"; }; then
+        if ! { copy "$d/src" && apply "$c" "$d/src" && { [[ $c != k1-* ]] || publish "$d/src"; } &&
+               commit "$d/src"; }; then
             echo "WRONG build $c: could not prepare"; FAIL=$((FAIL + 1)); continue
         fi
+        build_stops "$c" "$c" "$d"
+    done
+    # From a developer's shell: an activated venv and a .venv/ with the K1 wheel, the K1 wheel
+    # in the build lock. Nothing of either may run, and the gate still stops the build.
+    c=k1-build-lock d="$TMP/build-caller"
+    if copy "$d/src" && apply "$c" "$d/src" && publish "$d/src" && commit "$d/src" && infest "$d/src"; then
+        build_stops "$c" "from a poisoned caller: $c" "$d" caller
+    else
+        echo "WRONG build from a poisoned caller: could not prepare"; FAIL=$((FAIL + 1))
+    fi
+    # Counter-proof: the same lock with the gate switched off in the build (pip pointed at the
+    # local index in its place) installs the wheel into the build venv, and the next call of that
+    # venv's pip runs the wheel's bin/pip: a marker from a bin/ tool, not only from the .pth.
+    d="$TMP/build-open"
+    if copy "$d/src" && apply "$c" "$d/src" && publish "$d/src" &&
+        sed -i "s|^bash \"\$LOCK_DEPS\" --gate\$|export PIP_EXTRA_INDEX_URL=$INDEX_URL|" \
+            "$d/src/packaging/build-venv.sh" &&
+        [ "$(diff "$ROOT/packaging/build-venv.sh" "$d/src/packaging/build-venv.sh" | grep -c '^[<>]')" = 2 ] &&
+        commit "$d/src"; then
         rm -f "$MARKER"
-        (cd "$d/src" && published make deb) > "$d/log" 2>&1; rc=$?
-        if [ "$rc" != 0 ] && grep -Eq -- "$(why "$c")" "$d/log" && grep -q '^== lock gate ==' "$d/log" \
-            && ! grep -q '^== build venv' "$d/log" && ! grep -q '^== venv @' "$d/log" \
-            && [ -z "$(find "$d" -maxdepth 1 -name '*.deb' -print -quit)" ] && [ ! -e "$MARKER" ] \
-            && { [[ $c != k1-* ]] || ! grep -Eq -- "$NOT_WHY" "$d/log"; }; then
-            echo "ok    build $c: make deb exit $rc, stopped by the gate (${STOP[$c]}), no .deb, no marker"
+        (cd "$d/src" && /usr/bin/make deb) > "$d/log" 2>&1; rc=$?
+        if tool_ran && [ -z "$(find "$d" -maxdepth 1 -name '*.deb' -print -quit)" ]; then
+            echo "ok    build counter-proof: without the gate the wheel's bin/ runs in the build (make deb exit $rc):"
             PASS=$((PASS + 1))
-            if [ -n "${LOCK_GATES_VERBOSE:-}" ]; then grep -E -- "$(why "$c")|:[0-9]+: " "$d/log" | head -n 3 | sed 's/^/      /'; fi
+            grep -E '^[^ ]+ ran instead of the real one' "$MARKER" | sort -u | head -n 3 | sed 's/^/      MARKER: /'
         else
-            echo "WRONG build $c: make deb exit $rc (want: non-zero, /$(why "$c")/ in the log, stopped in the gate, no .deb, no marker)"
-            tail -n 30 "$d/log" | sed 's/^/      /'
-            if [ -e "$MARKER" ]; then sed 's/^/      MARKER: /' "$MARKER"; fi
+            echo "WRONG build counter-proof: no marker from a bin/ tool of the wheel without the gate (exit $rc)"
+            tail -n 30 "$d/log" | sed 's/^/      /'; sed 's/^/      MARKER: /' "$MARKER" 2>/dev/null
             FAIL=$((FAIL + 1))
         fi
-    done
+    else
+        echo "WRONG build counter-proof: could not prepare"; FAIL=$((FAIL + 1))
+    fi
     echo "lock gates (build): $PASS passed, $FAIL failed, $SKIP skipped"
     [ "$FAIL" = 0 ]
     exit
@@ -381,28 +490,95 @@ rejects "verify-freeze: build venv with an extra package" "not exactly" \
 # --- --gate (PyPI) --------------------------------------------------------------------------
 ok "gate: the committed lock files" bash "$LOCK_DEPS" --gate
 # The simulation works: through the local index, the uv of the (just proven) tool lock finds
-# zzzevil2 1.0 with its sha256, within the 7-day cutoff.
-python3 -m venv "$TMP/uvtool" && "$TMP/uvtool/bin/python" -I -m pip install --quiet \
-    --disable-pip-version-check --require-hashes --no-deps --only-binary :all: -r "$ROOT/$UL"
+# zzzevil2 1.0 with its sha256, within the 7-day cutoff, and a gate asking that index passes the
+# committed locks (everything else comes from PyPI).
+"$PYTHON" -I -m venv "$TMP/uvtool" && "$TMP/uvtool/bin/python" -I -m pip install --quiet \
+    --require-hashes --no-deps --only-binary :all: -r "$ROOT/$UL"
 printf 'zzzevil2==1.0\n' > "$TMP/pins.in"
 # shellcheck disable=SC2016  # expanded by the inner bash
-ok "the local index publishes zzzevil2 with its sha256" published bash -c '
-    cd "$1" && "$2" pip compile --quiet --no-config --no-deps --generate-hashes \
-        --python-version=3.12 --exclude-newer=P7D pins.in -o published.txt &&
-    grep -q "sha256:$3" published.txt' _ "$TMP" "$TMP/uvtool/bin/uv" "$EVIL_HASH"
+ok "the local index publishes zzzevil2 with its sha256" bash -c '
+    cd "$1" && UV_DEFAULT_INDEX="$4" UV_CACHE_DIR="$1/uv-cache" "$2" pip compile --quiet --no-deps \
+        --generate-hashes --python-version=3.12 --exclude-newer=P7D pins.in -o published.txt &&
+    grep -q "sha256:$3" published.txt' _ "$TMP" "$TMP/uvtool/bin/uv" "$EVIL_HASH" "$INDEX_URL"
+d="$TMP/gate-published"
+if copy "$d" && publish "$d"; then
+    ok "gate: the committed lock files, asking the local index" bash "$d/packaging/lock-deps.sh" --gate
+else
+    echo "WRONG gate: could not point a copy at the local index"; FAIL=$((FAIL + 1))
+fi
 for c in "${CASES[@]}"; do
     if [ "$c" = tool-lock-young-uv ] && [ -z "$YOUNG_UV" ]; then
         echo "SKIP  gate: $c: no uv release younger than 7 days right now"; SKIP=$((SKIP + 1)); continue
     fi
     d="$TMP/gate-$c"
-    if ! { copy "$d" && apply "$c" "$d"; }; then
+    if ! { copy "$d" && apply "$c" "$d" && { [[ $c != k1-* ]] || publish "$d"; }; }; then
         echo "WRONG gate $c: could not prepare"; FAIL=$((FAIL + 1)); continue
     fi
-    rejects "gate: $c" "$(why "$c")" published bash "$d/packaging/lock-deps.sh" --gate
+    rejects "gate: $c" "$(why "$c")" bash "$d/packaging/lock-deps.sh" --gate
     if [[ $c == k1-* ]] && grep -Eq -- "$NOT_WHY" "$TMP/out"; then
         echo "WRONG gate: $c was not published after all (the hash check rejected it)"; FAIL=$((FAIL + 1))
     fi
 done
+
+# --- the caller's environment (PyPI) --------------------------------------------------------
+# From a developer's shell with the K1 wheel in the activated venv and in .venv/: the gate
+# rejects a lock with a real extra package (six, published on PyPI, needed by nothing) for the
+# closure, and passes the committed locks, and nothing of the caller's venvs runs either way.
+d="$TMP/caller-extra-pin"
+if copy "$d" && apply extra-pin "$d" && infest "$d"; then
+    # shellcheck disable=SC2016  # expanded by the inner bash
+    rejects "gate from a poisoned caller: extra-pin" "${WHY[extra-pin]}" \
+        caller /bin/bash -c 'cd "$1" && exec /bin/bash packaging/lock-deps.sh --gate' _ "$d"
+else
+    echo "WRONG gate from a poisoned caller: could not prepare"; FAIL=$((FAIL + 1))
+fi
+d="$TMP/caller-clean"
+if copy "$d" && infest "$d"; then
+    rm -f "$MARKER"
+    # shellcheck disable=SC2016  # expanded by the inner bash
+    caller /bin/bash -c 'cd "$1" && exec /bin/bash packaging/lock-deps.sh --gate' _ "$d" > "$TMP/out" 2>&1; rc=$?
+    if [ "$rc" = 0 ] && [ ! -e "$MARKER" ]; then
+        echo "ok    gate from a poisoned caller: the committed locks pass, nothing of the caller ran"
+        PASS=$((PASS + 1))
+    else
+        echo "WRONG gate from a poisoned caller on the committed locks: exit $rc"
+        tail -n 20 "$TMP/out" | sed 's/^/      /'; sed 's/^/      MARKER: /' "$MARKER" 2>/dev/null
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo "WRONG gate from a poisoned caller (committed locks): could not prepare"; FAIL=$((FAIL + 1))
+fi
+# Counter-proof: the gate without its fixed PATH and clean environment runs the wheel's tools.
+d="$TMP/caller-open"
+if copy "$d" && apply extra-pin "$d" && infest "$d" && gate_open "$d"; then
+    rm -f "$MARKER"
+    # shellcheck disable=SC2016  # expanded by the inner bash
+    caller /bin/bash -c 'cd "$1" && exec /bin/bash packaging/lock-deps.sh --gate' _ "$d" > "$TMP/out" 2>&1; rc=$?
+    if tool_ran; then
+        echo "ok    gate counter-proof: without its fixed PATH the caller's bin/ tools run (gate exit $rc):"
+        PASS=$((PASS + 1))
+        grep -E '^[^ ]+ ran instead of the real one' "$MARKER" | cut -d: -f1 | sort -u | head -n 5 | sed 's/^/      MARKER: /'
+    else
+        echo "WRONG gate counter-proof: no marker from a bin/ tool of the caller's venv (exit $rc)"
+        tail -n 20 "$TMP/out" | sed 's/^/      /'; FAIL=$((FAIL + 1))
+    fi
+else
+    echo "WRONG gate counter-proof: could not prepare"; FAIL=$((FAIL + 1))
+fi
+# The local fast tier: run.sh quick puts .venv/bin on PATH for ruff, mypy and pytest, but only
+# after the gate passed. With a manipulated lock it stops at the gate and nothing else runs.
+# (Its lock_gates.sh is a stub here: this script must not start itself again.)
+d="$TMP/caller-run"
+if copy "$d" && apply extra-pin "$d" && infest "$d" &&
+    printf '#!/bin/sh\necho "lock_gates.sh started again"; exit 1\n' > "$d/scripts/tests/lock_gates.sh"; then
+    rejects "run.sh quick from a poisoned caller: extra-pin" "no further step runs" \
+        caller /bin/bash "$d/scripts/tests/run.sh" quick
+    if ! grep -q "${WHY[extra-pin]}" "$TMP/out"; then
+        echo "WRONG run.sh quick: not stopped for the closure"; FAIL=$((FAIL + 1))
+    fi
+else
+    echo "WRONG run.sh quick from a poisoned caller: could not prepare"; FAIL=$((FAIL + 1))
+fi
 
 echo "lock gates: $PASS passed, $FAIL failed, $SKIP skipped"
 [ "$FAIL" = 0 ]

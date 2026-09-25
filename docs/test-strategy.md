@@ -24,7 +24,9 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   is one PyPI publishes for exactly that `name==version`, the pins are exactly the closure of
   `controlplane/pyproject.toml` and the `.in` files within the 7-day cutoff, every pin has a
   CPython 3.12 manylinux x86_64 wheel, and the header is the canonical command. No program,
-  interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that. After
+  interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that, whatever
+  shell it is started from (fixed PATH, `/usr/bin/python3 -I`, the caller's venv, `PYTHON*`,
+  `UV_*`, `PIP_*` and `GIT_*` settings removed: `packaging/clean-env.sh`). After
   installing, the build venv must be exactly the build lock plus ensurepip's pip and the
   shipped venv exactly the lock plus lmnsquid, every line `name==version` (`--verify-freeze`).
   `bash scripts/tests/lock_gates.sh` keeps the manipulations of the cold verifications
@@ -32,13 +34,31 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   `--extra-index-url`, a pin's hashes removed, a changed hash (the wheel's and the sdist's),
   an extra pin with valid hashes, a pin without hash, in the locks where it matters; for the
   uv lock an extra pin, a changed hash, a foreign package and a uv younger than 7 days; and
-  the K1 wheel, with its own `diff`, `comm`, `sort`, `awk`, `grep`, `cut`, `cp`, `python3`
-  and `uv` in `bin/` and a marker-writing `.pth`, "published" with its real hash by a local
-  PEP 691 index, in the build lock alone and in both locks: only the closure check can stop
-  it, and nothing of it may run (no marker). `--verify-freeze` must reject a direct-URL,
-  editable, extra, missing or re-versioned package. CI also runs `lock_gates.sh --build`:
-  every lock case through `make deb`, which must stop in the gate before any venv of the
-  build exists, without a .deb and without a marker.
+  the K1 wheel, with its own `diff`, `comm`, `sort`, `awk`, `grep`, `cut`, `cp`, `python3`,
+  `uv`, `pip` and 34 more tools in `bin/` (each checked to be installed executable and to run)
+  and a marker-writing `.pth`, "published" with its real hash by a local PEP 691 index (the
+  copy's gate asks that index: one line of `lock-deps.sh` changed, nothing in the environment),
+  in the build lock alone and in both locks: only the closure check can stop it, and nothing of
+  it may run (no marker). The same wheel as an activated venv of the caller (PATH,
+  `VIRTUAL_ENV`, `CONDA_PREFIX`, `UV_PYTHON`, a `PYTHONPATH` with its own `venv` module) and as
+  `.venv/` in the checkout: the gate still rejects a real extra pin and passes the committed
+  locks without a marker, `run.sh quick` stops at the gate before any `.venv` tool runs; the
+  counter-proof (the gate without its fixed PATH and clean environment) sees the wheel's tools
+  run. `--verify-freeze` must reject a direct-URL, editable, extra, missing or re-versioned
+  package. CI also runs `lock_gates.sh --build`: every lock case through `make deb`, also from
+  the poisoned shell, which must stop in the gate before any venv of the build exists, without
+  a .deb and without a marker; its counter-proof (the gate switched off in the build) sees the
+  wheel's `bin/pip` run.
+- **`make deb`:** `scripts/tests/make_deb.sh` (CI, as root in the build image): a git worktree
+  of a repository owned by another user, with umask-002 modes, a lost x bit, secrets, venvs and
+  junk, and git configuration that runs programs (fsmonitor, filters, textconv, hooks), built
+  from the poisoned shell, gives byte-for-byte the `.deb`, `.dsc` and source tarball of the
+  package job; the tarball holds exactly the tracked files (without `.github/`, `.claude/`,
+  `.gitignore`) with git's modes, and nothing of the traps or the shell ran (counter-proof:
+  `git status` there does run them). A dirty tree (modified, deleted, staged, new) is built as
+  it is and named in a warning with the version; a tracked symlink stays a symlink; a worktree
+  whose repository is not reachable, or whose repository names another working tree, stops the
+  build and writes nothing; a tree without `.git` is built as it is.
 - **Shell:** `shellcheck` for `image/*.sh`, `scripts/**`.
 - **Squid config:** `squid -k parse` against rendered templates (in the container;
   green only with `squid-openssl` once `ssl_bump` is active).

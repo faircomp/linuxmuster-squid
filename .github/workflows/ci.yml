@@ -53,13 +53,16 @@ jobs:
       # FIRST, before anything from a lock file is installed anywhere: a wheel may bring its own
       # diff or python3 into bin/ on PATH and a .pth that runs in every later Python step, so the
       # locks are proven while this Python is still untouched. Same gate as every package build
-      # (packaging/build-venv.sh): grammar; uv from a lock of its own, proven with the standard
-      # library and run by absolute path; every hash one PyPI publishes for exactly that
-      # name==version; the pins exactly the closure of pyproject.toml and the .in files.
+      # (packaging/build-venv.sh), with the runner's own tools: a fixed PATH, /usr/bin/python3 -I
+      # (not the setup-python one), none of the caller's venv/pip/uv settings; grammar; uv from a
+      # lock of its own, proven with the standard library and run by absolute path; every hash one
+      # PyPI publishes for exactly that name==version; the pins exactly the closure of
+      # pyproject.toml and the .in files.
       - name: lock gate (before anything from a lock is installed)
         run: bash packaging/lock-deps.sh --gate
       # The manipulations of the cold verifications stay rejected (--lint, --gate, --verify-freeze),
-      # also still before any install; the lock-gates-build job runs the lock cases through make deb.
+      # also from a shell with a poisoned venv, still before any install; the lock-gates-build job
+      # runs the lock cases through make deb.
       - name: lock gates (regression)
         run: bash scripts/tests/lock_gates.sh
       # The gate tools are PINNED on purpose: an unpinned `pip install ruff` picks up
@@ -161,19 +164,30 @@ jobs:
   # The lock gate is wired into the build (packaging/build-venv.sh): every manipulated lock of
   # scripts/tests/lock_gates.sh, the "published" K1 wheel with its own diff/python3/.pth among
   # them, must stop `make deb` in that gate, before any venv of the build exists, without a .deb
-  # and without anything of that wheel having run.
+  # and without anything of that wheel having run, also when make deb is started from a shell
+  # with a poisoned venv. And make deb itself (scripts/tests/make_deb.sh): a hostile git worktree
+  # (another owner, git config that runs programs, secrets and junk, umask-002 modes) built from
+  # a poisoned shell must give byte-for-byte the packages of the package job; a dirty tree is
+  # named, a worktree without its repository stops.
   lock-gates-build:
-    needs: resolve
+    needs: [resolve, package]
     runs-on: ubuntu-latest
     container:
       image: ${{ needs.resolve.outputs.image }}
       options: --user root
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # untracked in the checkout, so no copy the tests build from contains it
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: packages
+          path: reference/
+      - name: Build dependencies
+        run: apt-get update -qq && apt-get build-dep -y -qq .
       - name: Every manipulated lock stops make deb in the lock gate
-        run: |
-          apt-get update -qq && apt-get build-dep -y -qq .
-          LOCK_GATES_VERBOSE=1 bash scripts/tests/lock_gates.sh --build
+        run: LOCK_GATES_VERBOSE=1 bash scripts/tests/lock_gates.sh --build
+      - name: make deb builds the tracked files only, whatever the checkout and the shell hold
+        run: bash scripts/tests/make_deb.sh --reference reference
 
   # The one failure mode of a packaging change that no other job would notice: a file quietly
   # falls out of the package or changes mode, because debhelper treats it differently from the
