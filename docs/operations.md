@@ -12,7 +12,7 @@ client rollout → [`deployment-gpo.md`](deployment-gpo.md), keytabs/DNS →
 ## Installation (control-plane tooling)
 
 ```
-apt install ./linuxmuster-squid_<version>_all.deb     # or from the lmn73 apt repo
+apt install ./linuxmuster-squid_<version>_amd64.deb   # or from the lmn73 apt repo
 systemctl status linuxmuster-squid                    # should be "active"
 ```
 The postinst creates the system user `lmnsquid` (in group `docker`), generates a
@@ -214,7 +214,7 @@ Access logs show **who visited/was blocked from which site** = personal data
 
 Fresh host → running instances:
 ```
-apt install ./linuxmuster-squid_<version>_all.deb          # service comes up
+apt install ./linuxmuster-squid_<version>_amd64.deb        # service comes up
 # keep the API token: restore config.yml OR accept the new token
 cp -a <backup>/secrets/*        /etc/linuxmuster-squid/secrets/      # keytabs
 cp -a <backup>/blocklists/*     /etc/linuxmuster-squid/blocklists/   # per-instance blocklists (optional; empty ones are recreated)

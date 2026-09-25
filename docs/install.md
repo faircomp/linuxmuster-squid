@@ -38,9 +38,9 @@ groups are prefixed, e.g. `<school>-internet`). All commands as root.
 
 ```bash
 gh release download -R faircomp/linuxmuster-squid -p 'linuxmuster-squid_*.deb'   # or scp it
-apt-get install -y ./linuxmuster-squid_7.3.1_all.deb
+apt-get install -y ./linuxmuster-squid_7.3.5_amd64.deb
 lmnsquid health          # {"status": "ok"}
-lmnsquid version         # {"version": "7.3.1"}  (= dpkg-query -W linuxmuster-squid)
+lmnsquid version         # {"version": "7.3.5"}  (= dpkg-query -W linuxmuster-squid)
 ```
 
 The postinst creates the system user `lmnsquid` (in group `docker`), the config
@@ -164,7 +164,7 @@ Assign the proxy per role by GPO (silent Kerberos SSO) and force the proxy at th
 ## 9. Updates
 
 ```bash
-apt-get install -y ./linuxmuster-squid_<new>_all.deb   # restarts the service, then update-all
+apt-get install -y ./linuxmuster-squid_<new>_amd64.deb # restarts the service, then update-all
 lmnsquid update-all                                    # on demand: every instance -> pinned default image
 ```
 

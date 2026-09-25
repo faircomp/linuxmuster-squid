@@ -45,11 +45,14 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   the build, and only then is it published: GitHub's immutable releases freeze tag and assets
   at publication.
   The version is the top entry of `debian/changelog` (`7.3.N`, distribution `lmn73`); the
-  workflow refuses a tag that does not match it. Build locally with `make deb` (as root, or in
-  the same container: see `Makefile`). An
+  workflow refuses a tag that does not match it. Build locally with `make deb`
+  (dpkg-buildpackage, no root needed; in the same container: see `Makefile`). An
   `apt install` of the new `.deb` **automatically restarts the service** (postinst `try-restart`),
   so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). ⏸ Signing:
-  see `packaging/build-deb.sh` (GPG key / lmn73 repo `Release` signature).
+  apt verifies the signed repository `Release` (InRelease / Release.gpg), not single `.deb`
+  signatures, so the `.deb` goes into the lmn73 **reprepro** repository (deb.linuxmuster.net),
+  which signs its `Release` with the linuxmuster GPG key (`SignWith`); no `dpkg-sig` per
+  package. Needs the real key and repository access (human gate).
 - **Git tag** `v<version>` = the changelog head (`v7.3.0` for `7.3.0`, `v7.3.1-rc1` for
   `7.3.1~rc1`), set by Kevin on `main`; never in a feature PR.
 

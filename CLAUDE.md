@@ -23,7 +23,7 @@ assumptions in [`docs/threat-model.md`](docs/threat-model.md), the decisions in
 | Control plane (REST API) | `controlplane/` | Python · FastAPI · uvicorn · **docker-py** (container lifecycle) |
 | CLI | `cli/` | Python · Typer · httpx (thin client of the REST API) |
 | E2E / Deploy | `deploy/` | docker-compose (Samba AD DC + Squid + client), instance definitions |
-| Packaging | `packaging/` (`make deb`), `debian/changelog` | `.deb` via `packaging/build-deb.sh` (hermetic venv under `/opt`), hardened systemd service (lmn73 layout) |
+| Packaging | `debian/` (`make deb` = dpkg-buildpackage), `packaging/` | debhelper 13 `.deb` (amd64): hermetic venv under `/opt` built by `packaging/build-venv.sh` and relocated by `debian/venv-relocate`, hardened systemd service (lmn73 layout) |
 | Tests | `scripts/tests/` | `run.sh` aggregator; heavy tier on **crabbox** |
 
 > **The stack is deliberately Python** (linuxmuster-api7/webui7 are likewise FastAPI/
@@ -36,15 +36,18 @@ This is one of Kevin's own linuxmuster.net packages. The development hub is
 conventions are `../../docs/paket-konventionen.md` there. The rules that bite here:
 
 - **Version:** the top entry of `debian/changelog` is the only hand-edited version
-  (`7.3.N`, distribution `lmn73`, no `-0` revision). `packaging/build-deb.sh`
-  (`dpkg-parsechangelog`), `controlplane/setup.py` (`pyproject.toml` is `dynamic`) and
+  (`7.3.N`, distribution `lmn73`, no `-0` revision). dpkg-buildpackage (the `.deb`),
+  `controlplane/setup.py` (`pyproject.toml` is `dynamic`) and
   `GET /v1/version` (`importlib.metadata`) derive from it — never write a version
   anywhere else. Never bump it outside a release: Kevin sets it and tags `v7.3.N`;
   `release.yml` refuses a tag that does not match the changelog.
 - **Changelog:** one bullet in the top block of `debian/changelog` per user-visible change,
   in the same PR, written for admins in English. There is no `CHANGELOG.md`.
-- **Build:** `make deb` (wraps `packaging/build-deb.sh`; needs root, so run it in
-  `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`).
+- **Build:** `make deb` = `dpkg-buildpackage` (debhelper 13, no root needed); the `.deb` and
+  the source package land one level above the tree. Build it in the digest-pinned
+  `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`.
+  `debian/venv-relocate` is byte-identical in squid, radius and readonlydc: change it in the
+  hub (`linuxmusterDEV/work/plans/venv-debian-umbau/`) and copy it to all three.
 - **Supply chain (ADR-015):** Python deps only via `controlplane/requirements.lock` (hashes;
   regenerate with `bash packaging/lock-deps.sh`, never hand-edit); actions by commit SHA
   with `# vN`, images by digest. Renovate PRs move them; do not unpin anything.

@@ -93,12 +93,17 @@ go/no-go), each with health auto-rollback; `lmnsquid update-all` does the same o
 **Why:** Watchtower is archived (2025-12-17), has no rollback, applies breaking
 changes blindly, needs a root socket.
 
-### ADR-011 — Packaging via dh-virtualenv
-**Status:** Proposed. **Decision:** `.deb` with a hermetic venv at build time
-(dh-virtualenv), **no** pip-in-postinst. **Why:** reproducible/signable,
+### ADR-011 — Packaging: hermetic venv in a debhelper package
+**Status:** Accepted (debhelper since 7.3.5). **Decision:** `.deb` with a hermetic venv at build time,
+**no** pip-in-postinst. **Why:** reproducible/signable,
 no network/pip-as-root at install time (improvement over webui7/api7); layout
 otherwise modeled on linuxmuster. **Note:** build and target Python minor must
-match.
+match (`Depends: python3 (>= 3.12), python3 (<< 3.13)`, `Architecture: amd64` for the wheels'
+shared objects). **Implementation:** debhelper 13 without dh-virtualenv:
+`packaging/build-venv.sh` builds the venv from the hash-pinned locks inside the package
+tree, without root; `debian/venv-relocate` rewrites it for `/opt/linuxmuster-squid/venv` and its
+`--verify` fails the build if a file still carries the build path, a pip-installed file no
+longer matches its RECORD hash or a `.pyc` is stale.
 
 ### ADR-012 — Docker socket behind a proxy (treat as root-equivalent)
 **Status:** Accepted (verified). **Decision:** API strictly bound to **`127.0.0.1`** +

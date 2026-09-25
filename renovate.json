@@ -12,7 +12,7 @@
     "enabled": true
   },
   "pip-compile": {
-    "description": "The hash-pinned lock files packaging/build-deb.sh installs from. Renovate re-runs the uv command recorded in each lock's header (packaging/lock-deps.sh writes it), so the hashes are regenerated together with the pins. pyproject.toml leaves most dependencies unconstrained, so the weekly refresh (this manager's lockFileMaintenance, one PR for both locks) is what moves them; its schedule is open because the Renovate workflow itself only runs weekly (the default 'before 4am on monday' never matches the 04:00 UTC cron).",
+    "description": "The hash-pinned lock files packaging/build-venv.sh installs from. Renovate re-runs the uv command recorded in each lock's header (packaging/lock-deps.sh writes it), so the hashes are regenerated together with the pins. pyproject.toml leaves most dependencies unconstrained, so the weekly refresh (this manager's lockFileMaintenance, one PR for both locks) is what moves them; its schedule is open because the Renovate workflow itself only runs weekly (the default 'before 4am on monday' never matches the 04:00 UTC cron).",
     "managerFilePatterns": [
       "/^controlplane/requirements\\.lock$/",
       "/^packaging/requirements-build\\.lock$/"
