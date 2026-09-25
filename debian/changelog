@@ -16,8 +16,9 @@ linuxmuster-squid (7.3.5) lmn73; urgency=medium
     less than 7 days ago; after installing, each venv must hold exactly its
     locked packages. A lock with an added package, a foreign file or a changed
     hash therefore stops the build, also for a tag CI never checked. Not
-    caught: a pin moved to an older, real release of a package that is
-    needed; that remains a matter of review.
+    caught: a pin moved to another real release of a needed package, older
+    or newer, at least 7 days old and within the declared requirements; that
+    remains a matter of review.
   * The GitHub release carries the source package (.dsc, .tar.xz) and the
     .changes and .buildinfo next to the .deb, and the release run fails
     unless GitHub marks the published release immutable, so its files cannot
