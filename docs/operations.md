@@ -12,7 +12,7 @@ client rollout → [`deployment-gpo.md`](deployment-gpo.md), keytabs/DNS →
 ## Installation (control-plane tooling)
 
 ```
-apt install ./linuxmuster-squid_<version>_all.deb     # or from the lmn73 apt repo
+apt install ./linuxmuster-squid_<version>_amd64.deb   # or from the lmn73 apt repo
 systemctl status linuxmuster-squid                    # should be "active"
 ```
 The postinst creates the system user `lmnsquid` (in group `docker`), generates a
@@ -102,7 +102,8 @@ lmnsquid rollback default-school-teachers        # to the last known-good
 ```
 The update pulls the new digest, replaces the container, waits for `healthy` and
 **automatically rolls back on failure** — the school stays online. Which digest
-belongs in production is decided by a **merged Renovate PR** (never auto-merge).
+belongs in production is decided by a **merged PR** (never auto-merge; raised by hand while
+Renovate is disabled).
 
 On a **`.deb` upgrade** the postinst runs `update-all` automatically (best-effort): all
 instances are lifted onto that package's pinned default image, each with its own health-check
@@ -214,7 +215,7 @@ Access logs show **who visited/was blocked from which site** = personal data
 
 Fresh host → running instances:
 ```
-apt install ./linuxmuster-squid_<version>_all.deb          # service comes up
+apt install ./linuxmuster-squid_<version>_amd64.deb        # service comes up
 # keep the API token: restore config.yml OR accept the new token
 cp -a <backup>/secrets/*        /etc/linuxmuster-squid/secrets/      # keytabs
 cp -a <backup>/blocklists/*     /etc/linuxmuster-squid/blocklists/   # per-instance blocklists (optional; empty ones are recreated)

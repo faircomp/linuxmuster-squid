@@ -87,18 +87,25 @@ safer MVP.
 **Status:** Accepted (verified). **Decision:** git as source of truth,
 `image@sha256:` pin, Renovate (`automerge:false`, merge = go/no-go), controlled
 `pull`+`up` with health-check auto-rollback; tooling as a signed `.deb`.
+**Update 2026-09-25:** the Renovate workflow is disabled (Kevin) until Renovate returns with a
+GitHub App; digest bumps are raised by hand in PRs meanwhile, still merged by a human.
 **`.deb` upgrade lifts instances:** installing a new package runs `update-all` so every
 instance follows that package's pinned `DEFAULT_IMAGE` (the apt install is the human
 go/no-go), each with health auto-rollback; `lmnsquid update-all` does the same on demand.
 **Why:** Watchtower is archived (2025-12-17), has no rollback, applies breaking
 changes blindly, needs a root socket.
 
-### ADR-011 — Packaging via dh-virtualenv
-**Status:** Proposed. **Decision:** `.deb` with a hermetic venv at build time
-(dh-virtualenv), **no** pip-in-postinst. **Why:** reproducible/signable,
+### ADR-011 — Packaging: hermetic venv in a debhelper package
+**Status:** Accepted (debhelper since 7.3.5). **Decision:** `.deb` with a hermetic venv at build time,
+**no** pip-in-postinst. **Why:** reproducible/signable,
 no network/pip-as-root at install time (improvement over webui7/api7); layout
 otherwise modeled on linuxmuster. **Note:** build and target Python minor must
-match.
+match (`Depends: python3 (>= 3.12), python3 (<< 3.13)`, `Architecture: amd64` for the wheels'
+shared objects). **Implementation:** debhelper 13 without dh-virtualenv:
+`packaging/build-venv.sh` builds the venv from the hash-pinned locks inside the package
+tree, without root; `debian/venv-relocate` rewrites it for `/opt/linuxmuster-squid/venv` and its
+`--verify` fails the build if a file still carries the build path, a pip-installed file no
+longer matches its RECORD hash or a `.pyc` is stale.
 
 ### ADR-012 — Docker socket behind a proxy (treat as root-equivalent)
 **Status:** Accepted (verified). **Decision:** API strictly bound to **`127.0.0.1`** +
@@ -117,8 +124,8 @@ does **not** work behind the proxy with `EXEC:0`, and neither does `blocklist re
 (`squid -k reconfigure` via exec, ADR-014); the live `logs` path (container.logs) does.
 ### ADR-013 — Image registry: GHCR (default)
 **Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:**
-The data-plane image is published to **GHCR (ghcr.io)**; Renovate pins the
-digest. **Why:** free, integrates cleanly with GitHub CI + Renovate
+The data-plane image is published to **GHCR (ghcr.io)**; its digest is pinned
+(by Renovate; by hand while Renovate is disabled, see ADR-010). **Why:** free, integrates cleanly with GitHub CI + Renovate
 digest pinning. **Alternatives:** Docker Hub (pull rate limits) or self-
 hosted/linuxmuster registry (more infrastructure).
 
@@ -151,13 +158,36 @@ setuptools comes from `packaging/requirements-build.lock` (no build isolation, n
 nothing unpinned is downloaded while the package is built. The build container
 (`lmndev-runner`), the data-plane base image and every GitHub Action are pinned by digest or
 commit SHA. Releases are created as drafts, get their assets, are checked against the build and
-only then published (the order GitHub's immutable releases need). Renovate
-(`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run)
-proposes every change as a PR, PyPI releases only once 7 days old; nothing is automerged.
-The lock is exactly what its header command produces. The CI gate (`lock-deps.sh --check`)
-accepts only lines uv writes, re-resolves the pins with the header's options including the
-7-day cutoff (preferring the locked versions, so it only moves when the lock or its inputs do),
-checks that every pin has a cp312 manylinux wheel and that every hash is one PyPI lists.
+only then published (the order GitHub's immutable releases need); the release job fails unless
+the published release is immutable. Every change comes as a PR a human merges; Renovate
+(`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run) proposed
+them, PyPI releases only once 7 days old, and is disabled since 2026-09-25 (Kevin) until it
+returns with a GitHub App, so they are raised by hand meanwhile.
+The lock is exactly what its header command produces. The gate (`lock-deps.sh --gate`, the
+first step of the fast tier and of every build, so a lock CI would reject is never built) runs
+before anything from a lock is installed: nothing of a venv filled from a lock runs, and no such
+`bin/` is on PATH, until all locks are proven (a wheel can bring its own `diff` or `python3`
+and a `.pth`). It runs with a fixed PATH (`/usr/sbin:/usr/bin:/sbin:/bin`), Python as
+`/usr/bin/python3 -I` and without the caller's venv, conda, `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`,
+`PERL5*`, `CDPATH` and `BASH_ENV` settings and exported shell functions (`packaging/clean-env.sh`,
+sourced first by the gate, `build-venv.sh` and `make-deb.sh`), so an activated venv or a project
+`.venv/` cannot put its tools in front of the gate's or answer from another index. Left to the
+caller on purpose, among others: proxies and CA bundles (how PyPI is reached; the hashes still
+decide what is installed), `DEB_*`, `DH_*`, git's global config; not undone: what the first
+shell read before the file (`BASH_ENV`, exported functions; one exported as `builtin` defeats
+the removal) and `LD_PRELOAD`, which run code as the caller anyway. It accepts only lines uv writes; takes uv from
+`packaging/requirements-uv.lock`, which must pin uv alone with hashes PyPI publishes and older
+than 7 days (checked with the standard library), installs it into a venv of its own and runs it
+by absolute path, with `/usr/bin/python3` as its interpreter and PyPI (one line of the script) as
+its index; then checks that every hash is one PyPI publishes for exactly that `name==version`,
+that the pins are exactly the closure of the inputs within the 7-day cutoff (preferring the
+locked versions, so it only moves when the lock or its inputs do) and that every pin has a cp312
+manylinux wheel. After installing, each venv must hold exactly its lock (`--verify-freeze`).
+**Limit:** the closure check resolves the inputs with the locked versions as preferences and
+compares the result with the pins (`name==version`); any locked version the resolver may keep is
+kept. So a pin moved to another real release of a needed package, older or newer, at least 7
+days old and within the declared requirements, passes every gate (the uv lock likewise with
+another real uv); that is left to review.
 **Why:** the `.deb` is installed as root on school servers and vouches for everything that ran
 in its build; before, each build took whatever PyPI and the moving image/action tags served.
 **Tool:** `uv pip compile` over pip-tools because it compiles for a Python version other than

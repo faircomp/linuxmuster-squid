@@ -94,8 +94,8 @@ Status document. Keep it up to date with every substantive change (see
 - **Reconciler:** declarative, git-versioned state (`instances/*.yaml`) →
   renders config, reconciles actual against desired state (docker-py).
 - **Updater:** pull-by-**digest** (`image@sha256:`), health-gated, **auto-rollback**
-  to the last known-good; Renovate (`docker:pinDigests`, `automerge:false`) +
-  CI image publish. No Watchtower.
+  to the last known-good; digest bumps as human-merged PRs (Renovate `docker:pinDigests`,
+  `automerge:false`; raised by hand while Renovate is disabled) + CI image publish. No Watchtower.
 - **CLI (Typer/httpx):** exclusively via the REST-API — **one** audited
   path to the Docker daemon.
 - **Docker access:** docker-py; **socket access is root-equivalent** → behind

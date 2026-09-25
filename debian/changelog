@@ -1,3 +1,35 @@
+linuxmuster-squid (7.3.5) lmn73; urgency=medium
+
+  * The package is built with debhelper (dpkg-buildpackage) now and is
+    architecture-specific: linuxmuster-squid_7.3.5_amd64.deb instead of
+    _all.deb, because the bundled Python venv holds x86_64 libraries. It
+    depends on Python 3.12 (python3 >= 3.12, << 3.13), the version the venv
+    is built for, and on the C libraries those libraries use. apt upgrades
+    7.3.4 to it like any other version. No behaviour change: the service,
+    the CLI, the configuration and the files under /opt/linuxmuster-squid
+    are the same; the package additionally installs its changelog and
+    copyright under /usr/share/doc/linuxmuster-squid and its lintian
+    overrides under /usr/share/lintian/overrides.
+  * Every build checks the Python lock files the same way CI does, before
+    anything from them is installed or run, and stops unless each lock holds
+    only lines uv writes, only hashes PyPI publishes for exactly that version,
+    exactly the packages the declared dependencies need and nothing uploaded
+    less than 7 days ago; after installing, each venv must hold exactly its
+    locked packages. A lock with an added package, a foreign file or a changed
+    hash therefore stops the build, also for a tag CI never checked. Not
+    caught: a pin moved to another real release of a needed package, older
+    or newer, at least 7 days old and within the declared requirements; that
+    remains a matter of review.
+  * The GitHub release carries the source package (.dsc, .tar.xz) and the
+    .changes and .buildinfo next to the .deb, and the release run fails
+    unless GitHub marks the published release immutable, so its files cannot
+    be replaced afterwards. The releases up to 7.3.4 are not immutable.
+  * Correction to 7.3.3: Renovate is switched off for now, so updates of the
+    pinned build inputs do not arrive as Renovate pull requests; they are
+    raised by hand in reviewed pull requests until Renovate returns.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Fri, 25 Sep 2026 12:00:00 +0200
+
 linuxmuster-squid (7.3.4) lmn73; urgency=medium
 
   * Fix an intermittent failure of the package configuration, present since

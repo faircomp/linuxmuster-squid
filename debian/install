@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The venv under /opt/linuxmuster-squid/venv is built by override_dh_auto_install
+# (debian/rules); these are the files next to it. The unit keeps its 7.3 place in
+# /lib/systemd/system (the maintainer scripts handle it by hand, dh_installsystemd is off).
+packaging/systemd/linuxmuster-squid.service	lib/systemd/system/
+# Admin scripts the docs refer to (run on the DC / from cron), so an admin with only the
+# .deb has them: docs/install.md, docs/keytab-and-dns.md, docs/operations.md.
+scripts/provision-keytab.sh	usr/share/linuxmuster-squid/scripts/
+scripts/discover-ad-facts.sh	usr/share/linuxmuster-squid/scripts/
+scripts/blocklist-refresh.sh	usr/share/linuxmuster-squid/scripts/

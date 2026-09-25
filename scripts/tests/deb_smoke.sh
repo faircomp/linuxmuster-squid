@@ -3,17 +3,43 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # crabbox smoke: builds the .deb, installs it, checks systemd + API + CLI and
-# tests an upgrade. RUN AS ROOT (sudo bash scripts/tests/deb_smoke.sh).
+# tests an upgrade onto a second build of the same tree one version higher
+# (<changelog version>+smoke1). RUN AS ROOT (sudo bash scripts/tests/deb_smoke.sh).
+# `make deb` (dpkg-buildpackage) writes its results one level above the source tree, so
+# both builds run in copies under a temporary directory, never in the checkout.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+VERSION="$(dpkg-parsechangelog -l "$ROOT/debian/changelog" -S Version)"
 
 echo "== clean slate: remove any prior installation (hardened against box reuse) =="
 dpkg --purge linuxmuster-squid >/dev/null 2>&1 || true
 
-echo "== build .deb (0.9.0) =="
-VERSION=0.9.0 bash "$ROOT/packaging/build-deb.sh"
-DEB="$ROOT/linuxmuster-squid_0.9.0_all.deb"
+echo "== build dependencies (debian/control) =="
+apt-get update -qq
+(cd "$ROOT" && apt-get build-dep -y -q .)
+
+# build <dir> [version]: `make deb` in a copy of the tree; with a version, that copy gets one
+# changelog entry on top, so the package (and the lmnsquid wheel) carry it.
+build() {
+    local dir=$1 version=${2:-}
+    mkdir -p "$dir/src"
+    tar -C "$ROOT" --exclude=./.git --exclude=./.venv -cf - . | tar -C "$dir/src" -xf -
+    if [ -n "$version" ]; then
+        { printf 'linuxmuster-squid (%s) lmn73; urgency=medium\n\n' "$version"
+          printf '  * deb_smoke.sh: upgrade test build.\n\n'
+          printf ' -- Kevin Stenzel <mail@kevin-stenzel.de>  %s\n\n' "$(date -R)"
+          cat "$dir/src/debian/changelog"; } > "$dir/changelog"
+        mv "$dir/changelog" "$dir/src/debian/changelog"
+    fi
+    (cd "$dir/src" && make deb) > "$dir/build.log" 2>&1 || { tail -n 40 "$dir/build.log"; return 1; }
+}
+
+echo "== build .deb ($VERSION) =="
+build "$WORK/a"
+DEB="$WORK/a/linuxmuster-squid_${VERSION}_amd64.deb"
 
 echo "== install =="
 apt-get install -y -q "$DEB" || { dpkg -i "$DEB" || true; apt-get -y -f install; }
@@ -36,10 +62,11 @@ else
 fi
 
 PID_BEFORE="$(systemctl show -p MainPID --value linuxmuster-squid.service)"
-echo "== Upgrade to 0.9.1 (MainPID before=$PID_BEFORE) =="
-VERSION=0.9.1 bash "$ROOT/packaging/build-deb.sh"
-apt-get install -y -q "$ROOT/linuxmuster-squid_0.9.1_all.deb" \
-    || dpkg -i "$ROOT/linuxmuster-squid_0.9.1_all.deb"
+NEXT="$VERSION+smoke1"
+echo "== Upgrade to $NEXT (MainPID before=$PID_BEFORE) =="
+build "$WORK/b" "$NEXT"
+apt-get install -y -q "$WORK/b/linuxmuster-squid_${NEXT}_amd64.deb" \
+    || dpkg -i "$WORK/b/linuxmuster-squid_${NEXT}_amd64.deb"
 sleep 4
 systemctl is-active linuxmuster-squid.service
 dpkg -s linuxmuster-squid | grep '^Version:'

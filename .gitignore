@@ -23,9 +23,12 @@ dist/
 build/
 
 # --- Debian packaging build artifacts ---
+# dpkg-buildpackage writes the .deb, .changes, .buildinfo, .dsc and the source tarball one
+# level ABOVE this tree; these are what debhelper leaves inside it (`make deb` cleans them).
 debian/.debhelper/
 debian/files
 debian/*.substvars
+debian/debhelper-build-stamp
 debian/linuxmuster-squid/
 *.deb
 *.buildinfo

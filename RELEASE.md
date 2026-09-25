@@ -33,7 +33,7 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
 
 - **Data-plane image:** built by the CI on each push/tag; **reference it in production only via
   `@sha256` digest** (instance validation enforces tag/digest). Which digest goes live is decided by
-  a **merged Renovate PR** (`automerge:false`), never automatically.
+  a **merged PR** (raised by hand while Renovate is disabled), never automatically.
 - **`.deb` (control-plane tooling):** built by CI (`release.yml`) on every `v*` tag — in the
   `ghcr.io/linuxmuster/lmndev-runner:24.04` container (pinned by digest), with the venv's Python
   packages installed only from `controlplane/requirements.lock` (`--require-hashes`),
@@ -41,15 +41,23 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   `ubuntu-24.04` (the upgrade smoke installs the newest published release, gives it an
   admin's config and state and upgrades onto it) — and
   attached to the GitHub Release (`gh release download … && apt install ./linuxmuster-squid_*.deb`).
-  The release is created as a **draft**, the `.deb` is uploaded and its SHA-256 compared with
-  the build, and only then is it published: GitHub's immutable releases freeze tag and assets
-  at publication.
+  The release is created as a **draft**, the `.deb`, the source package (`.dsc`, `.tar.xz`)
+  and the `.changes`/`.buildinfo` are uploaded and their SHA-256 compared with the build, and
+  only then is it published: GitHub's immutable releases freeze tag and assets at publication.
+  The job fails unless the published release reports `immutable: true`. With the optional
+  repository secret `IMMUTABLE_CHECK_TOKEN` (fine-grained, this repository only,
+  "Administration: Read-only") it also refuses to publish, leaving the draft, while immutable
+  releases are off; `GITHUB_TOKEN` cannot read that setting.
   The version is the top entry of `debian/changelog` (`7.3.N`, distribution `lmn73`); the
-  workflow refuses a tag that does not match it. Build locally with `make deb` (as root, or in
-  the same container: see `Makefile`). An
+  workflow refuses a tag that does not match it. Build locally with `make deb`
+  (dpkg-buildpackage, which needs no root; in the same container, started as root for
+  `apt-get build-dep`: the command is in the `Makefile`). An
   `apt install` of the new `.deb` **automatically restarts the service** (postinst `try-restart`),
-  so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). ⏸ Signing:
-  see `packaging/build-deb.sh` (GPG key / lmn73 repo `Release` signature).
+  so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). Distribution:
+  the GitHub release is the only channel for now. ⏸ An apt archive of our own
+  (`lmndeb.fair-comp.de`, decided by Kevin) comes later; apt verifies the signed repository
+  `Release` (InRelease / Release.gpg) there, not single `.deb` signatures, so no `dpkg-sig` per
+  package. The package does not go into deb.linuxmuster.net.
 - **Git tag** `v<version>` = the changelog head (`v7.3.0` for `7.3.0`, `v7.3.1-rc1` for
   `7.3.1~rc1`), set by Kevin on `main`; never in a feature PR.
 
@@ -60,5 +68,7 @@ CI green (`ci.yml`: fast tier, container build, install smoke, upgrade smoke) �
 release version in the changelog head and tags `v<version>` → `release.yml` builds, smokes and
 publishes the GitHub Release with generated notes → update the image/`.deb` digest in the docs.
 Build inputs (action SHAs, build-image and base-image digests, the Python lock files, the
-Renovate engine) change only through Renovate PRs (`.github/workflows/renovate.yml`, Thursdays)
-that a human merges; they then ship with the next release like any other change.
+Renovate engine) change only through PRs that a human merges; they then ship with the next
+release like any other change. The Renovate workflow (`.github/workflows/renovate.yml`) that
+proposed them is disabled (Kevin, 2026-09-25) until Renovate returns with a GitHub App; until
+then they are raised by hand (`bash packaging/lock-deps.sh` for the locks).

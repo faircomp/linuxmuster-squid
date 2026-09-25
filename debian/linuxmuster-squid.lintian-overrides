@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# The package ships a self-contained Python venv under /opt/linuxmuster-squid/venv on
+# purpose: hash-pinned dependencies, independent of the distribution's Python libraries.
+# The five overrides below follow from that.
+
+# The venv lives in /opt since 1.x; the unit, the admin docs and every installation use it.
+dir-or-file-in-opt [opt/*]
+
+# pip installs the wheels' __pycache__; debian/venv-relocate recompiles each .pyc as
+# checked-hash and its --verify proves every one valid before dh_builddeb.
+package-installs-python-pycache-dir [opt/linuxmuster-squid/venv/*]
+
+# The venv's console scripts must run the venv's interpreter, not /usr/bin/python3.
+wrong-path-for-interpreter * [opt/linuxmuster-squid/venv/*]
+
+# The wheels' shared objects ship exactly as pip installed them (RECORD hashes are verified
+# at build time); stripping would change files pip recorded.
+unstripped-binary-or-object [opt/linuxmuster-squid/venv/*]
+
+# PyYAML's wheel links libyaml statically; it is part of that hash-pinned wheel.
+embedded-library libyaml [opt/linuxmuster-squid/venv/*]
