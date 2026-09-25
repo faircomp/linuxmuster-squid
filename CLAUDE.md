@@ -43,8 +43,9 @@ conventions are `../../docs/paket-konventionen.md` there. The rules that bite he
   `release.yml` refuses a tag that does not match the changelog.
 - **Changelog:** one bullet in the top block of `debian/changelog` per user-visible change,
   in the same PR, written for admins in English. There is no `CHANGELOG.md`.
-- **Build:** `make deb` = `dpkg-buildpackage` (debhelper 13, no root needed); the `.deb` and
-  the source package land one level above the tree. Build it in the digest-pinned
+- **Build:** `make deb` = `dpkg-buildpackage` (debhelper 13, no root needed) on a copy of the
+  tracked files, so the source package holds nothing untracked; the `.deb` and the source
+  package land one level above the tree. Build it in the digest-pinned
   `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`.
   `debian/venv-relocate` is byte-identical in squid, radius and readonlydc: change it in the
   hub (`linuxmusterDEV/work/plans/venv-debian-umbau/`) and copy it to all three.
