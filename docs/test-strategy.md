@@ -16,25 +16,29 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
 - **Python:** `ruff check`, `ruff format --check`, `mypy`, `pytest`
   (control-plane logic, API handlers with the httpx TestClient, CLI client). CI runs them
   against the locked dependency versions the `.deb` ships (`controlplane/requirements.lock`).
-- **Lock files:** `bash packaging/lock-deps.sh --check` — every line is one uv writes, the
-  header is the canonical command, the locks still satisfy `controlplane/pyproject.toml` and
-  the `.in` files, every pin has a CPython 3.12 manylinux x86_64 wheel, and every committed
-  hash is one PyPI lists for that pin (negative cases: direct-URL line with the hash in the
-  fragment, option line, requirement without hashes, added dependency, dropped pin,
-  unsatisfiable constraint, edited header, pin younger than 7 days, pin without a cp312
-  wheel, foreign hash). The
-  package build runs the same gate (`packaging/build-venv.sh`: `--lint` before pip reads a
-  lock, then `--check` with the uv the build lock pins), so no build ships a lock CI would
-  reject; it also fails when a download does not match its hash, when a pin has no wheel
-  (sdist-only), or when `pip freeze` of the venv differs from the lock plus lmnsquid or lists
-  anything but `name==version` (`--verify-freeze`).
-  `bash scripts/tests/lock_gates.sh` keeps the manipulations of the stage A cold verification
-  red for good: an indented `name @ url#sha256=` line, `--extra-index-url`, a pin's hashes
-  removed, a changed hash (the wheel's and the sdist's), an extra pin with valid hashes, a pin
-  without hash, in both locks where it matters; each must be rejected for its own reason, and
-  `--verify-freeze` must reject a direct-URL, editable, extra, missing or re-versioned package.
-  CI also runs `lock_gates.sh --build`: every lock case through `make deb`, which must stop
-  in the lock gate before anything is installed into the shipped venv.
+- **Lock files:** `bash packaging/lock-deps.sh --gate`, the first step of the fast tier and of
+  every package build (`packaging/build-venv.sh`), before anything from a lock is installed
+  anywhere: every line is one uv writes; `packaging/requirements-uv.lock` pins uv and nothing
+  else, with hashes PyPI publishes and older than 7 days (standard library only); with that
+  uv, installed into a venv of its own and run by absolute path, every hash of the three locks
+  is one PyPI publishes for exactly that `name==version`, the pins are exactly the closure of
+  `controlplane/pyproject.toml` and the `.in` files within the 7-day cutoff, every pin has a
+  CPython 3.12 manylinux x86_64 wheel, and the header is the canonical command. No program,
+  interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that. After
+  installing, the build venv must be exactly the build lock plus ensurepip's pip and the
+  shipped venv exactly the lock plus lmnsquid, every line `name==version` (`--verify-freeze`).
+  `bash scripts/tests/lock_gates.sh` keeps the manipulations of the cold verifications
+  rejected for good, each for its own reason: an indented `name @ url#sha256=` line,
+  `--extra-index-url`, a pin's hashes removed, a changed hash (the wheel's and the sdist's),
+  an extra pin with valid hashes, a pin without hash, in the locks where it matters; for the
+  uv lock an extra pin, a changed hash, a foreign package and a uv younger than 7 days; and
+  the K1 wheel, with its own `diff`, `comm`, `sort`, `awk`, `grep`, `cut`, `cp`, `python3`
+  and `uv` in `bin/` and a marker-writing `.pth`, "published" with its real hash by a local
+  PEP 691 index, in the build lock alone and in both locks: only the closure check can stop
+  it, and nothing of it may run (no marker). `--verify-freeze` must reject a direct-URL,
+  editable, extra, missing or re-versioned package. CI also runs `lock_gates.sh --build`:
+  every lock case through `make deb`, which must stop in the gate before any venv of the
+  build exists, without a .deb and without a marker.
 - **Shell:** `shellcheck` for `image/*.sh`, `scripts/**`.
 - **Squid config:** `squid -k parse` against rendered templates (in the container;
   green only with `squid-openssl` once `ssl_bump` is active).
