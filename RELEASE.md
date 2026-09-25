@@ -52,11 +52,11 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   workflow refuses a tag that does not match it. Build locally with `make deb`
   (dpkg-buildpackage, no root needed; in the same container: see `Makefile`). An
   `apt install` of the new `.deb` **automatically restarts the service** (postinst `try-restart`),
-  so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). ⏸ Signing:
-  apt verifies the signed repository `Release` (InRelease / Release.gpg), not single `.deb`
-  signatures, so the `.deb` goes into the lmn73 **reprepro** repository (deb.linuxmuster.net),
-  which signs its `Release` with the linuxmuster GPG key (`SignWith`); no `dpkg-sig` per
-  package. Needs the real key and repository access (human gate).
+  so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). Distribution:
+  the GitHub release is the only channel for now. ⏸ An apt archive of our own
+  (`lmndeb.fair-comp.de`, decided by Kevin) comes later; apt verifies the signed repository
+  `Release` (InRelease / Release.gpg) there, not single `.deb` signatures, so no `dpkg-sig` per
+  package. The package does not go into deb.linuxmuster.net.
 - **Git tag** `v<version>` = the changelog head (`v7.3.0` for `7.3.0`, `v7.3.1-rc1` for
   `7.3.1~rc1`), set by Kevin on `main`; never in a feature PR.
 
