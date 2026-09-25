@@ -8,7 +8,8 @@ linuxmuster-squid (7.3.5) lmn73; urgency=medium
     7.3.4 to it like any other version. No behaviour change: the service,
     the CLI, the configuration and the files under /opt/linuxmuster-squid
     are the same; the package additionally installs its changelog and
-    copyright under /usr/share/doc/linuxmuster-squid.
+    copyright under /usr/share/doc/linuxmuster-squid and its lintian
+    overrides under /usr/share/lintian/overrides.
   * Every build checks the Python lock files the same way CI does, before
     anything from them is installed or run, and stops unless each lock holds
     only lines uv writes, only hashes PyPI publishes for exactly that version,
