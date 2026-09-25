@@ -9,15 +9,20 @@
 #   bash packaging/lock-deps.sh            re-resolve after an input changed; every pin that
 #                                          still fits is kept (what Renovate does for a bump)
 #   bash packaging/lock-deps.sh --upgrade  resolve from scratch (what Renovate's weekly refresh does)
-#   bash packaging/lock-deps.sh --check    CI gate, see below
+#   bash packaging/lock-deps.sh --check    gate of the fast tier AND of every build, see below
+#   bash packaging/lock-deps.sh --lint     only the grammar of both locks: offline, no uv
+#   pip freeze --all | bash packaging/lock-deps.sh --verify-freeze <lock> <own name==version>
+#                                          build gate: the venv is exactly <lock> plus the own
+#                                          package, and every line of it is name==version
 #
 # uv writes the command into each lock's header and Renovate's pip-compile manager re-runs
 # exactly that header, so keep the `--opt=value` form and only options Renovate accepts (it
 # rejects --python-platform, --only-binary and --no-config; the config is switched off through
 # the environment). --exclude-newer=P7D: nothing uploaded in the last 7 days is picked, the
-# window in which a compromised release usually is still unnoticed. Needs uv (the version
-# ci.yml pins) and a linux/x86_64 host: markers are evaluated for the host, the Python version
-# is forced to the target's 3.12 (Ubuntu 24.04).
+# window in which a compromised release usually is still unnoticed. Needs uv (the one
+# packaging/requirements-build.lock pins: the build and the fast tier install it from there)
+# and a linux/x86_64 host: markers are evaluated for the host, the Python version is forced to
+# the target's 3.12 (Ubuntu 24.04). --lint and --verify-freeze need neither uv nor network.
 # uv copies the hashes of an existing output file over without fetching them again, so every
 # compile here starts from an empty file or from bare pins, never from the committed lock.
 set -euo pipefail
@@ -37,8 +42,9 @@ HEADER_OPTS=(--python-version=3.12 --exclude-newer=P7D --generate-hashes)
 command_for() { echo "uv pip compile $(inputs "$1") ${HEADER_OPTS[*]} --output-file=$1"; }
 
 # Every requirement line (neither comment nor indented), whatever it looks like, so a line
-# the grammar below would reject still shows up as a pin that does not match.
-pins() { grep -vE '^(#|[[:space:]]|$)' "$1" | cut -d' ' -f1 | LC_ALL=C sort || true; }
+# the grammar below would reject still shows up as a pin that does not match. An unreadable
+# file fails (awk), it never yields an empty list.
+pins() { awk '/^[^#[:space:]]/ { print $1 }' "$1" | LC_ALL=C sort; }
 hashes() {
     awk '/^[^#[:space:]]/ { pin = $1 } /^ +--hash=/ { h = $1; sub(/^--hash=/, "", h); print pin, h }' "$1" \
         | LC_ALL=C sort
@@ -67,6 +73,41 @@ grammar() {
         { bad("not a line uv writes") }
         END { if (cont) bad("requirement without a closing hash line"); exit err }
     ' "$1"
+}
+
+# PEP 503 names, so pip freeze (PyYAML, typing_extensions) and uv (pyyaml, typing-extensions)
+# compare equal.
+normalize() { awk -F'==' '{ n = tolower($1); gsub(/[-_.]+/, "-", n); print n "==" $2 }' | LC_ALL=C sort; }
+
+# `pip freeze --all` of the built venv on stdin: every line must be a plain name==version pin
+# (a direct-URL install shows up as `name @ file://...`, an editable one as `-e ...`), and the
+# pins must be exactly those of <lock> plus the own package. Every step is checked and nothing
+# runs in a process substitution, so an error fails the gate instead of shortening a list.
+verify_freeze() {  # <lock> <own name==version>
+    local lock=$1 own=$2 freeze line odd=0 want have
+    if [ ! -f "$lock" ] || [ ! -r "$lock" ]; then
+        echo "verify-freeze: cannot read $lock" >&2; return 1
+    fi
+    freeze="$(cat)" || { echo "verify-freeze: cannot read pip freeze from stdin" >&2; return 1; }
+    while IFS= read -r line; do
+        if ! [[ $line =~ ^[A-Za-z0-9][A-Za-z0-9._-]*==[^[:space:]]+$ ]]; then
+            echo "verify-freeze: not a name==version pin: '$line'" >&2; odd=$((odd + 1))
+        fi
+    done <<< "$freeze"
+    if [ "$odd" != 0 ]; then
+        echo "verify-freeze: the venv holds $odd line(s) that are not plain pins (above)" >&2
+        return 1
+    fi
+    want="$(pins "$lock")" || { echo "verify-freeze: cannot read the pins of $lock" >&2; return 1; }
+    want="$(printf '%s\n%s\n' "$want" "$own" | normalize)" || return 1
+    have="$(printf '%s\n' "$freeze" | normalize)" || return 1
+    printf '%s\n' "$want" > "$TMP/want" || return 1
+    printf '%s\n' "$have" > "$TMP/have" || return 1
+    if ! diff -u "$TMP/want" "$TMP/have" >&2; then
+        echo "verify-freeze: the venv is not exactly $lock plus $own (-: expected, +: venv)" >&2
+        return 1
+    fi
+    echo "verify-freeze: venv = $lock ($(($(wc -l < "$TMP/want") - 1)) pins) + $own"
 }
 
 # resolve <lock> <seed: pins|empty> <output> <uv options...>
@@ -115,16 +156,23 @@ case "$mode" in
             if [ "$(sed -n 2p "$lock")" != "#    $(command_for "$lock")" ]; then
                 fail "header is not: $(command_for "$lock")"
             fi
+            # Lists go through files, not process substitutions: under `set -e` a failing
+            # pins/hashes/resolve stops the gate here instead of handing diff an empty list.
+            pins "$lock" > "$TMP/lock.pins"
+            hashes "$lock" > "$TMP/lock.hashes"
             resolve "$lock" pins "$TMP/inputs.lock" "${HEADER_OPTS[@]}"
-            if ! diff -u <(pins "$lock") <(pins "$TMP/inputs.lock"); then
+            pins "$TMP/inputs.lock" > "$TMP/inputs.pins"
+            if ! diff -u "$TMP/lock.pins" "$TMP/inputs.pins"; then
                 fail "pins no longer match the inputs or are younger than 7 days; run: bash packaging/lock-deps.sh"
             fi
             resolve "$lock" pins "$TMP/target.lock" "${HEADER_OPTS[@]}" \
                 --python-platform=x86_64-manylinux_2_39 --only-binary=:all:
-            if ! diff -u <(pins "$lock") <(pins "$TMP/target.lock"); then
+            pins "$TMP/target.lock" > "$TMP/target.pins"
+            if ! diff -u "$TMP/lock.pins" "$TMP/target.pins"; then
                 fail "a pinned version has no wheel for CPython 3.12 on Ubuntu 24.04 x86_64"
             fi
-            unknown="$(LC_ALL=C comm -23 <(hashes "$lock") <(hashes "$TMP/inputs.lock"))"
+            hashes "$TMP/inputs.lock" > "$TMP/inputs.hashes"
+            unknown="$(LC_ALL=C comm -23 "$TMP/lock.hashes" "$TMP/inputs.hashes")"
             if [ -n "$unknown" ]; then
                 echo "$unknown"
                 fail "hashes PyPI does not list for these pins (above)"
@@ -135,8 +183,26 @@ case "$mode" in
         done
         exit "$rc"
         ;;
+    --lint)
+        shift
+        if [ "$#" -eq 0 ]; then set -- "${LOCKS[@]}"; fi
+        rc=0
+        for lock in "$@"; do
+            if ! grammar "$lock"; then
+                echo "::error file=$lock::lines a lock never contains (see above)"; rc=1
+            fi
+        done
+        if [ "$rc" = 0 ]; then echo "lint ok: $*"; fi
+        exit "$rc"
+        ;;
+    --verify-freeze)
+        if [ "$#" -ne 3 ]; then
+            echo "usage: lock-deps.sh --verify-freeze <lock> <own name==version>" >&2; exit 2
+        fi
+        verify_freeze "$2" "$3"
+        ;;
     *)
-        sed -n '5,12p' "$0"
+        sed -n '5,16p' "$0"
         exit 2
         ;;
 esac

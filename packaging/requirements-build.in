@@ -1,8 +1,11 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Build backend of controlplane/ (its [build-system] requires). packaging/build-venv.sh
-# installs it from packaging/requirements-build.lock into a throwaway venv and builds the
-# lmnsquid wheel there without build isolation, so no unpinned setuptools is fetched and
-# nothing of it is shipped.
+# The throwaway build venv of packaging/build-venv.sh, installed from
+# packaging/requirements-build.lock; nothing of it is shipped.
+# Build backend of controlplane/ (its [build-system] requires): the lmnsquid wheel is built
+# without build isolation, so no unpinned setuptools is fetched.
 setuptools>=68
+# uv for the lock gate: build-venv.sh runs `lock-deps.sh --check` with it before anything goes
+# into the shipped venv, and the fast tier (ci.yml) installs the same uv from this lock.
+uv
