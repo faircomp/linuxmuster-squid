@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# From linuxmusterDEV/templates/ci.yml. Four stages on every push/PR: the fast tier
-# (lint/type/unit + shell + license compliance + blocklist smoke), the package build in
-# the same container upstream CI uses (proves it builds on the target Ubuntu/Python),
-# an install smoke on ubuntu-24.04 and an upgrade smoke on top of the newest published
-# release. The heavy Kerberos + docker-py E2E runs on crabbox, not in GitHub CI.
+# From linuxmusterDEV/templates/ci.yml. On every push/PR: the fast tier (lint/type/unit +
+# shell + license compliance + lock gates + blocklist smoke), the package build with
+# dpkg-buildpackage in the same container upstream CI uses (proves it builds on the target
+# Ubuntu/Python; lintian on the .deb), the lock cases through that build, the file-tree gate
+# against the newest release, an install smoke on ubuntu-24.04 and an upgrade smoke on top
+# of the newest published release. The heavy Kerberos + docker-py E2E runs on crabbox, not
+# in GitHub CI.
 #
 # Supply chain (stage A, work/plans/paketarchiv.md §2): every input of the build is pinned to
 # an immutable reference, because a released .deb vouches for everything that ran in its build.
@@ -64,8 +66,10 @@ jobs:
             mypy==2.2.0 \
             reuse==6.2.0 \
             pytest==9.1.1 \
-            uv==0.12.18 \
             pytest-asyncio types-PyYAML
+          # uv (with setuptools) from the build lock, hash-checked: the lock gate below runs
+          # with the same uv as the one in every package build (packaging/build-venv.sh).
+          pip install --require-hashes --no-deps --only-binary :all: -r packaging/requirements-build.lock
           pip install --require-hashes --no-deps --only-binary :all: -r controlplane/requirements.lock
           pip install --no-deps ./controlplane
           pip check
@@ -73,6 +77,10 @@ jobs:
       # every hash in them must be one PyPI lists for that pin.
       - name: lock files match their inputs
         run: bash packaging/lock-deps.sh --check
+      # The manipulations of the stage A cold verification stay rejected by --lint, --check and
+      # --verify-freeze; the lock-gates-build job runs the same lock cases through make deb.
+      - name: lock gates (regression)
+        run: bash scripts/tests/lock_gates.sh
       - name: ruff check
         run: ruff check .
       # Formatting is a gate, not a suggestion: without it the tree drifts away from
@@ -80,12 +88,18 @@ jobs:
       # reformatting noise. Same pinned ruff as the lint step, so local == CI.
       - name: ruff format --check
         run: ruff format --check .
+      # No .py extension, so `ruff check .` does not see it; byte-identical in squid, radius
+      # and readonlydc (linuxmusterDEV work/plans/venv-debian-umbau/).
+      - name: ruff (debian/venv-relocate)
+        run: |
+          ruff check --line-length 100 debian/venv-relocate
+          ruff format --check --line-length 100 debian/venv-relocate
       - name: mypy
         run: mypy --config-file controlplane/pyproject.toml controlplane/lmnsquid
       - name: pytest
         run: pytest -q controlplane/tests
       - name: shellcheck
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck && shellcheck --severity=warning $(git ls-files '*.sh')
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck && shellcheck --severity=warning $(git ls-files '*.sh') debian/postinst debian/prerm debian/postrm
       - name: reuse (license compliance)
         run: reuse lint
       - name: blocklist smoke
@@ -116,23 +130,159 @@ jobs:
       options: --user root
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Build package (make deb wraps packaging/build-deb.sh)
+      - name: Build package (make deb = dpkg-buildpackage; build deps via build-dep)
         run: |
-          # No debian/control at the root yet (that is the debian/ conversion PR), so
-          # install what build-deb.sh needs by hand instead of `apt-get build-dep`.
-          apt-get update -qq && apt-get install -y -qq python3-venv
+          # Never `2>/dev/null || true`: a build dependency that cannot be installed must fail
+          # here, where the reason is in the log.
+          apt-get update -qq && apt-get build-dep -y -qq .
           make deb
-          mkdir -p output && mv ./linuxmuster-squid_*.deb output/
+          # dpkg-buildpackage writes one level above the source tree.
+          mkdir -p output && mv ../*.deb ../*.changes ../*.buildinfo ../*.dsc ../*.tar.xz output/
           # DEBIAN/md5sums must cover every shipped regular file, or `dpkg --verify` is a no-op.
           deb=$(ls output/*.deb)
+          dpkg-deb -I "$deb"
           dpkg-deb --ctrl-tarfile "$deb" | tar -tf - | grep -qx './md5sums'
           test "$(dpkg-deb -c "$deb" | grep -c '^-')" = "$(dpkg-deb --ctrl-tarfile "$deb" | tar -xOf - ./md5sums | wc -l)"
           echo "md5sums: $(dpkg-deb --ctrl-tarfile "$deb" | tar -xOf - ./md5sums | wc -l) files"
+      - name: Lintian (the .deb only)
+        run: |
+          # Never lint the .changes: `lmn73` is not a known distribution, which makes lintian
+          # fail with E: bad-distribution-in-changes-file on every single build. The venv's
+          # expected tags are overridden, with reasons, in debian/linuxmuster-squid.lintian-overrides.
+          lintian --fail-on error output/*.deb
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages
           path: output/
           if-no-files-found: error
+
+  # The lock gate is wired into the build (packaging/build-venv.sh): every manipulated lock of
+  # scripts/tests/lock_gates.sh must stop `make deb` in that gate, before anything reaches the
+  # shipped venv and without leaving a .deb.
+  lock-gates-build:
+    needs: resolve
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ needs.resolve.outputs.image }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Every manipulated lock stops make deb in the lock gate
+        run: |
+          apt-get update -qq && apt-get build-dep -y -qq .
+          LOCK_GATES_VERBOSE=1 bash scripts/tests/lock_gates.sh --build
+
+  # The one failure mode of a packaging change that no other job would notice: a file quietly
+  # falls out of the package or changes mode, because debhelper treats it differently from the
+  # old hand-made staging tree (dh_fixperms would make the wheels' .so files 0644). It would
+  # only show on a school server. So every build is compared, path by path, with the newest
+  # published release: a path that disappears or changes mode/owner fails the build. Paths of
+  # third-party distributions in the venv come and go with the lock; their completeness is
+  # proven by debian/venv-relocate --verify (RECORD) and the freeze gate, so only those are
+  # reported instead of failed. Permanent, not just for the debian/ conversion; the job is the
+  # same in ci.yml and release.yml.
+  file-tree:
+    needs: package
+    runs-on: ubuntu-latest        # GitHub-hosted: gh is installed here, not in the container
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: packages
+          path: packages/
+      - name: Fetch the newest published release
+        id: prev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p previous
+          # Prefer the newest real release, fall back to the newest prerelease. Skipping is
+          # only legitimate when the repo has NO release at all: this gate stands between a
+          # silently shrunk package and a school server.
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 \
+                  --json tagName,isDraft,isPrerelease \
+                  --jq '[.[] | select(.isDraft == false and .isPrerelease == false)][0].tagName // ""')
+          if [ -z "$tag" ]; then
+            tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 \
+                    --json tagName,isDraft --jq '[.[] | select(.isDraft == false)][0].tagName // ""')
+            [ -n "$tag" ] && echo "::warning::no full release yet, comparing against prerelease $tag"
+          fi
+          if [ -z "$tag" ]; then
+            if [ "$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq 'length')" != "0" ]; then
+              echo "::error::releases exist but none could be selected - refusing to skip"; exit 1
+            fi
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "::notice::first release of this package, nothing to compare against"
+            exit 0
+          fi
+          for i in 1 2 3; do
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir previous && break
+            echo "download attempt $i failed, retrying"; sleep 10
+          done
+          test -n "$(ls previous/*.deb 2>/dev/null)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Compare the file tree with the released package
+        if: steps.prev.outputs.skip != '1'
+        env:
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+        run: |
+          set -euo pipefail          # without pipefail `tee` would swallow the exit code
+          # mode owner path, sorted. Directories are compared too (an empty one would vanish
+          # unnoticed in a file-only comparison); a symlink prints "path -> target", so a
+          # retargeted link (/usr/bin/lmnsquid, the venv's python and lib64) is drift too.
+          norm() { dpkg-deb -c "$1" | awk '{t = ($7 == "->" ? " " $7 " " $8 : ""); print $1, $2, $6 t}' | LC_ALL=C sort; }
+          norm previous/*.deb > old.txt
+          norm packages/*.deb > new.txt
+          python3 - old.txt new.txt linuxmuster-squid lmnsquid "$PREV_TAG" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import re
+          import sys
+
+          old_f, new_f, PKG, OWN = sys.argv[1:5]
+          TAG = sys.argv[5] if len(sys.argv) > 5 else "previous release"
+          SP = rf"opt/{PKG}/venv/lib/python3\.12/site-packages/"
+          # 1. the own dist-info carries the version: compare it under a fixed name.
+          DIST = re.compile(rf"^({SP}{OWN})-[^/]+\.dist-info")
+          # 2. third-party distributions come and go with every lock bump; their completeness is
+          #    proven by `debian/venv-relocate --verify` (RECORD) and the freeze == lock gate, so a
+          #    path of theirs that disappears is reported, not failed. Mode/owner is checked everywhere.
+          THIRD = re.compile(rf"^{SP}(?!{OWN}[/-])")
+          # Paths that may legitimately disappear. Add an entry ONLY together with the changelog
+          # sentence that explains it to admins.
+          ALLOW_GONE = set()
+
+
+          def read(name):
+              rows = {}
+              for line in open(name):
+                  mode, owner, path = line.rstrip("\n").split(" ", 2)
+                  if path == "./":  # the package root: dpkg never applies its mode
+                      continue
+                  rows[DIST.sub(r"\1-VERSION.dist-info", path.removeprefix("./"))] = (mode, owner)
+              return rows
+
+
+          old, new = read(old_f), read(new_f)
+          gone = sorted(set(old) - set(new))
+          added = sorted(set(new) - set(old))
+          changed = sorted(p for p in set(old) & set(new) if old[p] != new[p])
+          strict_gone = [p for p in gone if not THIRD.match(p) and p not in ALLOW_GONE]
+          print(f"## File tree vs {TAG}\n")
+          print(f"- released: {len(old)} entries, built: {len(new)} entries")
+          print(f"- third-party venv paths: {sum(1 for p in gone if THIRD.match(p))} gone, "
+                f"{sum(1 for p in added if THIRD.match(p))} added (lock changes, see RECORD check)")
+          for p in added:
+              if not THIRD.match(p):
+                  print(f"- added: `{p}`")
+          for p in strict_gone:
+              print(f"::error::file lost from the package: {p}")
+          for p in changed:
+              print(f"::error::mode or owner changed: {p}: {old[p]} -> {new[p]}")
+          if strict_gone or changed:
+              sys.exit(1)
+          print("\nfile tree: nothing lost, no mode or owner change")
+          PY
 
   install-smoke:
     needs: package
@@ -178,7 +328,7 @@ jobs:
       # run failed on it after earlier runs had passed. One install proves nothing about a
       # race, so the same .deb is configured 30 more times, failing on the first error.
       - name: Configure loop (15x purge + fresh install, 15x reinstall/dpkg-reconfigure)
-        run: sudo bash scripts/tests/install_loop.sh packages/linuxmuster-squid_*_all.deb 15
+        run: sudo bash scripts/tests/install_loop.sh packages/linuxmuster-squid_*_amd64.deb 15
 
   # Kevin's rule: a release must still install cleanly ON TOP OF the version that is
   # already running on a school server. This job installs the newest published release
