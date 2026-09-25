@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# uv alone, the resolver of the lock gate (packaging/lock-deps.sh --gate). It has a lock of its
+# own so that it can be installed and run while the other locks are still unproven: the gate
+# first proves with the standard library that packaging/requirements-uv.lock pins uv and
+# nothing else, with hashes PyPI publishes and older than 7 days, installs it into a venv of
+# its own and runs it by absolute path. uv has no dependencies.
+uv

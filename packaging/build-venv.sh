@@ -15,6 +15,10 @@ BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 LOCK_DEPS="$ROOT/packaging/lock-deps.sh"
 LOCK="$ROOT/controlplane/requirements.lock"
+BUILD_LOCK="$ROOT/packaging/requirements-build.lock"
+# A fresh cache for the gate's uv: nothing a previous run left behind takes part, and a build
+# as a user without a writable home works.
+export UV_CACHE_DIR="$BUILD/uv-cache"
 
 # Every third-party file in the package comes from a lock file with sha256 hashes: pip
 # resolves nothing and never takes "the newest" (--require-hashes --no-deps), so two builds
@@ -24,19 +28,23 @@ LOCK="$ROOT/controlplane/requirements.lock"
 # packaging/lock-deps.sh.
 #
 # The locks pass the same gate here as in the fast tier, so no build (`make deb`, the release)
-# can ship a lock that CI would reject, whether or not CI ran on that commit. First their
-# grammar, offline, before pip reads either file: pip would also install an indented
-# `name @ url#sha256=...` line or follow an index option. Then, with the uv the build lock
-# pins, the full check, which needs PyPI: the pins still match their inputs (an extra pin with
-# valid hashes passes pip and the freeze gate below), every pin has a target wheel, and every
-# hash is one PyPI lists for its pin (a changed hash of a file pip never downloads passes pip).
-echo "== lock files: grammar =="
-bash "$LOCK_DEPS" --lint
-echo "== build venv (throwaway, not shipped): lock check, lmnsquid wheel =="
+# can ship a lock that CI would reject, whether or not CI ran on that commit, and the gate runs
+# before anything from a lock is installed: a wheel may ship its own diff, comm or python3
+# into its venv's bin/, and a .pth file runs in every interpreter of that venv. So nothing of
+# the build venv or the shipped venv runs, and neither bin/ is ever put on PATH, until every
+# lock is proven: only lines uv writes, every hash one PyPI publishes for exactly that
+# name==version, the pins exactly the closure of the declared inputs, nothing younger than 7
+# days (packaging/lock-deps.sh --gate, with a uv from a lock of its own, run by absolute path).
+echo "== lock gate =="
+bash "$LOCK_DEPS" --gate
+echo "== build venv (throwaway, not shipped): lmnsquid wheel =="
 python3 -m venv "$BUILD/venv"
-"$BUILD/venv/bin/pip" install --quiet --require-hashes --no-deps --only-binary :all: \
-    -r "$ROOT/packaging/requirements-build.lock"
-PATH="$BUILD/venv/bin:$PATH" UV_CACHE_DIR="$BUILD/uv-cache" bash "$LOCK_DEPS" --check
+"$BUILD/venv/bin/pip" install --quiet --require-hashes --no-deps --only-binary :all: -r "$BUILD_LOCK"
+# Second layer after installing, as for the shipped venv below: the build venv holds exactly
+# the build lock plus the pip that ensurepip put there.
+PIP_BUNDLED="pip==$(python3 -I -c 'import ensurepip; print(ensurepip.version())')"
+FREEZE="$("$BUILD/venv/bin/pip" freeze --all)"
+bash "$LOCK_DEPS" --verify-freeze "$BUILD_LOCK" "$PIP_BUNDLED" <<< "$FREEZE"
 # No build isolation: it would fetch an unpinned setuptools from PyPI to run here.
 "$BUILD/venv/bin/pip" wheel --quiet --no-deps --no-index --no-build-isolation \
     -w "$BUILD/wheel" "$ROOT/controlplane"

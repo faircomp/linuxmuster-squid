@@ -163,11 +163,18 @@ the published release is immutable. Every change comes as a PR a human merges; R
 (`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run) proposed
 them, PyPI releases only once 7 days old, and is disabled since 2026-09-25 (Kevin) until it
 returns with a GitHub App, so they are raised by hand meanwhile.
-The lock is exactly what its header command produces. The gate (`lock-deps.sh --check`, run by
-the fast tier and by every build with the uv the build lock pins, so a lock CI would reject is
-never built) accepts only lines uv writes, re-resolves the pins with the header's options including the
-7-day cutoff (preferring the locked versions, so it only moves when the lock or its inputs do),
-checks that every pin has a cp312 manylinux wheel and that every hash is one PyPI lists.
+The lock is exactly what its header command produces. The gate (`lock-deps.sh --gate`, the
+first step of the fast tier and of every build, so a lock CI would reject is never built) runs
+before anything from a lock is installed: nothing of a venv filled from a lock runs, and no such
+`bin/` is on PATH, until all locks are proven (a wheel can bring its own `diff` or `python3`
+and a `.pth`). It accepts only lines uv writes; takes uv from `packaging/requirements-uv.lock`,
+which must pin uv alone with hashes PyPI publishes and older than 7 days (checked with the
+standard library), installs it into a venv of its own and runs it by absolute path; then checks
+that every hash is one PyPI publishes for exactly that `name==version`, that the pins are
+exactly the closure of the inputs within the 7-day cutoff (preferring the locked versions, so
+it only moves when the lock or its inputs do) and that every pin has a cp312 manylinux wheel.
+After installing, each venv must hold exactly its lock (`--verify-freeze`). A pin moved to an
+older real release of a needed package passes the gate; that is left to review.
 **Why:** the `.deb` is installed as root on school servers and vouches for everything that ran
 in its build; before, each build took whatever PyPI and the moving image/action tags served.
 **Tool:** `uv pip compile` over pip-tools because it compiles for a Python version other than
