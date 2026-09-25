@@ -88,6 +88,12 @@ e2e(){
   fi
 }
 
+locks(){
+  echo "== lock gates =="
+  # --lint/--verify-freeze cases offline; the --check cases skip themselves without uv.
+  run_step "lock-gates" bash bash scripts/tests/lock_gates.sh
+}
+
 blocklist(){
   echo "== blocklist =="
   if have curl && have tar; then
@@ -101,9 +107,9 @@ mode="${1:-quick}"
 case "$mode" in
   lint)  lint ;;
   unit)  unit ;;
-  quick) lint; unit; blocklist ;;
+  quick) lint; unit; locks; blocklist ;;
   e2e)   e2e ;;
-  all)   lint; unit; blocklist; e2e ;;
+  all)   lint; unit; locks; blocklist; e2e ;;
   *) echo "usage: run.sh [lint|unit|quick|e2e|all]" >&2; exit 2 ;;
 esac
 

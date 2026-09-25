@@ -23,9 +23,18 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   fragment, option line, requirement without hashes, added dependency, dropped pin,
   unsatisfiable constraint, edited header, pin younger than 7 days, pin without a cp312
   wheel, foreign hash). The
-  package build itself fails when a download does not match its hash, when a pin has no
-  wheel (sdist-only), or when `pip freeze` of the venv differs from the lock or lists anything
-  but `name==version`.
+  package build runs the same gate (`packaging/build-venv.sh`: `--lint` before pip reads a
+  lock, then `--check` with the uv the build lock pins), so no build ships a lock CI would
+  reject; it also fails when a download does not match its hash, when a pin has no wheel
+  (sdist-only), or when `pip freeze` of the venv differs from the lock plus lmnsquid or lists
+  anything but `name==version` (`--verify-freeze`).
+  `bash scripts/tests/lock_gates.sh` keeps the manipulations of the stage A cold verification
+  red for good: an indented `name @ url#sha256=` line, `--extra-index-url`, a pin's hashes
+  removed, a changed hash (the wheel's and the sdist's), an extra pin with valid hashes, a pin
+  without hash, in both locks where it matters; each must be rejected for its own reason, and
+  `--verify-freeze` must reject a direct-URL, editable, extra, missing or re-versioned package.
+  CI also runs `lock_gates.sh --build`: every lock case through `make deb`, which must stop
+  in the lock gate before anything is installed into the shipped venv.
 - **Shell:** `shellcheck` for `image/*.sh`, `scripts/**`.
 - **Squid config:** `squid -k parse` against rendered templates (in the container;
   green only with `squid-openssl` once `ssl_bump` is active).

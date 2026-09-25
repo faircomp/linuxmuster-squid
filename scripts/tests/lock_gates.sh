@@ -132,7 +132,9 @@ if [ "${1:-}" = --build ]; then
     # lock, and no case may reach the shipped venv or leave a .deb.
     for c in "${CASES[@]}"; do
         d="$TMP/build-$c"
-        copy "$d/src" && apply "$c" "$d/src" || { echo "WRONG build $c: could not prepare"; FAIL=$((FAIL + 1)); continue; }
+        if ! { copy "$d/src" && apply "$c" "$d/src"; }; then
+            echo "WRONG build $c: could not prepare"; FAIL=$((FAIL + 1)); continue
+        fi
         (cd "$d/src" && make deb) > "$d/log" 2>&1; rc=$?
         reached_pip=0; grep -q '^== build venv' "$d/log" && reached_pip=1
         if [ "$rc" != 0 ] && grep -Eq -- "$(why "$c")" "$d/log" && ! grep -q '^== venv @' "$d/log" \
@@ -154,7 +156,9 @@ fi
 ok "lint: the committed lock files" bash "$LOCK_DEPS" --lint
 for c in "${CASES[@]}"; do
     d="$TMP/lint-$c"
-    copy "$d" && apply "$c" "$d" || { echo "WRONG lint $c: could not prepare"; FAIL=$((FAIL + 1)); continue; }
+    if ! { copy "$d" && apply "$c" "$d"; }; then
+        echo "WRONG lint $c: could not prepare"; FAIL=$((FAIL + 1)); continue
+    fi
     if [ "${STOP[$c]}" = lint ]; then
         rejects "lint: $c" "${WHY[lint]}" bash "$d/packaging/lock-deps.sh" --lint
     else
@@ -202,7 +206,9 @@ rejects "verify-freeze: an unreadable lock" "cannot read" \
 if command -v uv > /dev/null 2>&1; then
     for c in "${CASES[@]}"; do
         d="$TMP/check-$c"
-        copy "$d" && apply "$c" "$d" || { echo "WRONG check $c: could not prepare"; FAIL=$((FAIL + 1)); continue; }
+        if ! { copy "$d" && apply "$c" "$d"; }; then
+            echo "WRONG check $c: could not prepare"; FAIL=$((FAIL + 1)); continue
+        fi
         rejects "check: $c" "$(why "$c")" bash "$d/packaging/lock-deps.sh" --check
     done
 else
