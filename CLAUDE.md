@@ -43,16 +43,25 @@ conventions are `../../docs/paket-konventionen.md` there. The rules that bite he
   `release.yml` refuses a tag that does not match the changelog.
 - **Changelog:** one bullet in the top block of `debian/changelog` per user-visible change,
   in the same PR, written for admins in English. There is no `CHANGELOG.md`.
-- **Build:** `make deb` = `dpkg-buildpackage` (debhelper 13, no root needed) on a copy of the
-  tracked files, so the source package holds nothing untracked; the `.deb` and the source
-  package land one level above the tree. Build it in the digest-pinned
-  `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`.
+- **Build:** `make deb` = `dpkg-buildpackage` (debhelper 13, no root needed) on an export of the
+  tracked files with git's modes (`packaging/make-deb.sh`), so the source package holds nothing
+  untracked; the `.deb` and the source package land one level above the tree. Uncommitted
+  changes are built as they are in the working tree, under the changelog's version: `make deb`
+  prints a WARNING listing every modified, deleted, staged and new (not added, so not built)
+  file — commit before building anything for the lab. Build it in the digest-pinned
+  `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`; in a
+  git worktree (`bin/wt`) it mounts the repository's git directory too, or `make deb` stops.
+  The build runs with a fixed PATH and none of the caller's venv/Python/pip/uv/git settings
+  (`packaging/clean-env.sh`), whatever shell starts it.
   `debian/venv-relocate` is byte-identical in squid, radius and readonlydc: change it in the
   hub (`linuxmusterDEV/work/plans/venv-debian-umbau/`) and copy it to all three.
 - **Supply chain (ADR-015):** Python deps only via `controlplane/requirements.lock` (hashes;
   regenerate with `bash packaging/lock-deps.sh`, never hand-edit; `lock-deps.sh --gate` runs
   before anything from a lock is installed, never put a lock-filled venv's `bin/` on PATH or
-  run its Python before it); actions by commit SHA
+  run its Python before it; gate scripts call python as `/usr/bin/python3 -I` and source
+  `packaging/clean-env.sh` first; `run.sh quick` runs the gate before any `.venv` tool; the gate
+  cannot tell a pin moved to another real release, older or newer, within the declared ranges,
+  so read the versions in every lock diff); actions by commit SHA
   with `# vN`, images by digest. They move only in reviewed PRs, raised by hand while the
   Renovate workflow is disabled (Kevin, 2026-09-25, until it returns with a GitHub App); do
   not unpin anything.
@@ -196,7 +205,8 @@ update/rollback, and `.deb` install tests — needs real Linux with **Docker**.
 `crabbox doctor`). Rules/details: the `/test` skill (`.claude/skills/test/SKILL.md`).
 
 - **One aggregate runner:** `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]`
-  (created in P0/P1). `quick` (default) = lint + unit; `e2e`/`all` run the
+  (created in P0/P1). `quick` (default) = lock gate first (stops everything if it rejects a
+  lock), then lint + unit + lock regression + blocklist smoke; `e2e`/`all` run the
   Docker suites and **refuse without `LMNSQUID_ALLOW_REAL=1`**. Summary:
   `N passed, M failed, K skipped` (exit ≠ 0 on failure); steps dep-gated.
 - **Box lifecycle:** `crabbox warmup` → `crabbox run --id <slug> -- 'bash scripts/tests/crabbox_bootstrap.sh'`
