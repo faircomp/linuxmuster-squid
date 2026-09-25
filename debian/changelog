@@ -9,9 +9,15 @@ linuxmuster-squid (7.3.5) lmn73; urgency=medium
     the CLI, the configuration and the files under /opt/linuxmuster-squid
     are the same; the package additionally installs its changelog and
     copyright under /usr/share/doc/linuxmuster-squid.
-  * Every build checks the Python lock files the same way CI does and fails
-    unless the venv holds exactly the locked packages, so a manipulated lock
-    file cannot end up in a package, not even from a tag CI never checked.
+  * Every build checks the Python lock files the same way CI does, before
+    anything from them is installed or run, and stops unless each lock holds
+    only lines uv writes, only hashes PyPI publishes for exactly that version,
+    exactly the packages the declared dependencies need and nothing uploaded
+    less than 7 days ago; after installing, each venv must hold exactly its
+    locked packages. A lock with an added package, a foreign file or a changed
+    hash therefore stops the build, also for a tag CI never checked. Not
+    caught: a pin moved to an older, real release of a package that is
+    needed; that remains a matter of review.
   * The GitHub release carries the source package (.dsc, .tar.xz) and the
     .changes and .buildinfo next to the .deb, and the release run fails
     unless GitHub marks the published release immutable, so its files cannot
