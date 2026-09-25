@@ -102,7 +102,8 @@ lmnsquid rollback default-school-teachers        # to the last known-good
 ```
 The update pulls the new digest, replaces the container, waits for `healthy` and
 **automatically rolls back on failure** — the school stays online. Which digest
-belongs in production is decided by a **merged Renovate PR** (never auto-merge).
+belongs in production is decided by a **merged PR** (never auto-merge; raised by hand while
+Renovate is disabled).
 
 On a **`.deb` upgrade** the postinst runs `update-all` automatically (best-effort): all
 instances are lifted onto that package's pinned default image, each with its own health-check

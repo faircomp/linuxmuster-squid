@@ -87,6 +87,8 @@ safer MVP.
 **Status:** Accepted (verified). **Decision:** git as source of truth,
 `image@sha256:` pin, Renovate (`automerge:false`, merge = go/no-go), controlled
 `pull`+`up` with health-check auto-rollback; tooling as a signed `.deb`.
+**Update 2026-09-25:** the Renovate workflow is disabled (Kevin) until Renovate returns with a
+GitHub App; digest bumps are raised by hand in PRs meanwhile, still merged by a human.
 **`.deb` upgrade lifts instances:** installing a new package runs `update-all` so every
 instance follows that package's pinned `DEFAULT_IMAGE` (the apt install is the human
 go/no-go), each with health auto-rollback; `lmnsquid update-all` does the same on demand.
@@ -122,8 +124,8 @@ does **not** work behind the proxy with `EXEC:0`, and neither does `blocklist re
 (`squid -k reconfigure` via exec, ADR-014); the live `logs` path (container.logs) does.
 ### ADR-013 — Image registry: GHCR (default)
 **Status:** Accepted (default 2026-07-02; changeable at any time). **Decision:**
-The data-plane image is published to **GHCR (ghcr.io)**; Renovate pins the
-digest. **Why:** free, integrates cleanly with GitHub CI + Renovate
+The data-plane image is published to **GHCR (ghcr.io)**; its digest is pinned
+(by Renovate; by hand while Renovate is disabled, see ADR-010). **Why:** free, integrates cleanly with GitHub CI + Renovate
 digest pinning. **Alternatives:** Docker Hub (pull rate limits) or self-
 hosted/linuxmuster registry (more infrastructure).
 
@@ -157,9 +159,10 @@ nothing unpinned is downloaded while the package is built. The build container
 (`lmndev-runner`), the data-plane base image and every GitHub Action are pinned by digest or
 commit SHA. Releases are created as drafts, get their assets, are checked against the build and
 only then published (the order GitHub's immutable releases need); the release job fails unless
-the published release is immutable. Renovate
-(`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run)
-proposes every change as a PR, PyPI releases only once 7 days old; nothing is automerged.
+the published release is immutable. Every change comes as a PR a human merges; Renovate
+(`renovate.yml`, Thursdays, self-hosted, engine pinned and validated before every run) proposed
+them, PyPI releases only once 7 days old, and is disabled since 2026-09-25 (Kevin) until it
+returns with a GitHub App, so they are raised by hand meanwhile.
 The lock is exactly what its header command produces. The gate (`lock-deps.sh --check`, run by
 the fast tier and by every build with the uv the build lock pins, so a lock CI would reject is
 never built) accepts only lines uv writes, re-resolves the pins with the header's options including the

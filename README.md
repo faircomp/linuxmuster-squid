@@ -110,7 +110,7 @@ is the top entry of `debian/changelog` — the only place it is edited. The Pyth
 of the venv come only from `controlplane/requirements.lock` (exact versions with SHA-256
 hashes, pip included); never edit it by hand: change `controlplane/pyproject.toml`, then
 `bash packaging/lock-deps.sh` (needs `uv`; `--upgrade` moves every pin to the newest release
-that is at least 7 days old, `--check` is the gate of CI and of every build). Only wheels are installed. Renovate proposes lock updates as PRs. The **heavy tier** — the real
+that is at least 7 days old, `--check` is the gate of CI and of every build). Only wheels are installed. Lock updates are PRs, raised by hand while Renovate is disabled. The **heavy tier** — the real
 Kerberos E2E (Samba AD DC + Squid + client, proving *teacher→200 /
 student→403 / blocked→403 / no-ticket→407*) — needs a **Linux host with
 Docker**. Aggregator:

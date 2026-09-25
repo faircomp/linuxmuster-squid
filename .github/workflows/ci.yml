@@ -13,14 +13,15 @@
 # an immutable reference, because a released .deb vouches for everything that ran in its build.
 #  * Build image by digest. ghcr.io/linuxmuster/lmndev-runner:24.04 is a mutable tag of another
 #    org, rebuilt every Monday, and runs as root; `:<tag>@sha256:<digest>` pulls exactly that
-#    image (the digest wins, the tag only tells Renovate which tag's digest to follow).
+#    image (the digest wins, the tag only names the line whose digest is pinned).
 #  * Every action by full commit SHA with a `# vN` comment: a tag can be moved, a SHA cannot.
 #  * Keep ci.yml and release.yml on the SAME digests, or CI proves a different build than the
 #    one that is released.
 #  * Python dependencies from hash-pinned lock files (packaging/lock-deps.sh); pip never
 #    resolves or downloads anything unpinned while the .deb is built.
-# Renovate (renovate.json + renovate.yml) opens reviewable PRs for new digests, SHAs and
-# locks; nothing is automerged.
+# Pins and locks are raised by hand: the Renovate workflow is disabled (Kevin, 2026-09-25) until
+# Renovate is re-enabled with a GitHub App (renovate.json and renovate.yml stay for that day).
+# Nothing is automerged; raise a digest in ci.yml and release.yml in the same commit.
 name: ci
 
 on:
@@ -52,12 +53,12 @@ jobs:
       # The gate tools are PINNED on purpose: an unpinned `pip install ruff` picks up
       # whatever released last, and a linter that widens its default rule set turns the
       # pipeline red without a single line of our code changing (ruff 0.16 did exactly
-      # that here). Pinned == the developer's local result == CI's result. Renovate
-      # proposes bumps as PRs (customManager in renovate.json).
+      # that here). Pinned == the developer's local result == CI's result. Bumps are PRs,
+      # raised by hand while Renovate is off (see the header).
       #
       # The locked runtime dependencies are installed AFTER the tools, with their hashes:
-      # the tests then run against exactly what the .deb ships (a Renovate lock PR is
-      # tested against the versions it proposes), and `pip check` fails if a tool cannot
+      # the tests then run against exactly what the .deb ships (a lock PR is tested
+      # against the versions it proposes), and `pip check` fails if a tool cannot
       # live with a locked version instead of the tool quietly moving it.
       - name: Install tools + locked dependencies + control-plane
         run: |
@@ -115,7 +116,7 @@ jobs:
       - id: image
         run: |
           DIST=$(dpkg-parsechangelog -S Distribution); NUM="${DIST#lmn}"
-          # Pinned by digest (see the header); Renovate bumps both lines here and in release.yml.
+          # Pinned by digest (see the header); raise both lines here and in release.yml together.
           IMG_LMN73=ghcr.io/linuxmuster/lmndev-runner:24.04@sha256:6b0c8ac994cf1d2da44b0b36ebd7b3b125094886e78293e04b9db5e515b8209e
           IMG_LMN74=ghcr.io/linuxmuster/lmndev-runner:latest@sha256:d735e6ccc6fd9df71b2552b06ac6f5cb4bf2d03f40e14bafe47213325b7b801b
           if [ "${NUM:-0}" -ge 74 ] 2>/dev/null; then IMG=$IMG_LMN74; else IMG=$IMG_LMN73; fi

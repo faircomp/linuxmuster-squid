@@ -50,7 +50,9 @@ conventions are `../../docs/paket-konventionen.md` there. The rules that bite he
   hub (`linuxmusterDEV/work/plans/venv-debian-umbau/`) and copy it to all three.
 - **Supply chain (ADR-015):** Python deps only via `controlplane/requirements.lock` (hashes;
   regenerate with `bash packaging/lock-deps.sh`, never hand-edit); actions by commit SHA
-  with `# vN`, images by digest. Renovate PRs move them; do not unpin anything.
+  with `# vN`, images by digest. They move only in reviewed PRs, raised by hand while the
+  Renovate workflow is disabled (Kevin, 2026-09-25, until it returns with a GitHub App); do
+  not unpin anything.
 - **Maintainer string** everywhere: `Kevin Stenzel <mail@kevin-stenzel.de>`.
 
 **Security pitfalls (from the threat model — do not violate):**

@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
+# DISABLED in the repository (Kevin, 2026-09-25) until Renovate is re-enabled with a GitHub App;
+# while it is off nothing below runs, and pins and locks are raised by hand in PRs.
 # From linuxmusterDEV/templates/renovate.yml. The same self-hosted Renovate as
 # linuxmuster-radius (faircomp has no org-level Renovate app; before this workflow nothing
 # ever read renovate.json here), hardened in stage A:
