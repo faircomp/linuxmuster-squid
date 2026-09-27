@@ -1,3 +1,22 @@
+linuxmuster-squid (7.3.6) lmn73; urgency=medium
+
+  * A git step of the instance change log that fails during the package
+    configure (a damaged change log repository, a full disk) is no longer
+    silent: apt shows one line per failed step, "WARNING:
+    linuxmuster-squid: change log step '<step>' failed (exit <n>) in
+    /var/lib/linuxmuster-squid/instances; the configure goes on without
+    it", next to git's own message. As before, it never fails the install
+    or upgrade and the service is handled as usual; only the change log
+    misses that configure's commit. Repair the repository as lmnsquid,
+    then dpkg-reconfigure linuxmuster-squid records it.
+  * Building the package (make deb) also ignores the caller's make
+    settings (MAKEFILES, MAKEFLAGS, GNUMAKEFLAGS, MAKEOVERRIDES) and shell
+    functions named like the builtins the build scripts call before they
+    remove the caller's functions (set, shopt, export, "."). A build from
+    a clean environment gives the same files as before.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Sun, 27 Sep 2026 15:16:29 +0200
+
 linuxmuster-squid (7.3.5) lmn73; urgency=medium
 
   * The package is built with debhelper (dpkg-buildpackage) now and is
