@@ -209,9 +209,12 @@ tier (ruff/mypy/pytest/shellcheck) runs locally/in CI. The **heavy tier** — th
 real docker-compose Kerberos E2E (**Samba AD DC + Squid + client**) that proves
 *teacher→200 / student→403 / blocked→403 / no-ticket→407*, as well as multischool,
 update/rollback, and `.deb` install tests — needs real Linux with **Docker**.
-**crabbox** leases an ephemeral Proxmox VM for this (provider in
-`.claude/settings.json`, token only in the gitignored `.claude/settings.local.json`;
-`crabbox doctor`). Rules/details: the `/test` skill (`.claude/skills/test/SKILL.md`).
+**crabbox** leases an ephemeral Proxmox VM for this (`crabbox doctor`). Not usable at
+present: its Proxmox user was deleted. Its provider settings (Proxmox address, token ID, node,
+template, storage, bridge) and the token belong in the gitignored
+`.claude/settings.local.json` only, never in the tracked `.claude/settings.json` (that one holds
+nothing but the crabbox permissions). Rules/details: the `/test` skill
+(`.claude/skills/test/SKILL.md`).
 
 - **One aggregate runner:** `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]`
   (created in P0/P1). `quick` (default) = lock gate first (stops everything if it rejects a

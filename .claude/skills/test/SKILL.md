@@ -17,8 +17,11 @@ no-ticket→407*, plus the multi-school matrix, the update/rollback flow, and th
 dev box lacks. crabbox leases an ephemeral Proxmox VM, rsyncs the working tree,
 runs the suite, and tears down.
 
-Provider env (proxmox) comes from `.claude/settings.json` (+ the secret in the
-gitignored `.claude/settings.local.json`). Confirm with `crabbox doctor`.
+Not usable at present: crabbox's Proxmox user was deleted. Whoever sets it up again puts
+the provider env (`CRABBOX_PROVIDER`, the Proxmox address, token ID, node, template, storage,
+bridge) and the token secret into the gitignored `.claude/settings.local.json` only: the
+tracked `.claude/settings.json` holds nothing but the permissions for the crabbox commands,
+no internal addresses or IDs. Confirm with `crabbox doctor`.
 
 ## Single-box flow (warm once → reuse the slug → stop)
 
