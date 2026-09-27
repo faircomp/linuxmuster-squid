@@ -18,9 +18,14 @@
 # maintenance holds its lock. Measured with the old postinst (container, git 2.55): 0 of 100
 # fresh installs failed, but 37 of 100 reinstalls, all once the store had ~40 commits; with
 # the defaults below, 65 of 75 reinstalls in five runs (the fixed postinst: 0 of 150).
+#   phase 3: a change log git cannot read (.git/HEAD destroyed): dpkg-reconfigure must still
+#            succeed, print the postinst's WARNING naming the failed step and the repository,
+#            leave the package "ii" and the service as enabled/active as before; once HEAD is
+#            back, the next configure records again, without a warning.
 # After every configure: the package is "ii", everything under the config and state
 # directories belongs to lmnsquid, the history is kept and grew by the postinst's commit,
-# and no git maintenance/gc process outlived the configure.
+# no git maintenance/gc process outlived the configure, and (phases 1, 2 and the repaired
+# configure of 3) the postinst printed no change log warning.
 #
 # RUN AS ROOT, with the package's dependencies installed:
 #   bash scripts/tests/install_loop.sh <deb> [cycles per phase, default 15]
@@ -39,8 +44,8 @@ conf_fail=0 check_fail=0 repaired=0
 
 summary() {
     echo "== install loop ($(git --version)): $N purge+install and $N reinstall/reconfigure" \
-         "cycles (history $SEED), $conf_fail configure failure(s), $check_fail check failure(s)," \
-         "$repaired finished by 'dpkg --configure -a', ${SECONDS}s =="
+         "cycles (history $SEED), a broken change log, $conf_fail configure failure(s)," \
+         "$check_fail check failure(s), $repaired finished by 'dpkg --configure -a', ${SECONDS}s =="
 }
 
 # $1 = kind, $2 = message. Stops the loop unless KEEP_GOING=1.
@@ -54,13 +59,24 @@ fail() {
 as_owner() { runuser -u lmnsquid -- env -u XDG_CONFIG_HOME "$@"; }
 store_git() { as_owner git -C "$INST" "$@"; }
 
-# $1 = label, rest = the dpkg command that configures the package.
+# The line the postinst prints when a git step of the change log fails.
+WARN_RE="WARNING: linuxmuster-squid: change log step '[^']+' failed \(exit [0-9]+\) in $INST;"
+
+# $1 = label, rest = the dpkg command that configures the package. Its output: $CONF_OUT.
+# A configure of an intact store must not print the change log warning.
 configure() {
-    local label=$1 out
+    local label=$1
     shift
-    if out=$("$@" 2>&1); then return 0; fi
+    if CONF_OUT=$("$@" 2>&1); then
+        if grep -Eq "$WARN_RE" <<< "$CONF_OUT"; then
+            check_fail=$((check_fail + 1))
+            grep -E "$WARN_RE" <<< "$CONF_OUT" | head -n 3 >&2
+            fail check "$label: change log warning, but nothing was broken"
+        fi
+        return 0
+    fi
     conf_fail=$((conf_fail + 1))
-    printf '%s\n' "$out" | grep -E 'chown|error|rror processing' | head -n 4 >&2
+    printf '%s\n' "$CONF_OUT" | grep -E 'chown|error|rror processing' | head -n 4 >&2
     fail configure "$label"
     if dpkg --configure -a >/dev/null 2>&1; then repaired=$((repaired + 1)); fi
 }
@@ -107,6 +123,41 @@ for i in $(seq 1 "$N"); do
     fi
     check "reinstall/reconfigure $i" $((before + 1))
 done
+
+# phase 3: the change log breaks, the configure does not
+svc() {  # enabled/active of the service, or that there is no systemd
+    if [ -d /run/systemd/system ]; then
+        echo "$(systemctl is-enabled "$PKG.service" 2>&1) $(systemctl is-active "$PKG.service" 2>&1)"
+    else
+        echo "no systemd"
+    fi
+}
+svc_before=$(svc)
+before=$(store_git rev-list --count HEAD 2>/dev/null)
+head=$(cat "$INST/.git/HEAD")
+printf 'not a ref\n' > "$INST/.git/HEAD"
+printf '# record while the change log is broken\n' > "$INST/broken-log.yaml"
+if out=$(dpkg-reconfigure -f noninteractive "$PKG" 2>&1); then
+    status=$(dpkg-query -W -f='${db:Status-Abbrev}' "$PKG" 2>/dev/null)
+    svc_after=$(svc)
+    printf '%s\n' "$out" | grep -E "$WARN_RE" | sed 's/^/  apt shows: /'
+    if ! grep -Eq "$WARN_RE" <<< "$out"; then
+        check_fail=$((check_fail + 1)); fail check "broken change log: no warning in the output"
+    elif [ "$status" != "ii " ] || [ "$svc_after" != "$svc_before" ]; then
+        check_fail=$((check_fail + 1))
+        fail check "broken change log: status='$status', service '$svc_after' (before: '$svc_before')"
+    else
+        echo "broken change log: configure ok, warned, package '$status', service '$svc_after'"
+    fi
+else
+    conf_fail=$((conf_fail + 1))
+    printf '%s\n' "$out" | tail -n 8 >&2
+    fail configure "broken change log: dpkg-reconfigure failed"
+    if dpkg --configure -a >/dev/null 2>&1; then repaired=$((repaired + 1)); fi
+fi
+printf '%s\n' "$head" > "$INST/.git/HEAD"
+configure "repaired change log" dpkg-reconfigure -f noninteractive "$PKG"
+check "repaired change log" $((before + 1))
 
 summary
 [ "$conf_fail" = 0 ] && [ "$check_fail" = 0 ]

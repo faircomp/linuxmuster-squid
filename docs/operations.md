@@ -207,7 +207,11 @@ Access logs show **who visited/was blocked from which site** = personal data
   registers the directory as `safe.directory`; run *writing* git commands as the owner
   (`sudo -u lmnsquid git -C /var/lib/linuxmuster-squid/instances …`): what root writes there
   belongs to root, and the service's commits can fail on it until the next package configure
-  hands it back),
+  hands it back). A git step of the package configure that fails (a damaged repository, a full
+  disk) does not fail the install or upgrade: apt shows `WARNING: linuxmuster-squid: change log
+  step '<step>' failed (exit <n>) in /var/lib/linuxmuster-squid/instances; …` with git's own
+  message, the service is handled as usual, and only the change log misses that configure's
+  commit; repair the repository as `lmnsquid` and run `dpkg-reconfigure linuxmuster-squid`,
 - Log **volumes** (`lmnsquid-logs-<name>`) only if the access history is subject to retention
   requirements — the cache volume (`lmnsquid-cache-<name>`) is **disposable**.
 

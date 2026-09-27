@@ -109,6 +109,10 @@ acceptance list in `deployment-gpo.md`.
   the same `.deb` configured 30 times in a row (`scripts/tests/install_loop.sh`, CI
   install-smoke: 15× purge + fresh install, 15× reinstall/`dpkg-reconfigure`, stop at the
   first failure) — an intermittent postinst race (7.3.1–7.3.3) passed single installs;
+  none of these configures prints the change log warning; then a change log git cannot read
+  (`.git/HEAD` destroyed): `dpkg-reconfigure` succeeds, prints the postinst's warning with the
+  failed step and the repository, the package stays `ii` and the service as enabled/active as
+  before, and once `HEAD` is back the next configure commits again without a warning;
   upgrade over a release with root-owned files in the change log repository → handed
   back to `lmnsquid`, history kept.
 - **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;
