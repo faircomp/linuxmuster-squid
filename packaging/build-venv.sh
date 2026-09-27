@@ -19,6 +19,14 @@ builtin . "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
 PYTHON=/usr/bin/python3
 
 VENV="${1:?usage: build-venv.sh <venv directory>}"
+# The venv path is removed below (rm -rf) before the venv is built: only an absolute path
+# without whitespace that ends in the installed path, as debian/rules passes it
+# (<build dir>/debian/linuxmuster-squid/opt/linuxmuster-squid/venv). Checked before anything runs.
+if [[ $VENV != /* || $VENV =~ [[:space:]] || $VENV != */opt/linuxmuster-squid/venv ]]; then
+    echo "build-venv.sh: refusing venv path '$VENV': it must be absolute, contain no" \
+         "whitespace and end in /opt/linuxmuster-squid/venv" >&2
+    exit 2
+fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
