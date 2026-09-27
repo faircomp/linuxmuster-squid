@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -7,15 +7,16 @@
 # the venv is built inside the package tree, without root, and debian/venv-relocate then makes
 # it correct for its installed path /opt/linuxmuster-squid/venv. The version of the lmnsquid
 # wheel is the top entry of debian/changelog (controlplane/setup.py reads it).
-# Up to clean-env.sh, builtins through `builtin` and dirname by absolute path: the caller's
-# exported functions are still there (clean-env.sh removes them).
-builtin set -euo pipefail
-# A fixed PATH and without what packaging/clean-env.sh removes from the caller's environment (it
-# names each variable, the shell functions, what it leaves and what it cannot undo); Python is
-# /usr/bin/python3 -I.
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# It runs in the allowlisted environment of packaging/clean-env.sh (which names the allowlist and
+# what ran before the restart); Python is /usr/bin/python3 -I.
+#
+# First the restart under the allowlisted environment of packaging/clean-env.sh; before it only
+# this assignment (POSIX mode: special builtins such as `.` win over functions) and `.` run.
+# shellcheck disable=SC2034  # read by bash itself
+POSIXLY_CORRECT=1
 # shellcheck source=packaging/clean-env.sh
-builtin . "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+. "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+set -euo pipefail
 PYTHON=/usr/bin/python3
 
 VENV="${1:?usage: build-venv.sh <venv directory>}"

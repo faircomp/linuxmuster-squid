@@ -39,8 +39,11 @@ no internal addresses or IDs. Confirm with `crabbox doctor`.
 
 `run.sh` prints `N passed, M failed, K skipped`. Skipped is not passed: it exits 0 only
 without failures and skips, 1 on a failure, 3 when a step was skipped (a missing tool, e2e
-without `LMNSQUID_ALLOW_REAL=1`), and its last line names every step that was not checked.
-`LMNSQUID_ALLOW_SKIP=1` accepts skips on purpose (exit 0, the last line still names them).
+without `LMNSQUID_ALLOW_REAL=1`), and its last line names what failed and every step that was
+not checked (skipped, or not run because the lock gate failed). `LMNSQUID_ALLOW_SKIP=1` accepts
+skips on purpose (exit 0, the last line still names them). It restarts itself under the
+allowlist of `packaging/clean-env.sh`: its tools come from `.venv/bin` (the bootstrap creates
+it) or the system, not from the caller's PATH.
 `e2e`/`all` refuse to run without `LMNSQUID_ALLOW_REAL=1` (a guard so heavy suites
 never fire by accident on the dev box).
 

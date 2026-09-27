@@ -10,8 +10,11 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
 `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]` — summary
 `N passed, M failed, K skipped`, every step dep-gated. Skipped is not passed: exit 0 only
 without failures and skips, exit 1 on a failure, exit 3 when a step was skipped (a missing
-tool, `e2e` without permission), and the last line names every step that was not checked;
-`LMNSQUID_ALLOW_SKIP=1` accepts skips on purpose (exit 0, the last line still names them).
+tool, `e2e` without permission), and the last line names what failed and every step that was
+not checked (skipped, or not run because the lock gate failed); `LMNSQUID_ALLOW_SKIP=1` accepts
+skips on purpose (exit 0, the last line still names them). run.sh runs in the allowlisted
+environment of `packaging/clean-env.sh`: its tools come from `.venv/bin` or the system, never
+from the caller's PATH.
 `e2e`/`all` refuse to run without `LMNSQUID_ALLOW_REAL=1`.
 
 ## Fast tier (everywhere)
@@ -28,12 +31,9 @@ tool, `e2e` without permission), and the last line names every step that was not
   `controlplane/pyproject.toml` and the `.in` files within the 7-day cutoff, every pin has a
   CPython 3.12 manylinux x86_64 wheel, and the header is the canonical command. No program,
   interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that, also when
-  started from a developer's venv (fixed PATH, `/usr/bin/python3 -I`, the caller's
-  `VIRTUAL_ENV`, `VIRTUAL_ENV_PROMPT`, `CONDA_*`, `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`,
-  `PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`, `MAKEFILES`, `MAKEFLAGS`, `GNUMAKEFLAGS`,
-  `MAKEOVERRIDES`, `BASH_ENV`, `ENV`, `CDPATH` and exported shell functions removed, every
-  builtin before that called through `builtin`: `packaging/clean-env.sh`, which names its
-  limits). After installing, the build venv must be exactly the build lock plus ensurepip's pip
+  started from a developer's venv (`/usr/bin/python3 -I`; the gate restarts itself under
+  `env -i` through `/bin/bash -p` with the allowlist of `packaging/clean-env.sh`, which names it
+  and what ran before the restart). After installing, the build venv must be exactly the build lock plus ensurepip's pip
   and the shipped venv exactly the lock plus lmnsquid, every line `name==version`
   (`--verify-freeze`).
   `bash scripts/tests/lock_gates.sh` keeps the manipulations of the cold verifications
@@ -48,11 +48,11 @@ tool, `e2e` without permission), and the last line names every step that was not
   in the build lock alone and in both locks: only the closure check can stop it, and nothing of
   it may run (no marker). The same wheel as an activated venv of the caller (PATH,
   `VIRTUAL_ENV`, `CONDA_PREFIX`, `UV_PYTHON`, a `PYTHONPATH` with its own `venv` module, exported
-  functions named like the tools and like the builtins called before the removal: `compgen`,
-  `unset`, `export`, `set`, `shopt`, `.`; a makefile in `MAKEFILES`) and as `.venv/` in the
-  checkout: the gate still rejects a real extra pin and passes the committed
+  functions named like the tools and like builtins: `compgen`, `unset`, `export`, `set`,
+  `shopt`, `.`, `builtin`, `exec`, `dirname`; a makefile in `MAKEFILES`, `TAR_OPTIONS` with a
+  checkpoint action, `PERL5OPT` with a module of its own) and as `.venv/` in the checkout: the gate still rejects a real extra pin and passes the committed
   locks without a marker, `run.sh quick` stops at the gate before any `.venv` tool runs; the
-  counter-proof (the gate without its fixed PATH and clean environment) sees the wheel's tools
+  counter-proof (the gate without its restart under the allowlist) sees the wheel's tools
   run. `--verify-freeze` must reject a direct-URL, editable, extra, missing or re-versioned
   package. CI also runs `lock_gates.sh --build`: every lock case through `make deb`, also from
   the poisoned shell, which must stop in the gate before any venv of the build exists, without
@@ -61,8 +61,9 @@ tool, `e2e` without permission), and the last line names every step that was not
 - **`make deb`:** `scripts/tests/make_deb.sh` (CI, as root in the build image): a git worktree
   of a repository owned by another user, with umask-002 modes, a lost x bit, secrets, venvs and
   junk, and git configuration that runs programs (fsmonitor, filters, textconv, hooks), built
-  from the poisoned shell (also functions named like the builtins, a makefile in `MAKEFILES`
-  and `DEST=/opt/caller-override` for the makes of `debian/rules` in `MAKEOVERRIDES`), gives
+  from the poisoned shell (also functions named like the builtins, `builtin` and `exec` among
+  them, a makefile in `MAKEFILES`, `DEST=/opt/caller-override` for the makes of `debian/rules`
+  in `MAKEOVERRIDES`, `TAR_OPTIONS` with a checkpoint action, `SHELLOPTS=noexec`), gives
   byte-for-byte the `.deb`, `.dsc` and source tarball of the package job; the tarball holds
   exactly the tracked files (without `.github/`, `.claude/`, `.gitignore`) with git's modes,
   and nothing of the traps or the shell ran (counter-proof: `git status` there does run them).

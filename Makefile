@@ -25,13 +25,13 @@
 # deleted, staged, removed or new (not added, so not built) file. Left out on purpose: .github/
 # and .claude/ (CI and developer tooling) and dpkg-source's default ignore list (.gitignore and
 # the like). Without any .git (an unpacked source package) the tree is built as it is; a .git
-# that git cannot use stops the build. The build runs with a fixed PATH; the caller's
-# VIRTUAL_ENV, VIRTUAL_ENV_PROMPT, CONDA_*, PYTHON*, UV_*, PIP_*, GIT_*, PERL5OPT, PERL5LIB,
-# PERLLIB, PERL5DB, MAKEFILES, MAKEFLAGS, GNUMAKEFLAGS, MAKEOVERRIDES, BASH_ENV, ENV and CDPATH
-# and its exported shell functions are removed first thing (packaging/clean-env.sh, which also
-# names what it leaves to the caller and what it cannot undo, such as a function the caller
-# exported as `builtin`, or what this make itself already read from MAKEFILES, MAKEFLAGS and
-# GNUMAKEFLAGS).
+# that git cannot use stops the build. make-deb.sh is started with /bin/bash -p (no exported
+# function, SHELLOPTS, BASHOPTS or BASH_ENV of the caller) and restarts itself under `env -i`
+# with an allowlist: a fixed PATH and LC_ALL, HOME, TMPDIR, the proxy and CA variables and the
+# variables the repository's scripts pass to each other (packaging/clean-env.sh names them).
+# Nothing else of the caller's environment reaches dpkg-buildpackage, debian/rules or the lock
+# gate. What this make reads itself stays the caller's: a makefile in MAKEFILES, MAKEFLAGS and
+# GNUMAKEFLAGS (`make -i deb` ends with 0 although the build failed, but no package is written).
 .PHONY: all deb clean
 
 # BASH_ENV would run in every recipe shell before the build could clean its environment.
@@ -40,7 +40,7 @@ unexport BASH_ENV ENV
 all: deb
 
 deb:
-	/bin/bash packaging/make-deb.sh
+	/bin/bash -p packaging/make-deb.sh
 
 clean:
 	debian/rules clean

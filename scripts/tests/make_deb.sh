@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -14,12 +14,12 @@
 #    clean/smudge/process filters, textconv, hooks). It is started from a shell with an
 #    activated venv whose bin/ shadows every tool, a .venv/ like it, PYTHONPATH, CONDA_PREFIX,
 #    UV_*/PIP_* pointing elsewhere, GIT_DIR, BASH_ENV, CDPATH, PERL5OPT/PERL5LIB with a module of
-#    its own, exported shell functions named like the build's tools and like the builtins the
-#    scripts call before clean-env.sh removes the functions (compgen, unset, export, set, shopt,
-#    `.`), a makefile of its own in MAKEFILES and a variable for the makes of debian/rules in
-#    MAKEOVERRIDES (DEST, which the caller's make hands on in MAKEFLAGS as well). None of it may
-#    run (no marker) or reach the packages; the one untracked, not ignored file is named as not
-#    built.
+#    its own, exported shell functions named like the build's tools and like the builtins a
+#    script could call before clean-env.sh restarts it (compgen, unset, export, set, shopt, `.`,
+#    builtin, exec, dirname), a makefile of its own in MAKEFILES, a variable for the makes of
+#    debian/rules in MAKEOVERRIDES (DEST, which the caller's make hands on in MAKEFLAGS as well),
+#    TAR_OPTIONS with a checkpoint action and SHELLOPTS=noexec. None of it may run (no marker) or
+#    reach the packages; the one untracked, not ignored file is named as not built.
 #  * dirty: a modified, a deleted, a staged, a staged-then-deleted, a `git rm --cached` and a new
 #    file: make deb warns, names each once under the right heading, says the version stays the
 #    changelog's, and builds exactly that (source package only).
@@ -32,11 +32,13 @@
 # <dir> holds the .deb, .dsc and .tar.xz of a build of the same tree (CI: the package job's
 # artifact); without it a plain clone is built here first as the reference. Needs root, git, the
 # Build-Depends and PyPI (the build image, like CI's lock-gates-build job).
-# Up to clean-env.sh, builtins through `builtin` and dirname by absolute path (clean-env.sh).
-builtin set -uo pipefail
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# First the restart under the allowlisted environment of packaging/clean-env.sh; before it only
+# this assignment (POSIX mode: special builtins such as `.` win over functions) and `.` run.
+# shellcheck disable=SC2034  # read by bash itself
+POSIXLY_CORRECT=1
 # shellcheck source=packaging/clean-env.sh
-builtin . "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
+. "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
+set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 PKG=linuxmuster-squid
 REFERENCE=
@@ -137,9 +139,12 @@ printf 'echo "a script of the CDPATH ran" >> %s\n' "$MARKER" \
     | tee "$TMP/cdpath/packaging/clean-env.sh" > "$TMP/cdpath/packaging/make-deb.sh"
 FUNCS=()
 for t in awk sort git tar dpkg-buildpackage mktemp find chmod mv compgen unset export set shopt \
-         .; do
+         . builtin exec; do
     FUNCS+=("BASH_FUNC_$t%%=() { echo \"function $t of the caller ran: \$*\" >> $MARKER; }")
 done
+FUNCS+=("BASH_FUNC_dirname%%=() { echo \"function dirname of the caller ran: \$*\" >> $MARKER; command dirname \"\$@\"; }")
+printf '#!/bin/sh\necho "TAR_OPTIONS of the caller ran" >> %s\n' "$MARKER" > "$TMP/tarmark"
+chmod 0755 "$TMP/tarmark"
 # A makefile of the caller in MAKEFILES: the caller's own make (make deb, level 0) reads it, the
 # makes of debian/rules (level 1 and deeper) must not.
 cat > "$TMP/caller.mk" <<EOF
@@ -155,6 +160,7 @@ caller() {
     /usr/bin/env -u MAKELEVEL "${FUNCS[@]}" CDPATH="$TMP/cdpath" \
         PERL5OPT=-MLmnCaller PERL5LIB="$TMP/perl5" \
         MAKEFILES="$TMP/caller.mk" MAKEOVERRIDES=DEST=/opt/caller-override \
+        TAR_OPTIONS="--checkpoint=1 --checkpoint-action=exec=$TMP/tarmark" SHELLOPTS=noexec \
         PATH="$CALLER/bin:$PATH" VIRTUAL_ENV="$CALLER" CONDA_PREFIX="$CALLER" \
         PYTHONPATH="$TMP/shadow" PYTHONHOME="$CALLER" UV_PYTHON="$CALLER/bin/python" \
         UV_DEFAULT_INDEX=http://127.0.0.1:9/simple UV_INDEX=evil=http://127.0.0.1:9/simple \
