@@ -52,12 +52,16 @@ conventions are `../../docs/paket-konventionen.md` there. The rules that bite he
   `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`
   (`docker run -u root …`: the image's user cannot run apt-get, the results then belong to
   root); in a git worktree (`bin/wt`) it mounts the repository's git directory too, or
-  `make deb` stops. The build runs with a fixed PATH and without the caller's venv, `PYTHON*`,
-  `UV_*`, `PIP_*`, `GIT_*`, `PERL5*`, `CDPATH` and `BASH_ENV` settings; `packaging/clean-env.sh`
-  also removes the caller's exported shell functions and names what it leaves to the caller
-  (among others proxies, CA bundles, `DEB_*`, `DH_*`, git's global config) and what it cannot
-  undo (what the first shell already read: `BASH_ENV`, exported functions, one exported as
-  `builtin` even after the file; `LD_PRELOAD`).
+  `make deb` stops. The build runs with a fixed PATH and without the caller's `VIRTUAL_ENV`,
+  `VIRTUAL_ENV_PROMPT`, `CONDA_*`, `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`, `PERL5OPT`, `PERL5LIB`,
+  `PERLLIB`, `PERL5DB`, `MAKEFILES`, `MAKEFLAGS`, `GNUMAKEFLAGS`, `MAKEOVERRIDES`, `BASH_ENV`,
+  `ENV` and `CDPATH`; `packaging/clean-env.sh` also removes the caller's exported shell
+  functions (the scripts call every builtin before that through `builtin` and `dirname` by
+  absolute path, so a function named `set`, `export`, `.` … cannot stop it) and names what it
+  leaves to the caller (among others proxies, CA bundles, `DEB_*`, `DH_*`, git's global
+  config) and what it cannot undo (what the first shell already read: `BASH_ENV`, exported
+  functions, one exported as `builtin` even after the file; what the make running `make deb`
+  read from `MAKEFILES`, `MAKEFLAGS`, `GNUMAKEFLAGS`; `LD_PRELOAD`).
   `debian/venv-relocate` is byte-identical in squid, radius and readonlydc: change it in the
   hub (`linuxmusterDEV/work/plans/venv-debian-umbau/`) and copy it to all three.
 - **Supply chain (ADR-015):** Python deps only via `controlplane/requirements.lock` (hashes;

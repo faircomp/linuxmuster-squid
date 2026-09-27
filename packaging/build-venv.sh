@@ -7,12 +7,15 @@
 # the venv is built inside the package tree, without root, and debian/venv-relocate then makes
 # it correct for its installed path /opt/linuxmuster-squid/venv. The version of the lmnsquid
 # wheel is the top entry of debian/changelog (controlplane/setup.py reads it).
-set -euo pipefail
-# A fixed PATH and without the caller's venv, PYTHON*, UV_*, PIP_* and GIT_* settings
-# (packaging/clean-env.sh names what it removes and what it leaves); Python is /usr/bin/python3 -I.
+# Up to clean-env.sh, builtins through `builtin` and dirname by absolute path: the caller's
+# exported functions are still there (clean-env.sh removes them).
+builtin set -euo pipefail
+# A fixed PATH and without what packaging/clean-env.sh removes from the caller's environment (it
+# names each variable, the shell functions, what it leaves and what it cannot undo); Python is
+# /usr/bin/python3 -I.
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+builtin . "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
 PYTHON=/usr/bin/python3
 
 VENV="${1:?usage: build-venv.sh <venv directory>}"

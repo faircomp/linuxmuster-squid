@@ -28,11 +28,13 @@
 # with core.fsmonitor off, no pager and no optional locks, so nothing configured in the
 # checkout's .git/config or attributes (fsmonitor, filters, hooks, pagers) runs, also not when
 # root builds a checkout that belongs to someone else. safe.directory names exactly this tree.
-set -euo pipefail
-shopt -s inherit_errexit nullglob
+# Up to clean-env.sh, builtins through `builtin` and dirname by absolute path: the caller's
+# exported functions are still there (clean-env.sh removes them).
+builtin set -euo pipefail
+builtin shopt -s inherit_errexit nullglob
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+builtin . "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
 umask 022
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"

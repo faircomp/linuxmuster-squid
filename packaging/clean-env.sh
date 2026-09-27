@@ -9,12 +9,17 @@
 # bin/, and a .pth runs in every interpreter of its venv) or answer the gate from another index.
 #
 # What it does, for the sourcing script and everything started from it:
-#  * PATH=/usr/sbin:/usr/bin:/sbin:/bin (the scripts also set it as their first line);
+#  * PATH=/usr/sbin:/usr/bin:/sbin:/bin (the scripts also set it before they source this file);
 #  * removes VIRTUAL_ENV, VIRTUAL_ENV_PROMPT, CONDA_*, PYTHON*, UV_*, PIP_* (PIP_REQUIREMENT and
 #    PIP_CONSTRAINT among them), GIT_*, PERL5OPT, PERL5LIB, PERLLIB, PERL5DB (dpkg and debhelper
-#    are Perl), BASH_ENV, ENV and CDPATH, and the shell functions defined at this point (also
-#    those the caller exported; called through `builtin`, so a function named compgen or unset
-#    cannot keep the others);
+#    are Perl), MAKEFILES, MAKEFLAGS, GNUMAKEFLAGS and MAKEOVERRIDES (debian/rules is run by make:
+#    a makefile of the caller's, options such as -i, variables such as `make deb DEST=...`),
+#    BASH_ENV, ENV and CDPATH, and the shell functions defined at this point (also those the
+#    caller exported);
+#  * every builtin that runs before the functions are gone is called through `builtin`, in this
+#    file and in the lines of the scripts before it (`builtin set`, `builtin shopt`,
+#    `builtin .`, `builtin export`, `builtin compgen`, `builtin unset`), and dirname by absolute
+#    path, so an exported function named like one of them cannot keep the others;
 #  * no pip configuration file at all (/etc/pip.conf, ~/.config/pip, a venv's pip.conf); uv reads
 #    none either and never downloads a Python. The scripts call python as /usr/bin/python3 -I and
 #    give uv the interpreter and the index explicitly, so no venv is ever looked for.
@@ -26,16 +31,18 @@
 # reading git commands, with fsmonitor, hooks and pager off).
 #
 # What it cannot undo: the shell that sources it has already read the caller's BASH_ENV, imported
-# the caller's exported functions (used for the lines before this file; one named `builtin`
-# survives this file too) and applied SHELLOPTS and BASHOPTS; LD_PRELOAD and LD_LIBRARY_PATH reach
-# every program. Whoever sets those in the caller's environment runs code as the caller anyway;
-# none of it comes from a lock.
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# the caller's exported functions (a function named `builtin` survives this file too, since the
+# removal itself is called through `builtin`) and applied SHELLOPTS and BASHOPTS; the make that
+# runs `make deb` has already read MAKEFILES, MAKEFLAGS and GNUMAKEFLAGS itself; LD_PRELOAD and
+# LD_LIBRARY_PATH reach every program. Whoever sets those in the caller's environment runs code
+# as the caller anyway; none of it comes from a lock.
+builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 for _v in $(builtin compgen -A function); do builtin unset -f "$_v"; done
 for _v in $(compgen -e); do
     case "$_v" in
         VIRTUAL_ENV | VIRTUAL_ENV_PROMPT | CONDA_* | PYTHON* | UV_* | PIP_* | GIT_* | \
-        PERL5OPT | PERL5LIB | PERLLIB | PERL5DB | BASH_ENV | ENV | CDPATH)
+        PERL5OPT | PERL5LIB | PERLLIB | PERL5DB | MAKEFILES | MAKEFLAGS | GNUMAKEFLAGS | \
+        MAKEOVERRIDES | BASH_ENV | ENV | CDPATH)
             unset "$_v" ;;
     esac
 done

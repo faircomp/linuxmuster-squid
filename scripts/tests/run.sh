@@ -8,7 +8,7 @@
 # e2e/all refuse without LMNSQUID_ALLOW_REAL=1 (protection against accidental runs).
 # quick and all run the lock gate first; lint and unit alone run without it, with the tools of
 # .venv/bin first on PATH.
-set -uo pipefail
+builtin set -uo pipefail
 
 # Nothing on the caller's PATH runs before the lock gate (see gate below), not even dirname, and
 # the caller's BASH_ENV and CDPATH reach none of the scripts started from here.

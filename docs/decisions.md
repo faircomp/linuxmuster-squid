@@ -168,14 +168,18 @@ first step of the fast tier and of every build, so a lock CI would reject is nev
 before anything from a lock is installed: nothing of a venv filled from a lock runs, and no such
 `bin/` is on PATH, until all locks are proven (a wheel can bring its own `diff` or `python3`
 and a `.pth`). It runs with a fixed PATH (`/usr/sbin:/usr/bin:/sbin:/bin`), Python as
-`/usr/bin/python3 -I` and without the caller's venv, conda, `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`,
-`PERL5*`, `CDPATH` and `BASH_ENV` settings and exported shell functions (`packaging/clean-env.sh`,
-sourced first by the gate, `build-venv.sh` and `make-deb.sh`), so an activated venv or a project
-`.venv/` cannot put its tools in front of the gate's or answer from another index. Left to the
-caller on purpose, among others: proxies and CA bundles (how PyPI is reached; the hashes still
-decide what is installed), `DEB_*`, `DH_*`, git's global config; not undone: what the first
-shell read before the file (`BASH_ENV`, exported functions; one exported as `builtin` defeats
-the removal) and `LD_PRELOAD`, which run code as the caller anyway. It accepts only lines uv writes; takes uv from
+`/usr/bin/python3 -I` and without the caller's `VIRTUAL_ENV`, `VIRTUAL_ENV_PROMPT`, `CONDA_*`,
+`PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`, `PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`, `MAKEFILES`,
+`MAKEFLAGS`, `GNUMAKEFLAGS`, `MAKEOVERRIDES`, `BASH_ENV`, `ENV` and `CDPATH` and exported shell
+functions (`packaging/clean-env.sh`, sourced first by the gate, `build-venv.sh` and
+`make-deb.sh`; every builtin before the removal is called through `builtin`, `dirname` by
+absolute path), so an activated venv or a project `.venv/` cannot put its tools in front of the
+gate's or answer from another index. Left to the caller on purpose, among others: proxies and CA
+bundles (how PyPI is reached; the hashes still decide what is installed), `DEB_*`, `DH_*`, git's
+global config; not undone: what the first shell read before the file (`BASH_ENV`, exported
+functions; one exported as `builtin` defeats the removal), what the make running `make deb` read
+itself (`MAKEFILES`, `MAKEFLAGS`, `GNUMAKEFLAGS`) and `LD_PRELOAD`, which run code as the caller
+anyway. It accepts only lines uv writes; takes uv from
 `packaging/requirements-uv.lock`, which must pin uv alone with hashes PyPI publishes and older
 than 7 days (checked with the standard library), installs it into a venv of its own and runs it
 by absolute path, with `/usr/bin/python3` as its interpreter and PyPI (one line of the script) as

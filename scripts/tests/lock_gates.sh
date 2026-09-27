@@ -30,11 +30,13 @@
 # deb` and `run.sh quick` started from an activated venv holding the K1 wheel (in front of PATH,
 # VIRTUAL_ENV, CONDA_PREFIX, UV_PYTHON pointing at it, a PYTHONPATH with a `venv` module of its
 # own, a CDPATH with a packaging/ of its own, exported shell functions named like the gate's
-# tools) and with such a venv as .venv/ (and a `venv/` package) in the checkout: nothing of it
-# may run, and a manipulated lock is still rejected. (The caller's BASH_ENV is not among them:
-# the first bash a caller starts reads it, which packaging/clean-env.sh names as its limit.) Their counter-proofs switch the protection off
-# in a copy (the gate's fixed PATH and clean environment; the gate in the build) and must see a
-# marker from one of the wheel's bin/ tools, so the test cannot pass on an unarmed wheel.
+# tools and like the builtins the scripts call before clean-env.sh removes the functions, a
+# makefile of its own in MAKEFILES) and with such a venv as .venv/ (and a `venv/` package) in the
+# checkout: nothing of it may run, and a manipulated lock is still rejected. (The caller's
+# BASH_ENV is not among them: the first bash a caller starts reads it, which
+# packaging/clean-env.sh names as its limit.) Their counter-proofs switch the protection off in a
+# copy (the gate's fixed PATH and clean environment; the gate in the build) and must see a marker
+# from one of the wheel's bin/ tools, so the test cannot pass on an unarmed wheel.
 #
 #   bash scripts/tests/lock_gates.sh          --lint and --verify-freeze cases (offline) and the
 #                                             --gate cases (need PyPI and /usr/bin/python3 with
@@ -45,10 +47,11 @@
 #                                             the gate. Needs the Build-Depends (CI: the build
 #                                             image, as root).
 # LOCK_GATES_VERBOSE=1 prints the gate's own words for each rejected case.
-set -uo pipefail
+# Up to clean-env.sh, builtins through `builtin` and dirname by absolute path (clean-env.sh).
+builtin set -uo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
+builtin . "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON=/usr/bin/python3
 LOCK_DEPS="$ROOT/packaging/lock-deps.sh"
@@ -368,20 +371,29 @@ infest() {  # <tree>: .venv/ and venv/ of the caller in it
 mkdir -p "$TMP/cdpath/packaging"
 printf 'echo "clean-env.sh of the CDPATH ran" >> %s\n' "$MARKER" > "$TMP/cdpath/packaging/clean-env.sh"
 FUNCS=()
-# (compgen and unset too: the functions that clean-env.sh's removal itself calls)
-for t in awk sort diff comm git mktemp tar cp compgen unset; do
+# (compgen, unset, export, set, shopt and `.` too: the builtins the scripts and clean-env.sh call
+# before the functions are removed)
+for t in awk sort diff comm git mktemp tar cp compgen unset export set shopt .; do
     FUNCS+=("BASH_FUNC_$t%%=() { echo \"function $t of the caller ran: \$*\" >> $MARKER; }")
 done
+# A makefile of the caller in MAKEFILES: the caller's own make (make deb, level 0) reads it, the
+# makes of debian/rules (level 1 and deeper) must not.
+cat > "$TMP/caller.mk" <<EOF
+ifneq (\$(MAKELEVEL),0)
+\$(shell echo "MAKEFILES of the caller read by make at level \$(MAKELEVEL) in \$(CURDIR)" >> $MARKER)
+endif
+EOF
 caller() {  # <command...> started from the activated venv, as a developer would
-    /usr/bin/env PATH="$TMP/caller/bin:$PATH" VIRTUAL_ENV="$TMP/caller" CONDA_PREFIX="$TMP/caller" \
-        UV_PYTHON="$TMP/caller/bin/python" PYTHONPATH="$SHADOW" CDPATH="$TMP/cdpath" "${FUNCS[@]}" "$@"
+    /usr/bin/env -u MAKELEVEL PATH="$TMP/caller/bin:$PATH" VIRTUAL_ENV="$TMP/caller" \
+        CONDA_PREFIX="$TMP/caller" UV_PYTHON="$TMP/caller/bin/python" PYTHONPATH="$SHADOW" \
+        CDPATH="$TMP/cdpath" MAKEFILES="$TMP/caller.mk" "${FUNCS[@]}" "$@"
 }
 # gate_open <tree>: the counter-proof, the gate without its fixed PATH and clean environment
 gate_open() {
     local f="$1/packaging/lock-deps.sh"
     # shellcheck disable=SC2016  # a literal line of lock-deps.sh
     sed -i -e '/^PATH=\/usr\/sbin:\/usr\/bin:\/sbin:\/bin$/d' \
-        -e '/^\. "\$(dirname "\${BASH_SOURCE\[0\]}")\/clean-env\.sh"$/d' "$f" &&
+        -e '/^builtin \. "\$(\/usr\/bin\/dirname "\${BASH_SOURCE\[0\]}")\/clean-env\.sh"$/d' "$f" &&
         [ "$(diff "$ROOT/packaging/lock-deps.sh" "$f" | grep -c '^[<>]')" = 2 ]
 }
 tool_ran() { grep -Eq '^[^ ]+ ran instead of the real one' "$MARKER" 2>/dev/null; }

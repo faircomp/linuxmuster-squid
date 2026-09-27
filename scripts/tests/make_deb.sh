@@ -14,9 +14,12 @@
 #    clean/smudge/process filters, textconv, hooks). It is started from a shell with an
 #    activated venv whose bin/ shadows every tool, a .venv/ like it, PYTHONPATH, CONDA_PREFIX,
 #    UV_*/PIP_* pointing elsewhere, GIT_DIR, BASH_ENV, CDPATH, PERL5OPT/PERL5LIB with a module of
-#    its own, exported shell functions named like the build's tools (and compgen, unset). None of
-#    it may run (no marker) or reach
-#    the packages; the one untracked, not ignored file is named as not built.
+#    its own, exported shell functions named like the build's tools and like the builtins the
+#    scripts call before clean-env.sh removes the functions (compgen, unset, export, set, shopt,
+#    `.`), a makefile of its own in MAKEFILES and a variable for the makes of debian/rules in
+#    MAKEOVERRIDES (DEST, which the caller's make hands on in MAKEFLAGS as well). None of it may
+#    run (no marker) or reach the packages; the one untracked, not ignored file is named as not
+#    built.
 #  * dirty: a modified, a deleted, a staged, a staged-then-deleted, a `git rm --cached` and a new
 #    file: make deb warns, names each once under the right heading, says the version stays the
 #    changelog's, and builds exactly that (source package only).
@@ -29,10 +32,11 @@
 # <dir> holds the .deb, .dsc and .tar.xz of a build of the same tree (CI: the package job's
 # artifact); without it a plain clone is built here first as the reference. Needs root, git, the
 # Build-Depends and PyPI (the build image, like CI's lock-gates-build job).
-set -uo pipefail
+# Up to clean-env.sh, builtins through `builtin` and dirname by absolute path (clean-env.sh).
+builtin set -uo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
+builtin . "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 PKG=linuxmuster-squid
 REFERENCE=
@@ -132,15 +136,25 @@ mkdir -p "$TMP/cdpath/packaging"
 printf 'echo "a script of the CDPATH ran" >> %s\n' "$MARKER" \
     | tee "$TMP/cdpath/packaging/clean-env.sh" > "$TMP/cdpath/packaging/make-deb.sh"
 FUNCS=()
-for t in awk sort git tar dpkg-buildpackage mktemp find chmod mv compgen unset; do
+for t in awk sort git tar dpkg-buildpackage mktemp find chmod mv compgen unset export set shopt \
+         .; do
     FUNCS+=("BASH_FUNC_$t%%=() { echo \"function $t of the caller ran: \$*\" >> $MARKER; }")
 done
+# A makefile of the caller in MAKEFILES: the caller's own make (make deb, level 0) reads it, the
+# makes of debian/rules (level 1 and deeper) must not.
+cat > "$TMP/caller.mk" <<EOF
+ifneq (\$(MAKELEVEL),0)
+\$(shell echo "MAKEFILES of the caller read by make at level \$(MAKELEVEL) in \$(CURDIR)" >> $MARKER)
+endif
+EOF
 # a Perl module in PERL5LIB, loaded through PERL5OPT by every dpkg and debhelper tool
 mkdir -p "$TMP/perl5"
 printf 'package LmnCaller; open(my $f, ">>", "%s"); print $f "perl module of the caller ran: $0\\n"; close $f; 1;\n' \
     "$MARKER" > "$TMP/perl5/LmnCaller.pm"
 caller() {
-    /usr/bin/env "${FUNCS[@]}" CDPATH="$TMP/cdpath" PERL5OPT=-MLmnCaller PERL5LIB="$TMP/perl5" \
+    /usr/bin/env -u MAKELEVEL "${FUNCS[@]}" CDPATH="$TMP/cdpath" \
+        PERL5OPT=-MLmnCaller PERL5LIB="$TMP/perl5" \
+        MAKEFILES="$TMP/caller.mk" MAKEOVERRIDES=DEST=/opt/caller-override \
         PATH="$CALLER/bin:$PATH" VIRTUAL_ENV="$CALLER" CONDA_PREFIX="$CALLER" \
         PYTHONPATH="$TMP/shadow" PYTHONHOME="$CALLER" UV_PYTHON="$CALLER/bin/python" \
         UV_DEFAULT_INDEX=http://127.0.0.1:9/simple UV_INDEX=evil=http://127.0.0.1:9/simple \

@@ -25,11 +25,14 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   `controlplane/pyproject.toml` and the `.in` files within the 7-day cutoff, every pin has a
   CPython 3.12 manylinux x86_64 wheel, and the header is the canonical command. No program,
   interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that, also when
-  started from a developer's venv (fixed PATH, `/usr/bin/python3 -I`, the caller's venv,
-  `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`, `PERL5*`, `CDPATH`, `BASH_ENV` and exported shell
-  functions removed: `packaging/clean-env.sh`, which names its limits). After
-  installing, the build venv must be exactly the build lock plus ensurepip's pip and the
-  shipped venv exactly the lock plus lmnsquid, every line `name==version` (`--verify-freeze`).
+  started from a developer's venv (fixed PATH, `/usr/bin/python3 -I`, the caller's
+  `VIRTUAL_ENV`, `VIRTUAL_ENV_PROMPT`, `CONDA_*`, `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`,
+  `PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`, `MAKEFILES`, `MAKEFLAGS`, `GNUMAKEFLAGS`,
+  `MAKEOVERRIDES`, `BASH_ENV`, `ENV`, `CDPATH` and exported shell functions removed, every
+  builtin before that called through `builtin`: `packaging/clean-env.sh`, which names its
+  limits). After installing, the build venv must be exactly the build lock plus ensurepip's pip
+  and the shipped venv exactly the lock plus lmnsquid, every line `name==version`
+  (`--verify-freeze`).
   `bash scripts/tests/lock_gates.sh` keeps the manipulations of the cold verifications
   rejected for good, each for its own reason: an indented `name @ url#sha256=` line,
   `--extra-index-url`, a pin's hashes removed, a changed hash (the wheel's and the sdist's),
@@ -41,8 +44,10 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   copy's gate asks that index: one line of `lock-deps.sh` changed, nothing in the environment),
   in the build lock alone and in both locks: only the closure check can stop it, and nothing of
   it may run (no marker). The same wheel as an activated venv of the caller (PATH,
-  `VIRTUAL_ENV`, `CONDA_PREFIX`, `UV_PYTHON`, a `PYTHONPATH` with its own `venv` module) and as
-  `.venv/` in the checkout: the gate still rejects a real extra pin and passes the committed
+  `VIRTUAL_ENV`, `CONDA_PREFIX`, `UV_PYTHON`, a `PYTHONPATH` with its own `venv` module, exported
+  functions named like the tools and like the builtins called before the removal: `compgen`,
+  `unset`, `export`, `set`, `shopt`, `.`; a makefile in `MAKEFILES`) and as `.venv/` in the
+  checkout: the gate still rejects a real extra pin and passes the committed
   locks without a marker, `run.sh quick` stops at the gate before any `.venv` tool runs; the
   counter-proof (the gate without its fixed PATH and clean environment) sees the wheel's tools
   run. `--verify-freeze` must reject a direct-URL, editable, extra, missing or re-versioned
@@ -53,11 +58,13 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
 - **`make deb`:** `scripts/tests/make_deb.sh` (CI, as root in the build image): a git worktree
   of a repository owned by another user, with umask-002 modes, a lost x bit, secrets, venvs and
   junk, and git configuration that runs programs (fsmonitor, filters, textconv, hooks), built
-  from the poisoned shell, gives byte-for-byte the `.deb`, `.dsc` and source tarball of the
-  package job; the tarball holds exactly the tracked files (without `.github/`, `.claude/`,
-  `.gitignore`) with git's modes, and nothing of the traps or the shell ran (counter-proof:
-  `git status` there does run them). A dirty tree (modified, deleted, staged, new) is built as
-  it is and named in a warning with the version; a tracked symlink stays a symlink; a worktree
+  from the poisoned shell (also functions named like the builtins, a makefile in `MAKEFILES`
+  and `DEST=/opt/caller-override` for the makes of `debian/rules` in `MAKEOVERRIDES`), gives
+  byte-for-byte the `.deb`, `.dsc` and source tarball of the package job; the tarball holds
+  exactly the tracked files (without `.github/`, `.claude/`, `.gitignore`) with git's modes,
+  and nothing of the traps or the shell ran (counter-proof: `git status` there does run them).
+  A dirty tree (modified, deleted, staged, new) is built as it is and named in a warning with
+  the version; a tracked symlink stays a symlink; a worktree
   whose repository is not reachable, or whose repository names another working tree, stops the
   build and writes nothing; a tree without `.git` is built as it is.
 - **Shell:** `shellcheck` for `image/*.sh`, `scripts/**`.

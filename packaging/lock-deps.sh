@@ -27,15 +27,17 @@
 # network. uv copies the hashes of an existing output file over without fetching them again, so
 # every compile here starts from an empty file or from bare pins, never from the committed lock.
 #
-# Every mode runs with a fixed PATH and without the caller's venv, PYTHON*, UV_*, PIP_*, GIT_*
-# and CDPATH settings (packaging/clean-env.sh, which also names what it leaves to the caller);
-# Python is /usr/bin/python3 -I, and uv is always the one of packaging/requirements-uv.lock,
-# proven first and run by absolute path, with /usr/bin/python3 as its interpreter and PyPI as its
-# only index.
-set -euo pipefail
+# Every mode runs with a fixed PATH and without what packaging/clean-env.sh removes from the
+# caller's environment (it names each variable, the shell functions, what it leaves to the caller
+# and what it cannot undo); Python is /usr/bin/python3 -I, and uv is always the one of
+# packaging/requirements-uv.lock, proven first and run by absolute path, with /usr/bin/python3 as
+# its interpreter and PyPI as its only index.
+# Up to clean-env.sh, builtins through `builtin` and dirname by absolute path: the caller's
+# exported functions are still there (clean-env.sh removes them).
+builtin set -euo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+builtin . "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PYTHON=/usr/bin/python3
 # The index the hashes and the closure are checked against. uv reads it from the environment,
