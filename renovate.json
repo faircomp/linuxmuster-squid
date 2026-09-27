@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "From linuxmusterDEV/templates/renovate.json (supply chain, stage A) plus what squid adds: the digest-pinned data-plane image and the hash-pinned Python lock files. Everything arrives as a reviewable PR; nothing is automerged.",
+  "description": "Renovate is disabled, see renovate.yml: it raises nothing now, and pins are raised by hand in reviewed PRs. When enabled again, this config (from linuxmusterDEV/templates/renovate.json, supply chain, stage A, plus what squid adds: the digest-pinned data-plane image and the hash-pinned Python lock files) keeps them current through reviewable PRs. Nothing is automerged.",
   "extends": [
     "config:recommended",
     "docker:pinDigests",
@@ -12,7 +12,7 @@
     "enabled": true
   },
   "pip-compile": {
-    "description": "The hash-pinned lock files packaging/build-venv.sh installs from. Renovate re-runs the uv command recorded in each lock's header (packaging/lock-deps.sh writes it), so the hashes are regenerated together with the pins. pyproject.toml leaves most dependencies unconstrained, so the weekly refresh (this manager's lockFileMaintenance, one PR for both locks) is what moves them; its schedule is open because the Renovate workflow itself only runs weekly (the default 'before 4am on monday' never matches the 04:00 UTC cron).",
+    "description": "The hash-pinned lock files packaging/build-venv.sh installs from. When enabled: Renovate re-runs the uv command recorded in each lock's header (packaging/lock-deps.sh writes it), so the hashes are regenerated together with the pins. pyproject.toml leaves most dependencies unconstrained, so the weekly refresh (this manager's lockFileMaintenance, one PR for both locks) is what moves them; its schedule is open because the Renovate workflow itself only runs weekly (the default 'before 4am on monday' never matches the 04:00 UTC cron).",
     "managerFilePatterns": [
       "/^controlplane/requirements\\.lock$/",
       "/^packaging/requirements-build\\.lock$/",
@@ -63,7 +63,7 @@
   ],
   "packageRules": [
     {
-      "description": "Data-plane image: pin + update by immutable digest. A human MUST merge (never auto-apply to a school's proxy).",
+      "description": "When enabled: data-plane image pinned and updated by immutable digest. A human MUST merge (never auto-apply to a school's proxy).",
       "matchDatasources": [
         "docker"
       ],
@@ -71,7 +71,7 @@
       "automerge": false
     },
     {
-      "description": "PyPI releases (CI gate tools, lock dependencies) are proposed only once they are 7 days old, the window in which a compromised upload is usually still unnoticed. PyPI only: ghcr.io has no release timestamps, a docker rule would hold those updates back forever without a word (the Thursday schedule is the brake there). The weekly lock refresh gets the same age from --exclude-newer=P7D in the lock header.",
+      "description": "When enabled, PyPI releases (CI gate tools, lock dependencies) are proposed only once they are 7 days old, the window in which a compromised upload is usually still unnoticed. PyPI only: ghcr.io has no release timestamps, a docker rule would hold those updates back forever without a word (the Thursday schedule is the brake there). The weekly lock refresh gets the same age from --exclude-newer=P7D in the lock header.",
       "matchDatasources": [
         "pypi"
       ],
@@ -90,7 +90,7 @@
       "enabled": false
     },
     {
-      "description": "Build image digests in one PR, so ci.yml and release.yml always build with the same image. A human reviews and merges it.",
+      "description": "When enabled: build image digests in one PR, so ci.yml and release.yml always build with the same image. A human reviews and merges it.",
       "matchPackageNames": [
         "ghcr.io/linuxmuster/lmndev-runner"
       ],
@@ -101,7 +101,7 @@
       "automerge": false
     },
     {
-      "description": "Actions stay pinned by commit SHA with a # vN comment; a human merges every bump.",
+      "description": "Actions stay pinned by commit SHA with a # vN comment; when enabled, a human merges every bump.",
       "matchManagers": [
         "github-actions"
       ],
@@ -138,7 +138,7 @@
       "enabled": false
     },
     {
-      "description": "Renovate engine: one PR that moves along until it is merged.",
+      "description": "When enabled: one PR for the Renovate engine that moves along until it is merged.",
       "matchPackageNames": [
         "ghcr.io/renovatebot/renovate"
       ],

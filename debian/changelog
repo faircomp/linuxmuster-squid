@@ -1,3 +1,35 @@
+linuxmuster-squid (7.3.6) lmn73; urgency=medium
+
+  * A git step of the instance change log that fails during the package
+    configure (a damaged change log repository, a full disk) is no longer
+    silent: apt shows one line per failed step, "WARNING:
+    linuxmuster-squid: change log step '<step>' failed (exit <n>) in
+    /var/lib/linuxmuster-squid/instances; the configure goes on without
+    it". As before, it never fails the install or upgrade and the service
+    is handled as usual; only the change log misses that configure's
+    commit. Repair the repository as lmnsquid, then dpkg-reconfigure
+    linuxmuster-squid records it.
+  * Building the package (make deb) and checking the lock files run in an
+    environment built from an allowlist: the build scripts restart
+    themselves under env -i through /bin/bash -p with a fixed PATH and
+    locale, HOME, TMPDIR, the proxy and CA variables and the switches the
+    repository's own scripts pass to each other. Nothing else of the
+    caller's environment reaches dpkg-buildpackage, debian/rules, pip or
+    the lock gate, whatever its name (make, Perl, Python, tar or loader
+    variables, exported shell functions, SHELLOPTS, BASH_ENV). Only the
+    make the caller starts still reads its own settings: "make -i deb"
+    still ends with exit status 0 when the build fails, but no package is
+    written. A build from a clean environment gives the same files as
+    before.
+  * The build stops at once in a build directory whose path contains
+    whitespace (a TMPDIR such as "/work/odd dir"): debian/rules split such
+    a path, and the venv build then deleted a directory outside the build
+    tree ("/work/odd"). The venv build itself refuses any venv path that
+    is not absolute, contains whitespace or does not end in
+    /opt/linuxmuster-squid/venv.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Sun, 27 Sep 2026 15:16:29 +0200
+
 linuxmuster-squid (7.3.5) lmn73; urgency=medium
 
   * The package is built with debhelper (dpkg-buildpackage) now and is

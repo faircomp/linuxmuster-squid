@@ -53,18 +53,19 @@ jobs:
       # FIRST, before anything from a lock file is installed anywhere: a wheel may bring its own
       # diff or python3 into bin/ on PATH and a .pth that runs in every later Python step, so the
       # locks are proven while this Python is still untouched. Same gate as every package build
-      # (packaging/build-venv.sh), with the runner's own tools: a fixed PATH, /usr/bin/python3 -I
-      # (not the setup-python one), without the caller's venv/pip/uv settings; grammar; uv from a
+      # (packaging/build-venv.sh), with the runner's own tools: started with /bin/bash -p and
+      # restarted under the allowlist of packaging/clean-env.sh (fixed PATH, /usr/bin/python3 -I,
+      # not the setup-python one, no pip/uv settings of the runner); grammar; uv from a
       # lock of its own, proven with the standard library and run by absolute path; every hash one
       # PyPI publishes for exactly that name==version; the pins exactly the closure of
       # pyproject.toml and the .in files.
       - name: lock gate (before anything from a lock is installed)
-        run: bash packaging/lock-deps.sh --gate
+        run: /bin/bash -p packaging/lock-deps.sh --gate
       # The manipulations of the cold verifications stay rejected (--lint, --gate, --verify-freeze),
       # also from a shell with a poisoned venv, still before any install; the lock-gates-build job
       # runs the lock cases through make deb.
       - name: lock gates (regression)
-        run: bash scripts/tests/lock_gates.sh
+        run: /bin/bash -p scripts/tests/lock_gates.sh
       # The gate tools are PINNED on purpose: an unpinned `pip install ruff` picks up
       # whatever released last, and a linter that widens its default rule set turns the
       # pipeline red without a single line of our code changing (ruff 0.16 did exactly
@@ -185,9 +186,9 @@ jobs:
       - name: Build dependencies
         run: apt-get update -qq && apt-get build-dep -y -qq .
       - name: Every manipulated lock stops make deb in the lock gate
-        run: LOCK_GATES_VERBOSE=1 bash scripts/tests/lock_gates.sh --build
+        run: LOCK_GATES_VERBOSE=1 /bin/bash -p scripts/tests/lock_gates.sh --build
       - name: make deb builds the tracked files only, whatever the checkout and the shell hold
-        run: bash scripts/tests/make_deb.sh --reference reference
+        run: /bin/bash -p scripts/tests/make_deb.sh --reference reference
 
   # The one failure mode of a packaging change that no other job would notice: a file quietly
   # falls out of the package or changes mode, because debhelper treats it differently from the

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -30,11 +30,14 @@
 # deb` and `run.sh quick` started from an activated venv holding the K1 wheel (in front of PATH,
 # VIRTUAL_ENV, CONDA_PREFIX, UV_PYTHON pointing at it, a PYTHONPATH with a `venv` module of its
 # own, a CDPATH with a packaging/ of its own, exported shell functions named like the gate's
-# tools) and with such a venv as .venv/ (and a `venv/` package) in the checkout: nothing of it
-# may run, and a manipulated lock is still rejected. (The caller's BASH_ENV is not among them:
-# the first bash a caller starts reads it, which packaging/clean-env.sh names as its limit.) Their counter-proofs switch the protection off
-# in a copy (the gate's fixed PATH and clean environment; the gate in the build) and must see a
-# marker from one of the wheel's bin/ tools, so the test cannot pass on an unarmed wheel.
+# tools and like builtins (`builtin`, `exec`, `.`, `set`, `export`, `shopt`, `compgen`, `unset`,
+# and `dirname`), a makefile of its own in MAKEFILES, TAR_OPTIONS with a checkpoint action,
+# PERL5OPT with a module of its own) and with such a venv as .venv/ (and a `venv/` package) in the
+# checkout: nothing of it may run, and a manipulated lock is still rejected. (The caller's
+# BASH_ENV is not among them: the first bash a caller starts reads it, which
+# packaging/clean-env.sh names as its limit.) Their counter-proofs switch the protection off in a
+# copy (the gate's restart under the allowlist; the gate in the build) and must see a marker
+# from one of the wheel's bin/ tools, so the test cannot pass on an unarmed wheel.
 #
 #   bash scripts/tests/lock_gates.sh          --lint and --verify-freeze cases (offline) and the
 #                                             --gate cases (need PyPI and /usr/bin/python3 with
@@ -45,10 +48,13 @@
 #                                             the gate. Needs the Build-Depends (CI: the build
 #                                             image, as root).
 # LOCK_GATES_VERBOSE=1 prints the gate's own words for each rejected case.
-set -uo pipefail
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# First the restart under the allowlisted environment of packaging/clean-env.sh; before it only
+# this assignment (POSIX mode: special builtins such as `.` win over functions) and `.` run.
+# shellcheck disable=SC2034  # read by bash itself
+POSIXLY_CORRECT=1
 # shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
+. "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
+set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON=/usr/bin/python3
 LOCK_DEPS="$ROOT/packaging/lock-deps.sh"
@@ -368,20 +374,38 @@ infest() {  # <tree>: .venv/ and venv/ of the caller in it
 mkdir -p "$TMP/cdpath/packaging"
 printf 'echo "clean-env.sh of the CDPATH ran" >> %s\n' "$MARKER" > "$TMP/cdpath/packaging/clean-env.sh"
 FUNCS=()
-# (compgen and unset too: the functions that clean-env.sh's removal itself calls)
-for t in awk sort diff comm git mktemp tar cp compgen unset; do
+# (and the builtins a script could call before clean-env.sh restarts it: builtin, exec, `.`, set,
+# export, shopt, compgen, unset; dirname hands on to the real one, the counter-proof needs it)
+for t in awk sort diff comm git mktemp tar cp compgen unset export set shopt . builtin exec; do
     FUNCS+=("BASH_FUNC_$t%%=() { echo \"function $t of the caller ran: \$*\" >> $MARKER; }")
 done
+FUNCS+=("BASH_FUNC_dirname%%=() { echo \"function dirname of the caller ran: \$*\" >> $MARKER; command dirname \"\$@\"; }")
+# tar, Perl (dpkg, debhelper) and the loader's iconv modules of the caller
+printf '#!/bin/sh\necho "TAR_OPTIONS of the caller ran" >> %s\n' "$MARKER" > "$TMP/tarmark"
+chmod 0755 "$TMP/tarmark"
+mkdir -p "$TMP/perl5"
+printf 'package LmnCaller; open(my $f, ">>", "%s"); print $f "PERL5OPT of the caller ran: $0\\n"; close $f; 1;\n' \
+    "$MARKER" > "$TMP/perl5/LmnCaller.pm"
+# A makefile of the caller in MAKEFILES: the caller's own make (make deb, level 0) reads it, the
+# makes of debian/rules (level 1 and deeper) must not.
+cat > "$TMP/caller.mk" <<EOF
+ifneq (\$(MAKELEVEL),0)
+\$(shell echo "MAKEFILES of the caller read by make at level \$(MAKELEVEL) in \$(CURDIR)" >> $MARKER)
+endif
+EOF
 caller() {  # <command...> started from the activated venv, as a developer would
-    /usr/bin/env PATH="$TMP/caller/bin:$PATH" VIRTUAL_ENV="$TMP/caller" CONDA_PREFIX="$TMP/caller" \
-        UV_PYTHON="$TMP/caller/bin/python" PYTHONPATH="$SHADOW" CDPATH="$TMP/cdpath" "${FUNCS[@]}" "$@"
+    /usr/bin/env -u MAKELEVEL PATH="$TMP/caller/bin:$PATH" VIRTUAL_ENV="$TMP/caller" \
+        CONDA_PREFIX="$TMP/caller" UV_PYTHON="$TMP/caller/bin/python" PYTHONPATH="$SHADOW" \
+        CDPATH="$TMP/cdpath" MAKEFILES="$TMP/caller.mk" \
+        TAR_OPTIONS="--checkpoint=1 --checkpoint-action=exec=$TMP/tarmark" \
+        PERL5OPT=-MLmnCaller PERL5LIB="$TMP/perl5" "${FUNCS[@]}" "$@"
 }
-# gate_open <tree>: the counter-proof, the gate without its fixed PATH and clean environment
+# gate_open <tree>: the counter-proof, the gate without its restart under the allowlist
 gate_open() {
     local f="$1/packaging/lock-deps.sh"
-    # shellcheck disable=SC2016  # a literal line of lock-deps.sh
-    sed -i -e '/^PATH=\/usr\/sbin:\/usr\/bin:\/sbin:\/bin$/d' \
-        -e '/^\. "\$(dirname "\${BASH_SOURCE\[0\]}")\/clean-env\.sh"$/d' "$f" &&
+    # shellcheck disable=SC2016  # literal lines of lock-deps.sh
+    sed -i -e '/^POSIXLY_CORRECT=1$/d' \
+        -e '/^\. "\$(\/usr\/bin\/dirname "\${BASH_SOURCE\[0\]}")\/clean-env\.sh"$/d' "$f" &&
         [ "$(diff "$ROOT/packaging/lock-deps.sh" "$f" | grep -c '^[<>]')" = 2 ]
 }
 tool_ran() { grep -Eq '^[^ ]+ ran instead of the real one' "$MARKER" 2>/dev/null; }
@@ -591,7 +615,7 @@ d="$TMP/caller-extra-pin"
 if copy "$d" && apply extra-pin "$d" && infest "$d"; then
     # shellcheck disable=SC2016  # expanded by the inner bash
     rejects "gate from a poisoned caller: extra-pin" "${WHY[extra-pin]}" \
-        caller /bin/bash -c 'cd "$1" && exec /bin/bash packaging/lock-deps.sh --gate' _ "$d"
+        caller /bin/bash -c 'cd "$1" && /bin/bash packaging/lock-deps.sh --gate' _ "$d"
 else
     echo "WRONG gate from a poisoned caller: could not prepare"; FAIL=$((FAIL + 1))
 fi
@@ -599,7 +623,7 @@ d="$TMP/caller-clean"
 if copy "$d" && infest "$d"; then
     rm -f "$MARKER"
     # shellcheck disable=SC2016  # expanded by the inner bash
-    caller /bin/bash -c 'cd "$1" && exec /bin/bash packaging/lock-deps.sh --gate' _ "$d" > "$TMP/out" 2>&1; rc=$?
+    caller /bin/bash -c 'cd "$1" && /bin/bash packaging/lock-deps.sh --gate' _ "$d" > "$TMP/out" 2>&1; rc=$?
     if [ "$rc" = 0 ] && [ ! -e "$MARKER" ]; then
         echo "ok    gate from a poisoned caller: the committed locks pass, nothing of the caller ran"
         PASS=$((PASS + 1))
@@ -616,7 +640,7 @@ d="$TMP/caller-open"
 if copy "$d" && apply extra-pin "$d" && infest "$d" && gate_open "$d"; then
     rm -f "$MARKER"
     # shellcheck disable=SC2016  # expanded by the inner bash
-    caller /bin/bash -c 'cd "$1" && exec /bin/bash packaging/lock-deps.sh --gate' _ "$d" > "$TMP/out" 2>&1; rc=$?
+    caller /bin/bash -c 'cd "$1" && /bin/bash packaging/lock-deps.sh --gate' _ "$d" > "$TMP/out" 2>&1; rc=$?
     if tool_ran; then
         echo "ok    gate counter-proof: without its fixed PATH the caller's bin/ tools run (gate exit $rc):"
         PASS=$((PASS + 1))

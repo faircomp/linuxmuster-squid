@@ -38,9 +38,9 @@ groups are prefixed, e.g. `<school>-internet`). All commands as root.
 
 ```bash
 gh release download -R faircomp/linuxmuster-squid -p 'linuxmuster-squid_*.deb'   # or scp it
-apt-get install -y ./linuxmuster-squid_7.3.5_amd64.deb
+apt-get install -y ./linuxmuster-squid_7.3.6_amd64.deb
 lmnsquid health          # {"status": "ok"}
-lmnsquid version         # {"version": "7.3.5"}  (= dpkg-query -W linuxmuster-squid)
+lmnsquid version         # {"version": "7.3.6"}  (= dpkg-query -W linuxmuster-squid)
 ```
 
 The postinst creates the system user `lmnsquid` (in group `docker`), the config

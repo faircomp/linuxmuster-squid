@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -28,11 +28,17 @@
 # with core.fsmonitor off, no pager and no optional locks, so nothing configured in the
 # checkout's .git/config or attributes (fsmonitor, filters, hooks, pagers) runs, also not when
 # root builds a checkout that belongs to someone else. safe.directory names exactly this tree.
+#
+# Nothing of the caller's environment but the allowlist of packaging/clean-env.sh reaches the
+# build: the Makefile starts this script with /bin/bash -p, and it restarts itself under env -i.
+# First the restart under the allowlisted environment of packaging/clean-env.sh; before it only
+# this assignment (POSIX mode: special builtins such as `.` win over functions) and `.` run.
+# shellcheck disable=SC2034  # read by bash itself
+POSIXLY_CORRECT=1
+# shellcheck source=packaging/clean-env.sh
+. "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
 set -euo pipefail
 shopt -s inherit_errexit nullglob
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
-# shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"
 umask 022
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -27,19 +27,23 @@
 # network. uv copies the hashes of an existing output file over without fetching them again, so
 # every compile here starts from an empty file or from bare pins, never from the committed lock.
 #
-# Every mode runs with a fixed PATH and without the caller's venv, PYTHON*, UV_*, PIP_*, GIT_*
-# and CDPATH settings (packaging/clean-env.sh, which also names what it leaves to the caller);
-# Python is /usr/bin/python3 -I, and uv is always the one of packaging/requirements-uv.lock,
-# proven first and run by absolute path, with /usr/bin/python3 as its interpreter and PyPI as its
-# only index.
-set -euo pipefail
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# Every mode runs in the allowlisted environment of packaging/clean-env.sh (restarted under
+# `env -i` through /bin/bash -p; the file names the allowlist and what ran before the restart);
+# Python is /usr/bin/python3 -I, and uv is always the one of
+# packaging/requirements-uv.lock, proven first and run by absolute path, with /usr/bin/python3 as
+# its interpreter and PyPI as its only index.
+#
+# First the restart under the allowlisted environment of packaging/clean-env.sh; before it only
+# this assignment (POSIX mode: special builtins such as `.` win over functions) and `.` run.
+# shellcheck disable=SC2034  # read by bash itself
+POSIXLY_CORRECT=1
 # shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+. "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 PYTHON=/usr/bin/python3
 # The index the hashes and the closure are checked against. uv reads it from the environment,
-# which clean-env.sh emptied, so nothing but this line decides it (the lock tests change this
+# which the restart emptied, so nothing but this line decides it (the lock tests change this
 # line, and only this line, in a copy of the tree to "publish" a package of their own).
 PYPI_SIMPLE=https://pypi.org/simple
 export UV_DEFAULT_INDEX="$PYPI_SIMPLE" UV_PYTHON="$PYTHON"

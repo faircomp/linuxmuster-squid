@@ -8,7 +8,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Two tiers. The **fast tier** runs locally/in CI; the **heavy tier** (Docker +
 Kerberos) runs on a **Linux host with Docker**. Aggregator:
 `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]` — summary
-`N passed, M failed, K skipped`, exit ≠ 0 on failure, every step dep-gated.
+`N passed, M failed, K skipped`, every step dep-gated. Skipped is not passed: exit 0 only
+without failures and skips, exit 1 on a failure, exit 3 when a step was skipped (a missing
+tool, `e2e` without permission), and the last line names what failed and every step that was
+not checked (skipped, or not run because the lock gate failed); `LMNSQUID_ALLOW_SKIP=1` accepts
+skips on purpose (exit 0, the last line still names them). run.sh runs in the allowlisted
+environment of `packaging/clean-env.sh`: its tools come from `.venv/bin` or the system, never
+from the caller's PATH.
 `e2e`/`all` refuse to run without `LMNSQUID_ALLOW_REAL=1`.
 
 ## Fast tier (everywhere)
@@ -25,11 +31,11 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   `controlplane/pyproject.toml` and the `.in` files within the 7-day cutoff, every pin has a
   CPython 3.12 manylinux x86_64 wheel, and the header is the canonical command. No program,
   interpreter or `bin/` of a venv filled from a lock runs or is on PATH before that, also when
-  started from a developer's venv (fixed PATH, `/usr/bin/python3 -I`, the caller's venv,
-  `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`, `PERL5*`, `CDPATH`, `BASH_ENV` and exported shell
-  functions removed: `packaging/clean-env.sh`, which names its limits). After
-  installing, the build venv must be exactly the build lock plus ensurepip's pip and the
-  shipped venv exactly the lock plus lmnsquid, every line `name==version` (`--verify-freeze`).
+  started from a developer's venv (`/usr/bin/python3 -I`; the gate restarts itself under
+  `env -i` through `/bin/bash -p` with the allowlist of `packaging/clean-env.sh`, which names it
+  and what ran before the restart). After installing, the build venv must be exactly the build lock plus ensurepip's pip
+  and the shipped venv exactly the lock plus lmnsquid, every line `name==version`
+  (`--verify-freeze`).
   `bash scripts/tests/lock_gates.sh` keeps the manipulations of the cold verifications
   rejected for good, each for its own reason: an indented `name @ url#sha256=` line,
   `--extra-index-url`, a pin's hashes removed, a changed hash (the wheel's and the sdist's),
@@ -41,10 +47,12 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
   copy's gate asks that index: one line of `lock-deps.sh` changed, nothing in the environment),
   in the build lock alone and in both locks: only the closure check can stop it, and nothing of
   it may run (no marker). The same wheel as an activated venv of the caller (PATH,
-  `VIRTUAL_ENV`, `CONDA_PREFIX`, `UV_PYTHON`, a `PYTHONPATH` with its own `venv` module) and as
-  `.venv/` in the checkout: the gate still rejects a real extra pin and passes the committed
+  `VIRTUAL_ENV`, `CONDA_PREFIX`, `UV_PYTHON`, a `PYTHONPATH` with its own `venv` module, exported
+  functions named like the tools and like builtins: `compgen`, `unset`, `export`, `set`,
+  `shopt`, `.`, `builtin`, `exec`, `dirname`; a makefile in `MAKEFILES`, `TAR_OPTIONS` with a
+  checkpoint action, `PERL5OPT` with a module of its own) and as `.venv/` in the checkout: the gate still rejects a real extra pin and passes the committed
   locks without a marker, `run.sh quick` stops at the gate before any `.venv` tool runs; the
-  counter-proof (the gate without its fixed PATH and clean environment) sees the wheel's tools
+  counter-proof (the gate without its restart under the allowlist) sees the wheel's tools
   run. `--verify-freeze` must reject a direct-URL, editable, extra, missing or re-versioned
   package. CI also runs `lock_gates.sh --build`: every lock case through `make deb`, also from
   the poisoned shell, which must stop in the gate before any venv of the build exists, without
@@ -53,11 +61,14 @@ Kerberos) runs on a **Linux host with Docker**. Aggregator:
 - **`make deb`:** `scripts/tests/make_deb.sh` (CI, as root in the build image): a git worktree
   of a repository owned by another user, with umask-002 modes, a lost x bit, secrets, venvs and
   junk, and git configuration that runs programs (fsmonitor, filters, textconv, hooks), built
-  from the poisoned shell, gives byte-for-byte the `.deb`, `.dsc` and source tarball of the
-  package job; the tarball holds exactly the tracked files (without `.github/`, `.claude/`,
-  `.gitignore`) with git's modes, and nothing of the traps or the shell ran (counter-proof:
-  `git status` there does run them). A dirty tree (modified, deleted, staged, new) is built as
-  it is and named in a warning with the version; a tracked symlink stays a symlink; a worktree
+  from the poisoned shell (also functions named like the builtins, `builtin` and `exec` among
+  them, a makefile in `MAKEFILES`, `DEST=/opt/caller-override` for the makes of `debian/rules`
+  in `MAKEOVERRIDES`, `TAR_OPTIONS` with a checkpoint action, `SHELLOPTS=noexec`), gives
+  byte-for-byte the `.deb`, `.dsc` and source tarball of the package job; the tarball holds
+  exactly the tracked files (without `.github/`, `.claude/`, `.gitignore`) with git's modes,
+  and nothing of the traps or the shell ran (counter-proof: `git status` there does run them).
+  A dirty tree (modified, deleted, staged, new) is built as it is and named in a warning with
+  the version; a tracked symlink stays a symlink; a worktree
   whose repository is not reachable, or whose repository names another working tree, stops the
   build and writes nothing; a tree without `.git` is built as it is.
 - **Shell:** `shellcheck` for `image/*.sh`, `scripts/**`.
@@ -99,6 +110,10 @@ acceptance list in `deployment-gpo.md`.
   the same `.deb` configured 30 times in a row (`scripts/tests/install_loop.sh`, CI
   install-smoke: 15× purge + fresh install, 15× reinstall/`dpkg-reconfigure`, stop at the
   first failure) — an intermittent postinst race (7.3.1–7.3.3) passed single installs;
+  none of these configures prints the change log warning; then a change log git cannot read
+  (`.git/HEAD` destroyed): `dpkg-reconfigure` succeeds, prints the postinst's warning with the
+  failed step and the repository, the package stays `ii` and the service as enabled/active as
+  before, and once `HEAD` is back the next configure commits again without a warning;
   upgrade over a release with root-owned files in the change log repository → handed
   back to `lmnsquid`, history kept.
 - **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;

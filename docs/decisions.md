@@ -167,15 +167,24 @@ The lock is exactly what its header command produces. The gate (`lock-deps.sh --
 first step of the fast tier and of every build, so a lock CI would reject is never built) runs
 before anything from a lock is installed: nothing of a venv filled from a lock runs, and no such
 `bin/` is on PATH, until all locks are proven (a wheel can bring its own `diff` or `python3`
-and a `.pth`). It runs with a fixed PATH (`/usr/sbin:/usr/bin:/sbin:/bin`), Python as
-`/usr/bin/python3 -I` and without the caller's venv, conda, `PYTHON*`, `UV_*`, `PIP_*`, `GIT_*`,
-`PERL5*`, `CDPATH` and `BASH_ENV` settings and exported shell functions (`packaging/clean-env.sh`,
-sourced first by the gate, `build-venv.sh` and `make-deb.sh`), so an activated venv or a project
-`.venv/` cannot put its tools in front of the gate's or answer from another index. Left to the
-caller on purpose, among others: proxies and CA bundles (how PyPI is reached; the hashes still
-decide what is installed), `DEB_*`, `DH_*`, git's global config; not undone: what the first
-shell read before the file (`BASH_ENV`, exported functions; one exported as `builtin` defeats
-the removal) and `LD_PRELOAD`, which run code as the caller anyway. It accepts only lines uv writes; takes uv from
+and a `.pth`). It runs, like the whole build, in an allowlisted environment: every entry point
+(the gate, `build-venv.sh`, `make-deb.sh`, `run.sh`, the lock tests) sources
+`packaging/clean-env.sh` first, which restarts it under `env -i` through `/bin/bash -p` with a
+fixed PATH (`/usr/sbin:/usr/bin:/sbin:/bin`) and `LC_ALL=C.UTF-8`, the caller's `HOME`, `TMPDIR`,
+proxies (`http_proxy`, `https_proxy`, `no_proxy`, also upper-case) and CA bundles
+(`SSL_CERT_FILE`, `SSL_CERT_DIR`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`: how PyPI is reached; the
+hashes still decide what is installed) and the repository's own switches (`LMNSQUID_ALLOW_SKIP`,
+`LMNSQUID_ALLOW_REAL`, `LOCK_GATES_VERBOSE`, `LOCK_GATES_NESTED`), and nothing else, whatever its
+name; Python is `/usr/bin/python3 -I`. A blocklist was never finished (each review found another
+variable: `MAKEFILES`, `PERL5OPT`, `TAR_OPTIONS`, functions named `set` or `.`), the allowlist
+needs no names for what it drops. Before the restart only an assignment that turns on POSIX
+mode (special builtins win over functions) and `.` run, so no exported function of the caller
+does. Not undone, because it ran before the restart: the caller's first bash when a script is
+started as `bash <script>` (its `BASH_ENV`; `SHELLOPTS=noexec` makes it read nothing and end
+with 0; `make deb`, `run.sh` and CI start the scripts with `/bin/bash -p`), the make that runs
+`make deb` (`MAKEFILES`, `MAKEFLAGS`, `GNUMAKEFLAGS`; `make -i deb` ends with 0 without a package)
+and `LD_PRELOAD` of that first process, which run code as the caller anyway. It accepts only
+lines uv writes; takes uv from
 `packaging/requirements-uv.lock`, which must pin uv alone with hashes PyPI publishes and older
 than 7 days (checked with the standard library), installs it into a venv of its own and runs it
 by absolute path, with `/usr/bin/python3` as its interpreter and PyPI (one line of the script) as

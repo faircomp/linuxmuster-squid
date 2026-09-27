@@ -1,39 +1,70 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Test aggregator for linuxmuster-squid. See docs/test-strategy.md and the
 # /test skill. Modes: lint | unit | quick (default) | e2e | all.
-# Each step is dependency-gated and skips cleanly when a toolchain is missing.
+# Each step is dependency-gated and skips when a toolchain is missing.
 # e2e/all refuse without LMNSQUID_ALLOW_REAL=1 (protection against accidental runs).
 # quick and all run the lock gate first; lint and unit alone run without it, with the tools of
-# .venv/bin first on PATH.
+# .venv/bin first on PATH. It runs in the allowlisted environment of packaging/clean-env.sh, so
+# its tools are those of .venv/bin (created by crabbox_bootstrap.sh) or the system's, never
+# those of the caller's PATH.
+# Skipped is not passed: exit 0 only when nothing failed and nothing was skipped. A run with a
+# skipped step (a missing tool, e2e without LMNSQUID_ALLOW_REAL=1) ends with exit 3, a failure
+# with exit 1. The last line names what failed and every step that was not checked (skipped, or
+# not run because the lock gate failed). LMNSQUID_ALLOW_SKIP=1 accepts skips on purpose: exit 0,
+# the last line still names them.
+# First the restart under the allowlisted environment of packaging/clean-env.sh; before it only
+# this assignment (POSIX mode: special builtins such as `.` win over functions) and `.` run.
+# shellcheck disable=SC2034  # read by bash itself
+POSIXLY_CORRECT=1
+# shellcheck source=packaging/clean-env.sh
+. "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/../../packaging/clean-env.sh"
 set -uo pipefail
-
-# Nothing on the caller's PATH runs before the lock gate (see gate below), not even dirname, and
-# the caller's BASH_ENV and CDPATH reach none of the scripts started from here.
-builtin unset BASH_ENV ENV CDPATH
-here="${BASH_SOURCE[0]%/*}"; [ "$here" != "${BASH_SOURCE[0]}" ] || here=.
-ROOT="$(cd "$here/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT" || exit 1
 
-PASS=0; FAIL=0; SKIP=0
+PASS=0; FAIL=0; SKIP=0; FAILED=(); SKIPPED=(); NOT_RUN=()
 pass(){ PASS=$((PASS + 1)); printf '  [PASS] %s\n' "$1"; }
-fail(){ FAIL=$((FAIL + 1)); printf '  [FAIL] %s\n' "$1"; }
-skip(){ SKIP=$((SKIP + 1)); printf '  [SKIP] %s (%s)\n' "$1" "$2"; }
+fail(){ FAIL=$((FAIL + 1)); FAILED+=("$1"); printf '  [FAIL] %s\n' "$1"; }
+skip(){ SKIP=$((SKIP + 1)); SKIPPED+=("$1 ($2)"); printf '  [SKIP] %s (%s)\n' "$1" "$2"; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 summary(){ echo; echo "$PASS passed, $FAIL failed, $SKIP skipped"; }
+join(){ local s; s="$(printf '%s; ' "$@")"; echo "${s%; }"; }
+# The summary, then the last line (see the header) and the exit code.
+finish(){
+  local unchecked=("${SKIPPED[@]}") s
+  for s in "${NOT_RUN[@]}"; do unchecked+=("$s (not run: the lock gate failed)"); done
+  summary
+  if [ "$FAIL" -ne 0 ]; then
+    if [ "${#unchecked[@]}" -ne 0 ]; then
+      echo "FAILED: $(join "${FAILED[@]}"); NOT checked: $(join "${unchecked[@]}")"
+    else
+      echo "FAILED: $(join "${FAILED[@]}"); every other step passed"
+    fi
+    exit 1
+  elif [ "$SKIP" -ne 0 ] && [ "${LMNSQUID_ALLOW_SKIP:-0}" != 1 ]; then
+    echo "NOT GREEN: $SKIP step(s) skipped, NOT checked: $(join "${unchecked[@]}")" \
+         "(LMNSQUID_ALLOW_SKIP=1 accepts skips)"
+    exit 3
+  elif [ "$SKIP" -ne 0 ]; then
+    echo "skips accepted (LMNSQUID_ALLOW_SKIP=1), NOT checked: $(join "${unchecked[@]}")"
+  fi
+  exit 0
+}
 
 # The lock gate comes first, before any tool of a venv runs (the fast tier of CI does the same):
 # a lock-filled venv's bin/ may shadow the gate's tools and its .pth runs in every interpreter of
-# it. The gate cleans its own environment (packaging/clean-env.sh) and is started by absolute
-# path; if it rejects a lock, nothing else runs.
-gate(){
+# it. The gate restarts itself under the allowlist (packaging/clean-env.sh) and is started by
+# absolute path with /bin/bash -p; if it rejects a lock, nothing else runs.
+gate(){  # <the steps that follow it>...
   echo "== lock gate =="
-  if /bin/bash packaging/lock-deps.sh --gate; then
+  if /bin/bash -p packaging/lock-deps.sh --gate; then
     pass "lock gate"
   else
-    fail "lock gate"; echo "  the locks are not proven: no further step runs"; summary; exit 1
+    fail "lock gate"; echo "  the locks are not proven: no further step runs"
+    NOT_RUN=("$@"); finish
   fi
 }
 
@@ -113,7 +144,7 @@ e2e(){
 locks(){
   echo "== lock gates (regression) =="
   # Needs PyPI and /usr/bin/python3 with venv; cleans its own environment.
-  run_step "lock-gates" bash /bin/bash scripts/tests/lock_gates.sh
+  run_step "lock-gates" bash /bin/bash -p scripts/tests/lock_gates.sh
 }
 
 blocklist(){
@@ -129,11 +160,12 @@ mode="${1:-quick}"
 case "$mode" in
   lint)  dev_venv; lint ;;
   unit)  dev_venv; unit ;;
-  quick) gate; dev_venv; lint; unit; locks; blocklist ;;
+  quick) gate lint unit "lock gates (regression)" "blocklist smoke"
+         dev_venv; lint; unit; locks; blocklist ;;
   e2e)   e2e ;;
-  all)   gate; dev_venv; lint; unit; locks; blocklist; e2e ;;
+  all)   gate lint unit "lock gates (regression)" "blocklist smoke" e2e
+         dev_venv; lint; unit; locks; blocklist; e2e ;;
   *) echo "usage: run.sh [lint|unit|quick|e2e|all]" >&2; exit 2 ;;
 esac
 
-summary
-[ "$FAIL" -eq 0 ]
+finish

@@ -52,19 +52,30 @@ conventions are `../../docs/paket-konventionen.md` there. The rules that bite he
   `ghcr.io/linuxmuster/lmndev-runner:24.04` like CI does — the command is in the `Makefile`
   (`docker run -u root …`: the image's user cannot run apt-get, the results then belong to
   root); in a git worktree (`bin/wt`) it mounts the repository's git directory too, or
-  `make deb` stops. The build runs with a fixed PATH and without the caller's venv, `PYTHON*`,
-  `UV_*`, `PIP_*`, `GIT_*`, `PERL5*`, `CDPATH` and `BASH_ENV` settings; `packaging/clean-env.sh`
-  also removes the caller's exported shell functions and names what it leaves to the caller
-  (among others proxies, CA bundles, `DEB_*`, `DH_*`, git's global config) and what it cannot
-  undo (what the first shell already read: `BASH_ENV`, exported functions, one exported as
-  `builtin` even after the file; `LD_PRELOAD`).
+  `make deb` stops. The build and the lock gate run in an **allowlisted environment**: every
+  entry point (`make-deb.sh`, `build-venv.sh`, `lock-deps.sh`, `run.sh`, the lock tests)
+  restarts itself first under `env -i` through `/bin/bash -p` (`packaging/clean-env.sh`) with a
+  fixed `PATH` and `LC_ALL=C.UTF-8`, the caller's `HOME` and `TMPDIR`, the proxies
+  (`http_proxy`, `https_proxy`, `no_proxy`, also upper-case), the CA bundles (`SSL_CERT_FILE`,
+  `SSL_CERT_DIR`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`) and the repository's own switches
+  (`LMNSQUID_ALLOW_SKIP`, `LMNSQUID_ALLOW_REAL`, `LOCK_GATES_VERBOSE`, `LOCK_GATES_NESTED`);
+  nothing else, whatever its name. Before the restart only an assignment that turns on POSIX
+  mode and `.` run, so no exported function of the caller does. Limits, all before the restart:
+  a script started as `bash <script>` runs in the caller's first bash (its `BASH_ENV`;
+  `SHELLOPTS=noexec` makes it read nothing and end with 0 — start the scripts with
+  `/bin/bash -p`, as `./<script>`, through `make deb` or `run.sh`), the make running `make deb`
+  reads `MAKEFILES`, `MAKEFLAGS` and `GNUMAKEFLAGS` itself (`make -i deb` ends with 0 without a
+  package), `LD_PRELOAD` of that first process. Through `HOME`, git's global config reaches the
+  read-only git commands of `make-deb.sh`. `debian/rules` refuses a build directory containing
+  whitespace; `build-venv.sh` refuses a venv path that is not absolute, contains whitespace or
+  does not end in `/opt/linuxmuster-squid/venv`.
   `debian/venv-relocate` is byte-identical in squid, radius and readonlydc: change it in the
   hub (`linuxmusterDEV/work/plans/venv-debian-umbau/`) and copy it to all three.
 - **Supply chain (ADR-015):** Python deps only via `controlplane/requirements.lock` (hashes;
   regenerate with `bash packaging/lock-deps.sh`, never hand-edit; `lock-deps.sh --gate` runs
   before anything from a lock is installed, never put a lock-filled venv's `bin/` on PATH or
   run its Python before it; gate scripts call python as `/usr/bin/python3 -I` and source
-  `packaging/clean-env.sh` first; `run.sh quick` runs the gate before any `.venv` tool; the gate
+  `packaging/clean-env.sh` first, which restarts them under the allowlist; `run.sh quick` runs the gate before any `.venv` tool; the gate
   cannot tell a pin moved to another real release, older or newer, within the declared ranges,
   so read the versions in every lock diff); actions by commit SHA
   with `# vN`, images by digest. They move only in reviewed PRs, raised by hand while the
@@ -205,16 +216,24 @@ tier (ruff/mypy/pytest/shellcheck) runs locally/in CI. The **heavy tier** — th
 real docker-compose Kerberos E2E (**Samba AD DC + Squid + client**) that proves
 *teacher→200 / student→403 / blocked→403 / no-ticket→407*, as well as multischool,
 update/rollback, and `.deb` install tests — needs real Linux with **Docker**.
-**crabbox** leases an ephemeral Proxmox VM for this (provider in
-`.claude/settings.json`, token only in the gitignored `.claude/settings.local.json`;
-`crabbox doctor`). Rules/details: the `/test` skill (`.claude/skills/test/SKILL.md`).
+**crabbox** leases an ephemeral Proxmox VM for this (`crabbox doctor`). Not usable at
+present: its Proxmox user was deleted. Its provider settings (Proxmox address, token ID, node,
+template, storage, bridge) and the token belong in the gitignored
+`.claude/settings.local.json` only, never in the tracked `.claude/settings.json` (that one holds
+nothing but the crabbox permissions). Rules/details: the `/test` skill
+(`.claude/skills/test/SKILL.md`).
 
 - **One aggregate runner:** `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]`
   (created in P0/P1). `quick` (default) = lock gate first (stops everything if it rejects a
   lock), then lint + unit + lock regression + blocklist smoke; `lint` and `unit` alone run
   without the gate (with `.venv/bin` first on PATH); `e2e`/`all` run the
   Docker suites and **refuse without `LMNSQUID_ALLOW_REAL=1`**. Summary:
-  `N passed, M failed, K skipped` (exit ≠ 0 on failure); steps dep-gated.
+  `N passed, M failed, K skipped`; steps dep-gated. Skipped is not passed: exit 0 only
+  without failures and skips; a skip (missing tool, e2e not allowed) is exit 3, a failure
+  exit 1, and the last line names what failed and every step that was not checked (skipped,
+  or not run because the lock gate failed). `LMNSQUID_ALLOW_SKIP=1` accepts skips on purpose
+  (exit 0, the last line still names them). It runs in the allowlisted environment (see
+  above): its tools come from `.venv/bin` or the system, not from the caller's PATH.
 - **Box lifecycle:** `crabbox warmup` → `crabbox run --id <slug> -- 'bash scripts/tests/crabbox_bootstrap.sh'`
   → `crabbox run --id <slug> -- 'LMNSQUID_ALLOW_REAL=1 bash scripts/tests/run.sh e2e'`
   → `crabbox stop --id <slug>`.

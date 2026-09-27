@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-FileCopyrightText: Kevin Stenzel
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -7,15 +7,27 @@
 # the venv is built inside the package tree, without root, and debian/venv-relocate then makes
 # it correct for its installed path /opt/linuxmuster-squid/venv. The version of the lmnsquid
 # wheel is the top entry of debian/changelog (controlplane/setup.py reads it).
-set -euo pipefail
-# A fixed PATH and without the caller's venv, PYTHON*, UV_*, PIP_* and GIT_* settings
-# (packaging/clean-env.sh names what it removes and what it leaves); Python is /usr/bin/python3 -I.
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# It runs in the allowlisted environment of packaging/clean-env.sh (which names the allowlist and
+# what ran before the restart); Python is /usr/bin/python3 -I.
+#
+# First the restart under the allowlisted environment of packaging/clean-env.sh; before it only
+# this assignment (POSIX mode: special builtins such as `.` win over functions) and `.` run.
+# shellcheck disable=SC2034  # read by bash itself
+POSIXLY_CORRECT=1
 # shellcheck source=packaging/clean-env.sh
-. "$(dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+. "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/clean-env.sh"
+set -euo pipefail
 PYTHON=/usr/bin/python3
 
 VENV="${1:?usage: build-venv.sh <venv directory>}"
+# The venv path is removed below (rm -rf) before the venv is built: only an absolute path
+# without whitespace that ends in the installed path, as debian/rules passes it
+# (<build dir>/debian/linuxmuster-squid/opt/linuxmuster-squid/venv). Checked before anything runs.
+if [[ $VENV != /* || $VENV =~ [[:space:]] || $VENV != */opt/linuxmuster-squid/venv ]]; then
+    echo "build-venv.sh: refusing venv path '$VENV': it must be absolute, contain no" \
+         "whitespace and end in /opt/linuxmuster-squid/venv" >&2
+    exit 2
+fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT

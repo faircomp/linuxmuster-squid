@@ -17,8 +17,11 @@ no-ticket→407*, plus the multi-school matrix, the update/rollback flow, and th
 dev box lacks. crabbox leases an ephemeral Proxmox VM, rsyncs the working tree,
 runs the suite, and tears down.
 
-Provider env (proxmox) comes from `.claude/settings.json` (+ the secret in the
-gitignored `.claude/settings.local.json`). Confirm with `crabbox doctor`.
+Not usable at present: crabbox's Proxmox user was deleted. Whoever sets it up again puts
+the provider env (`CRABBOX_PROVIDER`, the Proxmox address, token ID, node, template, storage,
+bridge) and the token secret into the gitignored `.claude/settings.local.json` only: the
+tracked `.claude/settings.json` holds nothing but the permissions for the crabbox commands,
+no internal addresses or IDs. Confirm with `crabbox doctor`.
 
 ## Single-box flow (warm once → reuse the slug → stop)
 
@@ -34,7 +37,13 @@ gitignored `.claude/settings.local.json`). Confirm with `crabbox doctor`.
    `.crabbox/captures/*.tar.gz` (logs, timings, ready-made stop command).
 5. **Stop** when done: `crabbox stop --id <slug>`.
 
-`run.sh` prints `N passed, M failed, K skipped` and exits non-zero on any failure.
+`run.sh` prints `N passed, M failed, K skipped`. Skipped is not passed: it exits 0 only
+without failures and skips, 1 on a failure, 3 when a step was skipped (a missing tool, e2e
+without `LMNSQUID_ALLOW_REAL=1`), and its last line names what failed and every step that was
+not checked (skipped, or not run because the lock gate failed). `LMNSQUID_ALLOW_SKIP=1` accepts
+skips on purpose (exit 0, the last line still names them). It restarts itself under the
+allowlist of `packaging/clean-env.sh`: its tools come from `.venv/bin` (the bootstrap creates
+it) or the system, not from the caller's PATH.
 `e2e`/`all` refuse to run without `LMNSQUID_ALLOW_REAL=1` (a guard so heavy suites
 never fire by accident on the dev box).
 
