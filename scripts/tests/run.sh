@@ -4,10 +4,14 @@
 #
 # Test aggregator for linuxmuster-squid. See docs/test-strategy.md and the
 # /test skill. Modes: lint | unit | quick (default) | e2e | all.
-# Each step is dependency-gated and skips cleanly when a toolchain is missing.
+# Each step is dependency-gated and skips when a toolchain is missing.
 # e2e/all refuse without LMNSQUID_ALLOW_REAL=1 (protection against accidental runs).
 # quick and all run the lock gate first; lint and unit alone run without it, with the tools of
 # .venv/bin first on PATH.
+# Skipped is not passed: exit 0 only when nothing failed and nothing was skipped. A run with a
+# skipped step (a missing tool, e2e without LMNSQUID_ALLOW_REAL=1) ends with exit 3 and its last
+# line names every step that was not checked. LMNSQUID_ALLOW_SKIP=1 accepts skips on purpose:
+# exit 0, the last line still names them. A failure is exit 1 either way.
 builtin set -uo pipefail
 
 # Nothing on the caller's PATH runs before the lock gate (see gate below), not even dirname, and
@@ -17,12 +21,13 @@ here="${BASH_SOURCE[0]%/*}"; [ "$here" != "${BASH_SOURCE[0]}" ] || here=.
 ROOT="$(cd "$here/../.." && pwd)"
 cd "$ROOT" || exit 1
 
-PASS=0; FAIL=0; SKIP=0
+PASS=0; FAIL=0; SKIP=0; SKIPPED=()
 pass(){ PASS=$((PASS + 1)); printf '  [PASS] %s\n' "$1"; }
 fail(){ FAIL=$((FAIL + 1)); printf '  [FAIL] %s\n' "$1"; }
-skip(){ SKIP=$((SKIP + 1)); printf '  [SKIP] %s (%s)\n' "$1" "$2"; }
+skip(){ SKIP=$((SKIP + 1)); SKIPPED+=("$1 ($2)"); printf '  [SKIP] %s (%s)\n' "$1" "$2"; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 summary(){ echo; echo "$PASS passed, $FAIL failed, $SKIP skipped"; }
+not_checked(){ local s; s="$(printf '%s; ' "${SKIPPED[@]}")"; echo "${s%; }"; }
 
 # The lock gate comes first, before any tool of a venv runs (the fast tier of CI does the same):
 # a lock-filled venv's bin/ may shadow the gate's tools and its .pth runs in every interpreter of
@@ -136,4 +141,14 @@ case "$mode" in
 esac
 
 summary
-[ "$FAIL" -eq 0 ]
+# The last line names what was not checked (see the header).
+if [ "$FAIL" -ne 0 ]; then
+  [ "$SKIP" -eq 0 ] || echo "FAILED, and NOT checked either: $(not_checked)"
+  exit 1
+elif [ "$SKIP" -ne 0 ] && [ "${LMNSQUID_ALLOW_SKIP:-0}" != 1 ]; then
+  echo "NOT GREEN: $SKIP step(s) skipped, NOT checked: $(not_checked)" \
+       "(LMNSQUID_ALLOW_SKIP=1 accepts skips)"
+  exit 3
+elif [ "$SKIP" -ne 0 ]; then
+  echo "skips accepted (LMNSQUID_ALLOW_SKIP=1), NOT checked: $(not_checked)"
+fi

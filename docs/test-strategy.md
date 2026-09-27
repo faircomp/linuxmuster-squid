@@ -8,7 +8,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Two tiers. The **fast tier** runs locally/in CI; the **heavy tier** (Docker +
 Kerberos) runs on a **Linux host with Docker**. Aggregator:
 `bash scripts/tests/run.sh [lint|unit|quick|e2e|all]` — summary
-`N passed, M failed, K skipped`, exit ≠ 0 on failure, every step dep-gated.
+`N passed, M failed, K skipped`, every step dep-gated. Skipped is not passed: exit 0 only
+without failures and skips, exit 1 on a failure, exit 3 when a step was skipped (a missing
+tool, `e2e` without permission), and the last line names every step that was not checked;
+`LMNSQUID_ALLOW_SKIP=1` accepts skips on purpose (exit 0, the last line still names them).
 `e2e`/`all` refuse to run without `LMNSQUID_ALLOW_REAL=1`.
 
 ## Fast tier (everywhere)

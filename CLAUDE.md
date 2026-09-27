@@ -218,7 +218,10 @@ update/rollback, and `.deb` install tests — needs real Linux with **Docker**.
   lock), then lint + unit + lock regression + blocklist smoke; `lint` and `unit` alone run
   without the gate (with `.venv/bin` first on PATH); `e2e`/`all` run the
   Docker suites and **refuse without `LMNSQUID_ALLOW_REAL=1`**. Summary:
-  `N passed, M failed, K skipped` (exit ≠ 0 on failure); steps dep-gated.
+  `N passed, M failed, K skipped`; steps dep-gated. Skipped is not passed: exit 0 only
+  without failures and skips; a skip (missing tool, e2e not allowed) is exit 3, a failure
+  exit 1, and the last line names every step that was not checked. `LMNSQUID_ALLOW_SKIP=1`
+  accepts skips on purpose (exit 0, the last line still names them).
 - **Box lifecycle:** `crabbox warmup` → `crabbox run --id <slug> -- 'bash scripts/tests/crabbox_bootstrap.sh'`
   → `crabbox run --id <slug> -- 'LMNSQUID_ALLOW_REAL=1 bash scripts/tests/run.sh e2e'`
   → `crabbox stop --id <slug>`.
