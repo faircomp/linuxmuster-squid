@@ -158,6 +158,10 @@ and starts `linuxmuster-squid`; after that, upgrades keep what the admin decided
   (those versions disabled the service on remove).
 - **The first upgrade to 7.3.7** takes over the state the service is in at that moment, once:
   7.3.6 and older kept no record of it. Enabled stays enabled, disabled or masked stays so.
+  One exception: if this first upgrade runs without a running systemd (an image build, a
+  chroot), a service without an enable link is treated like a new installation and enabled,
+  because 7.3.6 and older never enabled it offline. Upgrades with systemd running, and every
+  later upgrade, keep a service the admin disabled off.
 - **Downgrade to 7.3.6 or older:** that version enables and starts the service again.
 - **Without a running systemd** (an image build, a chroot) a new installation only enables the
   service; it starts with the next boot.
