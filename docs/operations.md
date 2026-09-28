@@ -152,10 +152,10 @@ and starts `linuxmuster-squid`; after that, upgrades keep what the admin decided
 - **Disabled but still running** (`systemctl disable` without `--now`): an upgrade restarts it
   with the new code and updates the instances; it stays disabled.
 - **Masked** (`systemctl mask`): the package leaves it alone.
-- **Remove and reinstall:** `apt remove` only stops the service and keeps the decision (the unit
-  stays masked while the package is removed); a reinstall brings it back as it was. `apt purge`
-  forgets it: the next installation is a new one, enabled and started. A reinstall after removing
-  7.3.6 or older is a new installation as well (those versions disabled the service on remove).
+- **Remove and reinstall:** `apt remove` only stops the service and keeps the decision; a
+  reinstall brings it back as it was. `apt purge` forgets it: the next installation is a new one,
+  enabled and started. A reinstall after removing 7.3.6 or older is a new installation as well
+  (those versions disabled the service on remove).
 - **The first upgrade to 7.3.7** takes over the state the service is in at that moment, once:
   7.3.6 and older kept no record of it. Enabled stays enabled, disabled or masked stays so.
 - **Downgrade to 7.3.6 or older:** that version enables and starts the service again.
