@@ -16,8 +16,9 @@ apt install ./linuxmuster-squid_<version>_amd64.deb   # or from the lmn73 apt re
 systemctl status linuxmuster-squid                    # should be "active"
 ```
 The postinst creates the system user `lmnsquid` (in group `docker`), generates a
-random API token in `/etc/linuxmuster-squid/config.yml` (0600) and starts the service
-(bound to `127.0.0.1:8080`).
+random API token in `/etc/linuxmuster-squid/config.yml` (0600) and enables and starts the
+service (bound to `127.0.0.1:8080`). After that the package keeps the admin's decision:
+[Keeping the service off](#keeping-the-service-off).
 
 ## Managing instances (CLI = thin client of the REST API)
 
@@ -105,10 +106,12 @@ The update pulls the new digest, replaces the container, waits for `healthy` and
 belongs in production is decided by a **merged PR** (never auto-merge; raised by hand while
 Renovate is disabled).
 
-On a **`.deb` upgrade** the postinst runs `update-all` automatically (best-effort): all
-instances are lifted onto that package's pinned default image, each with its own health-check
-auto-rollback; instances already on the default are skipped, and the apt transaction never
-fails over this. Run `lmnsquid update-all` yourself any time to do the same on demand.
+On a **`.deb` upgrade** the postinst runs `update-all` automatically (best-effort) when the
+service runs after the upgrade: all instances are lifted onto that package's pinned default
+image, each with its own health-check auto-rollback; instances already on the default are
+skipped, and the apt transaction never fails over this. A service the admin switched off is not
+started for it ([Keeping the service off](#keeping-the-service-off)). Run `lmnsquid update-all`
+yourself any time to do the same on demand.
 
 **Upgrade from 7.3.0 (or older) to 7.3.1:** instances created before 7.3.1 have no blocklist
 mount, and `update-all` skips them when the default image did not move. The postinst therefore
@@ -129,6 +132,39 @@ instance; `reconcile` lists the name under `failed` and the CLI exits 1 while th
 instances are still reconciled). A container that already matches its definition (label
 `lmnsquid.spec`) is left running — so `lmnsquid reconcile` is safe to run at any time and an
 `edit` that changes nothing causes no restart. Use `lmnsquid restart <name>` for a plain restart.
+
+## Keeping the service off
+
+From 7.3.7 on the package handles its service by Debian's rules (`deb-systemd-helper` and
+`deb-systemd-invoke`, as packages built with dh_installsystemd do): a new installation enables
+and starts `linuxmuster-squid`; after that, upgrades keep what the admin decided.
+
+- **Switch it off and keep it off:** `systemctl disable --now linuxmuster-squid`. Upgrades,
+  reinstalls and `dpkg-reconfigure` leave it disabled and stopped, do not update the instances
+  and print one line in the apt output: `linuxmuster-squid: the service is disabled and not
+  running, instances not updated; run 'lmnsquid update-all' after starting it`.
+  `systemctl stop` alone is not enough: the next upgrade starts an enabled service again.
+- **The proxies are separate:** the Squid containers are Docker containers
+  (`unless-stopped`) and keep running without the control plane. If they must be off too, stop
+  them first with `lmnsquid stop <name>` (it needs the running service).
+- **Switch it on again:** `systemctl enable --now linuxmuster-squid`, then `lmnsquid update-all`
+  for the instance updates the upgrades skipped.
+- **Disabled but still running** (`systemctl disable` without `--now`): an upgrade restarts it
+  with the new code and updates the instances; it stays disabled.
+- **Masked** (`systemctl mask`): the package leaves it alone.
+- **Remove and reinstall:** `apt remove` only stops the service and keeps the decision; a
+  reinstall brings it back as it was. `apt purge` forgets it: the next installation is a new one,
+  enabled and started. A reinstall after removing 7.3.6 or older is a new installation as well
+  (those versions disabled the service on remove).
+- **The first upgrade to 7.3.7** takes over the state the service is in at that moment, once:
+  7.3.6 and older kept no record of it. Enabled stays enabled, disabled or masked stays so.
+  One exception: if this first upgrade runs without a running systemd (an image build, a
+  chroot), a service without an enable link is treated like a new installation and enabled,
+  because 7.3.6 and older never enabled it offline. Upgrades with systemd running, and every
+  later upgrade, keep a service the admin disabled off.
+- **Downgrade to 7.3.6 or older:** that version enables and starts the service again.
+- **Without a running systemd** (an image build, a chroot) a new installation only enables the
+  service; it starts with the next boot.
 
 ## Observing
 
@@ -233,7 +269,8 @@ lmnsquid reconcile      # reads the desired state + pulls the pinned digests -> 
   healthy); one failing instance does not stop the rest (`failed` list, CLI exit 1).
 - **Reboot** doesn't need this: `restart_policy: unless-stopped` brings running containers back.
 - **Downgrade the tool:** install an older `.deb` → the postinst restarts the service
-  (loads the old code). **Cache volume broken** (container stays unhealthy after a power outage):
+  (loads the old code); 7.3.6 and older also enable it again. **Cache volume broken**
+  (container stays unhealthy after a power outage):
   `docker rm -f <container>` + `docker volume rm lmnsquid-cache-<name>` → `lmnsquid reconcile`.
 
 ## Security posture (brief)

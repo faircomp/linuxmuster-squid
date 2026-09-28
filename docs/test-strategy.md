@@ -115,7 +115,9 @@ acceptance list in `deployment-gpo.md`.
   failed step and the repository, the package stays `ii` and the service as enabled/active as
   before, and once `HEAD` is back the next configure commits again without a warning;
   upgrade over a release with root-owned files in the change log repository → handed
-  back to `lmnsquid`, history kept.
+  back to `lmnsquid`, history kept; a service the admin disabled (`systemctl disable
+  --now`) before the upgrade from the release stays disabled and stopped across two upgrades
+  in a row, with the "instances not updated" line in the apt output (CI upgrade-smoke).
 - **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;
   bypass/traversal; DC outage does not stall (ttl/grace).
 
