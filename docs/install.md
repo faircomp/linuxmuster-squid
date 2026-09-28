@@ -46,8 +46,8 @@ lmnsquid version         # {"version": "7.3.6"}  (= dpkg-query -W linuxmuster-sq
 The postinst creates the system user `lmnsquid` (in group `docker`), the config
 `/etc/linuxmuster-squid/config.yml` with a random API token (0600), `secrets/` (0700) and
 `blocklists/`, the git repository `/var/lib/linuxmuster-squid/instances` (the change log of
-the instance definitions), and starts the service on `127.0.0.1:8080`. The admin scripts used
-below are installed under `/usr/share/linuxmuster-squid/scripts/`.
+the instance definitions), and enables and starts the service on `127.0.0.1:8080`. The admin
+scripts used below are installed under `/usr/share/linuxmuster-squid/scripts/`.
 
 ## 3. Service account and keytab (on the DC)
 
@@ -164,9 +164,13 @@ Assign the proxy per role by GPO (silent Kerberos SSO) and force the proxy at th
 ## 9. Updates
 
 ```bash
-apt-get install -y ./linuxmuster-squid_<new>_amd64.deb # restarts the service, then update-all
+apt-get install -y ./linuxmuster-squid_<new>_amd64.deb # restarts the service, then update-all (*)
 lmnsquid update-all                                    # on demand: every instance -> pinned default image
 ```
+
+(*) Only while the service is enabled or still running: a service switched off with
+`systemctl disable --now` stays off, and the instances are not updated
+([operations.md](operations.md#keeping-the-service-off)).
 
 Every instance update is health-gated with automatic rollback: the replacement container
 is created first, the previous one is kept until the new one is **healthy** and restarted if

@@ -52,7 +52,8 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
   workflow refuses a tag that does not match it. Build locally with `make deb`
   (dpkg-buildpackage, which needs no root; in the same container, started as root for
   `apt-get build-dep`: the command is in the `Makefile`). An
-  `apt install` of the new `.deb` **automatically restarts the service** (postinst `try-restart`),
+  `apt install` of the new `.deb` **automatically restarts the service** (postinst
+  `deb-systemd-invoke restart`; a service the admin disabled only while it still runs),
   so that the new code is actually loaded (E2E-verified via `deb_smoke.sh`). Distribution:
   the GitHub release is the only channel for now. ⏸ An apt archive of our own
   (`lmndeb.fair-comp.de`, decided by Kevin) comes later; apt verifies the signed repository
