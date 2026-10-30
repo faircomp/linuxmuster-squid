@@ -74,7 +74,10 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
 
 - `add`/`remove` write the file (sorted, one `.domain` per line; comments are not
   preserved) and take effect on the next **`reload`** — batch your changes, then reload once.
-  `reload` runs `squid -k reconfigure` inside the container (docker exec, like
+  A name below a listed domain is already covered: adding it changes nothing, and adding a
+  parent removes the names below it (squid 6 refuses to load a list in which a covered name,
+  e.g. `.a.example.org` or `example.org`, comes before `.example.org`: `FATAL: Bungled`).
+  `reload` runs `lists-sync.sh` and `squid -k reconfigure` inside the container (docker exec, like
   `access-logs` — not available behind the socket proxy with `EXEC: 0`); the auth/group
   helpers restart, the cache stays. API:
   `GET/POST /v1/instances/{name}/blocklist`, `DELETE …/blocklist/{domain}`, `POST …/blocklist/reload`.
@@ -85,6 +88,13 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
   in the access log.
 - **Hand-editing / category lists:** the file may be edited directly (one domain per line,
   leading dot = with subdomains; `#` comments) followed by `lmnsquid blocklist <name> reload`.
+  Squid does not read the mounted file itself: at every start and reload the image's
+  `lists-sync.sh` builds the list it reads (`/run/lmnsquid/lists/`) and leaves out every entry
+  a listed parent domain already covers, naming them in `lmnsquid logs <name>`
+  (`… entries ignored, already covered by a listed parent domain: …`); so a hand-edited list
+  cannot stop the proxy. `blocklist-refresh.sh` drops those entries itself. (The image pinned
+  by 7.3.7 and older reads the mounted file directly: with it such a list makes `reload` fail
+  and the next start of the container fail.)
   UT-Capitole category lists: `INSTANCE=<name> BLOCK_CATEGORIES="adult malware phishing"
   bash /usr/share/linuxmuster-squid/scripts/blocklist-refresh.sh` from a host cron **as user
   `lmnsquid`** (fail-closed size floor), then `reload`. The refresh **replaces the whole
@@ -130,9 +140,9 @@ lmnsquid noauth all-students reload                  # squid re-reads both lists
   `GET/POST /v1/instances/{name}/noauth`, `DELETE …/noauth/{domain}`, `POST …/noauth/reload`.
 - **`reload` answers 409** when the running container does not read the list: its image
   predates the list (update the instance to a data-plane image that has it, `lmnsquid update
-  <name>`), or it was started while its list directory had no `noauth.domains` (only possible
-  with an older control plane; `lmnsquid restart <name>`). Without that check a reload would
-  report success and change nothing. `blocklist reload` is not affected.
+  <name>`). Without that check a reload would report success and change nothing.
+  `blocklist reload` is not affected. A `noauth.domains` created after the container started
+  (an older control plane) is picked up by the next reload.
 - **What `lmnsquid rm` removes:** the directory with both lists.
 
 ### Recommended list: Microsoft 365
@@ -146,9 +156,11 @@ the Microsoft 365 endpoints web service, `https://endpoints.office.com/endpoints
 (service areas Common, Exchange, SharePoint, Skype/Teams; version `2026103000`, fetched
 2026-10-30): every **required** item of category **Optimize** or **Allow** with TCP ports
 80/443 (ids 1, 9, 12, 31, 46, 56, 64). `*.x` and `x` are both one entry `x` here (the list
-always covers the domain and its subdomains, which is slightly wider than `*.x`); names under
-an entry already listed are left out (`ccs.` and `device.login.microsoftonline.com`,
-`api.passwordreset.microsoftonline.com`), squid only warns about them.
+always covers the domain and its subdomains, which is slightly wider than `*.x`). Names under
+an entry already listed are left out (`ccs.` and `device.login.microsoftonline.com` under
+`login.microsoftonline.com`, `api.passwordreset.microsoftonline.com` under
+`passwordreset.microsoftonline.com`): they are covered anyway, `add` would not store them, and
+squid 6 refuses a list in which such a name comes before its parent.
 
 ```
 for d in outlook.cloud.microsoft outlook.office.com outlook.office365.com protection.outlook.com \

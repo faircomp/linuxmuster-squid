@@ -146,6 +146,14 @@ signal, as a manual stop, and an `unless-stopped` container then stays down afte
 (seen in the lab). Price: like `access-logs`, `reload` needs `docker exec` (ADR-012).
 **Limit (documented):** a blocked HTTPS name is terminated at the TLS handshake, there is
 no 403 page without decryption (ADR-002).
+**Amendment (2026-10-30, with ADR-016):** squid 6 refuses to load a `dstdomain` /
+`ssl::server_name` list in which a name covered by a listed parent domain comes first
+(`.a.example.org` before `.example.org`, or `example.org` next to it: `FATAL: Bungled`; a
+`reload` fails, the next container start fails), which category lists and hand edits produce
+easily. Squid therefore reads copies under `/run/lmnsquid/lists/` built by the image's
+`lists-sync.sh` at start and before every `reload`, without covered entries (logged); the
+control plane (`add` keeps the parent and drops what it covers) and `blocklist-refresh.sh`
+never write them.
 
 ### ADR-015 — Build inputs pinned: hashed Python locks, digests, action SHAs, draft-first releases
 **Status:** Accepted (2026-09-23, stage A "supply chain" of the linuxmusterDEV archive plan).
@@ -235,7 +243,7 @@ data-plane image; until `DEFAULT_IMAGE` points at an image with this template, t
 ignored and `lmnsquid noauth <name> reload` answers 409 instead of reporting a reload that
 changes nothing (it checks the rendered `squid.conf` in the container). An image with the
 template next to a directory without `noauth.domains` (an older control plane) uses an empty
-list.
+list until the file appears and the next reload reads it.
 
 ---
 

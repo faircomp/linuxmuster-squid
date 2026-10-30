@@ -49,27 +49,29 @@ acl school_net src ${SCHOOL_SUBNETS}
 
 # --- Domain filter WITHOUT decryption ---
 # dstdomain matches the plain-HTTP host AND the CONNECT target host (HTTPS),
-# so no SSL bump / no client CA needed.
-acl blocked_domains dstdomain "/etc/squid/lists/blocked.domains"
+# so no SSL bump / no client CA needed. The lists under /run/lmnsquid/lists are built by
+# lists-sync.sh from the mounted /etc/squid/lists (at start and on every reload) without
+# the entries squid 6 refuses to load (a name already covered by a listed parent domain).
+acl blocked_domains dstdomain "/run/lmnsquid/lists/blocked.domains"
 
 # --- Domains reachable WITHOUT proxy authentication (ADR-016; empty list = feature off) ---
 # For clients in school_net only, and never for a blocked domain (both enforced in the
 # access chain). -n: no reverse DNS for IP-literal URLs -- a PTR record is controlled by
 # whoever owns the address and must never put an IP on this list.
-acl noauth_domains dstdomain -n "${NOAUTH_LIST}"
+acl noauth_domains dstdomain -n "/run/lmnsquid/lists/noauth.domains"
 
 # --- HTTPS: SNI peek + splice (NO decryption) ---
 # step1 reads the TLS ClientHello (SNI); blocked SNIs are disconnected (terminate),
 # everything else is tunneled (splice, no MITM). Also catches cases where the
 # CONNECT host differs from the real SNI (domain fronting).
 acl step1 at_step SslBump1
-acl blocked_sni ssl::server_name "/etc/squid/lists/blocked.domains"
+acl blocked_sni ssl::server_name "/run/lmnsquid/lists/blocked.domains"
 # A CONNECT to a listed domain got through without a ticket (every such CONNECT that reaches
 # this point came through the noauth line of the access chain), so its tunnel must not be
 # handed to another name: the SNI must be listed too, and a ClientHello WITHOUT SNI is cut as
 # well (ssl::server_name falls back to the CONNECT host when there is no SNI, so the helper
 # looks at the SNI itself; %ssl::>sni is '-' without one).
-acl noauth_sni ssl::server_name --client-requested "${NOAUTH_LIST}"
+acl noauth_sni ssl::server_name --client-requested "/run/lmnsquid/lists/noauth.domains"
 external_acl_type sni_sent ttl=3600 negative_ttl=3600 children-max=2 %ssl::>sni /usr/local/bin/sni-sent.sh
 acl tls_sni_sent external sni_sent
 ssl_bump peek step1

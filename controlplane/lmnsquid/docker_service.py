@@ -24,6 +24,13 @@ logger = logging.getLogger("lmnsquid.docker")
 # The config entrypoint.sh renders and starts squid with (`squid -k` must read the same
 # file to find pid_filename).
 _SQUID_CONF = "/run/lmnsquid/squid.conf"
+# Reload: images with lists-sync.sh read the lists from /run/lmnsquid/lists, which the script
+# rebuilds from the mounted ones (without the entries squid refuses to load); older images read
+# the mounted files directly. Fixed text, nothing from a request goes into it.
+_RELOAD = (
+    "set -e; if [ -x /usr/local/bin/lists-sync.sh ]; then /usr/local/bin/lists-sync.sh; fi; "
+    f"exec squid -k reconfigure -f {_SQUID_CONF}"
+)
 # Container label carrying the fingerprint of everything the container was created
 # from; a container whose label matches the desired spec is left alone by
 # ensure_running (reconcile is a no-op for it), one without or with another
@@ -353,17 +360,14 @@ class DockerService:
         return exit_code, text
 
     def noauth_active(self, name: str) -> bool:
-        """Whether the running squid reads ``noauth.domains`` from the list directory.
+        """Whether the running squid has the noauth ACL (ADR-016) in its configuration.
 
-        Not so for an image from before ADR-016 (its template has no such ACL) or for a
-        container started while the directory held no ``noauth.domains`` (the entrypoint
-        then stands in an empty file); a reload cannot change either, only a new container
-        of a supporting image can. Same preconditions and errors as :meth:`reload`.
+        Not so for an image from before ADR-016 (its template has no such ACL); a reload
+        cannot change that, only a container of a newer image can. Same preconditions and
+        errors as :meth:`reload`.
         """
         container = self._running(name)
-        exit_code, text = self._exec(
-            container, ["grep", "-qF", f"{CONTAINER_DIR}/{NOAUTH_FILE_NAME}", _SQUID_CONF]
-        )
+        exit_code, text = self._exec(container, ["grep", "-qF", "acl noauth_domains ", _SQUID_CONF])
         if exit_code not in (0, 1):
             raise RuntimeError(f"cannot read {_SQUID_CONF} (exit {exit_code}): {text.strip()}")
         return exit_code == 0
@@ -371,7 +375,10 @@ class DockerService:
     def reload(self, name: str) -> dict[str, Any]:
         """Make the running squid re-read squid.conf and its ACL list files (both lists).
 
-        Runs ``squid -k reconfigure`` inside the container: squid parses the config and
+        Runs ``lists-sync.sh`` (images that have it: rebuilds the lists squid reads, without
+        entries squid would refuse) and then ``squid -k reconfigure`` inside the container. If
+        squid still refuses the configuration, the running squid keeps the previous one and a
+        ``RuntimeError`` carries squid's message. squid -k reconfigure parses the config and
         signals its running copy (SIGHUP). No restart -- the cache and open client
         connections survive, the auth/group helpers are restarted. Deliberately NOT
         ``container.kill(signal="SIGHUP")``: Docker records every kill(), whatever the
@@ -382,9 +389,9 @@ class DockerService:
         when the exec is refused or squid does.
         """
         container = self._running(name)
-        exit_code, text = self._exec(container, ["squid", "-k", "reconfigure", "-f", _SQUID_CONF])
+        exit_code, text = self._exec(container, ["sh", "-c", _RELOAD])
         if exit_code != 0:
-            raise RuntimeError(f"squid -k reconfigure exited {exit_code}: {text.strip()}")
+            raise RuntimeError(f"list reload exited {exit_code}: {text.strip()}")
         return {"name": name, "reloaded": True}
 
     # -- introspection -----------------------------------------------------

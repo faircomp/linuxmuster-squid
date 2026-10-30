@@ -174,7 +174,7 @@ services:
         ipv4_address: 172.28.0.14
     volumes:
       - shared:/shared:ro
-      - ./lists-noauth:/etc/squid/lists:ro
+      - ./lists-pinned:/etc/squid/lists:ro
     read_only: true
     tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
     cap_drop: ["ALL"]

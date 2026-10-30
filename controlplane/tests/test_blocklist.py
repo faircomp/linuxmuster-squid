@@ -12,7 +12,7 @@ from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from lmnsquid import cli
-from lmnsquid.blocklist import Blocklist, normalize_domain
+from lmnsquid.blocklist import Blocklist, normalize_domain, uncovered
 from lmnsquid.config import Settings
 
 runner = CliRunner()
@@ -66,6 +66,41 @@ def test_blocklist_file_lifecycle(tmp_path: Path) -> None:
     bl.delete("s-teachers")
     assert not directory.exists()
     assert bl.read("s-teachers") == []  # absent file reads as empty
+
+
+@pytest.mark.parametrize(
+    ("entries", "expected"),
+    [
+        # squid 6 refuses these orders ("FATAL: Bungled"): the covered name goes
+        ([".graph.microsoft.com", ".microsoft.com"], [".microsoft.com"]),
+        (["microsoft.com", ".microsoft.com"], [".microsoft.com"]),
+        ([".microsoft.com", "a.b.microsoft.com", "MICROSOFT.COM."], [".microsoft.com"]),
+        # duplicates (also by case and trailing dot) collapse
+        ([".a.org", ".A.org", ".a.org."], [".a.org"]),
+        # a bare name covers nothing, a sibling or a mere suffix is not covered
+        (["a.org", "x.a.org"], ["a.org", "x.a.org"]),
+        ([".a.org", ".ba.org", ".org.example"], [".a.org", ".ba.org", ".org.example"]),
+        (["", " ", ".", ".b.org"], [".b.org"]),
+    ],
+)
+def test_uncovered(entries: list[str], expected: list[str]) -> None:
+    assert uncovered(entries) == expected
+
+
+def test_add_never_writes_a_list_squid_cannot_load(tmp_path: Path) -> None:
+    bl = Blocklist(str(tmp_path))
+    file = tmp_path / "s-teachers" / "blocked.domains"
+    assert bl.add("s-teachers", "graph.microsoft.com") == [".graph.microsoft.com"]
+    # a parent replaces the names below it ...
+    assert bl.add("s-teachers", "microsoft.com") == [".microsoft.com"]
+    # ... and a name below a listed parent changes nothing
+    assert bl.add("s-teachers", "login.microsoft.com") == [".microsoft.com"]
+    assert file.read_text() == ".microsoft.com\n"
+    # a hand-edited file with a covered name first is cleaned on the next write
+    file.write_text(".a.example.org\n.example.org\nexample.org\n")
+    assert bl.add("s-teachers", "other.org") == [".example.org", ".other.org"]
+    file.write_text(".a.example.org\n.example.org\n.x.org\n")
+    assert bl.remove("s-teachers", "x.org") == [".example.org"]
 
 
 def test_blocklist_rejects_unsafe_name(tmp_path: Path) -> None:

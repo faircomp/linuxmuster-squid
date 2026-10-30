@@ -35,6 +35,16 @@ linuxmuster-squid (7.3.8) lmn73; urgency=medium
     proxy.<fqdn> (PROXY_FQDN overrides it), and a third template creates one
     proxy for everybody in the group internet, which per sophomorix.ini also
     holds parents, staff and the school admins.
+  * A blocklist with a subdomain sorted before its parent domain
+    (".a.example.org" before ".example.org", or "example.org" next to it)
+    no longer takes the proxy down. squid 6 refuses such a list ("FATAL:
+    Bungled"): "blocklist reload" failed and the next start of the container
+    failed. Category lists from blocklist-refresh.sh and hand edits produced
+    it easily. "lmnsquid blocklist|noauth add" now keeps a listed parent and
+    drops what it covers (adding a name below a listed domain changes
+    nothing), blocklist-refresh.sh drops covered entries, and the new
+    data-plane image builds the lists squid reads without them at every
+    start and reload, naming them in "lmnsquid logs <name>".
 
  -- Kevin Stenzel <mail@kevin-stenzel.de>  Fri, 30 Oct 2026 14:58:39 +0100
 

@@ -13,7 +13,7 @@ trap 'rm -rf "$TMP"' EXIT
 fail=0
 
 mkdir -p "$TMP/blacklists/adult" "$TMP/blacklists/news"
-printf 'bad1.example\nbad2.example\n' > "$TMP/blacklists/adult/domains"
+printf 'bad1.example\nbad2.example\na.bad3.example\nbad3.example\n' > "$TMP/blacklists/adult/domains"
 printf 'news1.example\n'              > "$TMP/blacklists/news/domains"
 tar -czf "$TMP/bl.tar.gz" -C "$TMP" blacklists
 out="$TMP/blocked.domains"
@@ -25,6 +25,12 @@ if grep -qx '.bad1.example' "$out" && grep -qx '.bad2.example' "$out" && ! grep 
     echo "  [PASS] adult in, news out, dot normalization"
 else
     echo "  [FAIL] categories/normalization"; fail=$((fail + 1))
+fi
+# a.bad3.example sorts before bad3.example: squid 6 would refuse the list ("Bungled")
+if grep -qx '.bad3.example' "$out" && ! grep -q 'a.bad3.example' "$out"; then
+    echo "  [PASS] subdomain of a listed domain dropped"
+else
+    echo "  [FAIL] covered subdomain kept: $(tr '\n' ' ' < "$out")"; fail=$((fail + 1))
 fi
 
 echo "== Test 2: fail-closed (new list < floor -> keep old) =="

@@ -3,5 +3,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Domains reachable without proxy auth for the squid-noauth E2E instance (ADR-016).
+# Hand-edited on purpose: a subdomain sorted before its parent and the bare apex next to it
+# would stop squid 6 ("FATAL: Bungled"); lists-sync.sh in the image drops them.
+.a.secure.example.internal
+secure.example.internal
 .secure.example.internal
 .both.example.internal

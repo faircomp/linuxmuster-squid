@@ -49,7 +49,9 @@ COPY templates/squid.conf.template /etc/squid/templates/squid.conf.template
 COPY entrypoint.sh   /usr/local/bin/entrypoint.sh
 COPY healthcheck.sh  /usr/local/bin/healthcheck.sh
 COPY sni-sent.sh     /usr/local/bin/sni-sent.sh
-RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh /usr/local/bin/sni-sent.sh
+COPY lists-sync.sh   /usr/local/bin/lists-sync.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh /usr/local/bin/sni-sent.sh \
+      /usr/local/bin/lists-sync.sh
 
 EXPOSE 3128
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \

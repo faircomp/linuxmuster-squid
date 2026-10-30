@@ -41,8 +41,26 @@ done
 
 # Domain normalization: force a leading dot so that dstdomain / ssl::server_name
 # also match subdomains (without a dot, dstdomain matches only the exact host). Strip
-# comments/blank lines, dedupe + sort, then replace atomically.
-grep -vE '^[[:space:]]*(#|$)' "$NEW" | sed -E 's/^\.*/./' | sort -u > "${OUT}.tmp"
+# comments/blank lines, drop every entry a listed parent domain already covers (squid 6
+# refuses to load a list with ".a.example.org" before ".example.org": "FATAL: Bungled";
+# same program as image/lists-sync.sh), dedupe + sort, then replace atomically.
+grep -vE '^[[:space:]]*(#|$)' "$NEW" | sed -E 's/^\.*/./' | awk '
+    { sub(/\r$/, ""); sub(/#.*/, ""); e = tolower($1); sub(/\.+$/, "", e)
+      if (e == "" || e == "." || (e in seen)) next
+      seen[e] = 1; order[++n] = e
+      if (substr(e, 1, 1) == ".") dotted[e] = 1 }
+    END {
+      for (i = 1; i <= n; i++) {
+        e = order[i]; s = e; covered = 0
+        if (substr(e, 1, 1) == ".") s = substr(e, 2)
+        else if (("." e) in dotted) covered = 1
+        while (!covered && (p = index(s, ".")) > 0) {
+          s = substr(s, p + 1)
+          if (("." s) in dotted) covered = 1
+        }
+        if (!covered) print e
+      }
+    }' | sort -u > "${OUT}.tmp"
 
 # Fail-closed: a real UT-Capitole category has thousands of entries. If the new list is
 # suspiciously small (empty/truncated/tampered download), do NOT replace — the old

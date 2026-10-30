@@ -64,6 +64,25 @@ def test_real_container_lifecycle(tmp_path: Path) -> None:
         svc.noauth.add(inst.name, "office.com")
         assert svc.reload(inst.name) == {"name": inst.name, "reloaded": True}
 
+        # Hand-edited lists that squid 6 refuses as such (a covered name before its parent,
+        # the bare apex): lists-sync.sh drops those entries on reload and at the next start.
+        (lists / inst.name / "blocked.domains").write_text(
+            ".a.example.org\nexample.org\n.example.org\n"
+        )
+        (lists / inst.name / "noauth.domains").write_text(
+            ".graph.microsoft.com\n.microsoft.com\nmicrosoft.com\n"
+        )
+        assert svc.reload(inst.name)["reloaded"] is True
+        svc.restart(inst.name)
+        deadline = time.monotonic() + 60
+        health = None
+        while time.monotonic() < deadline:
+            health = svc.status(inst.name)["health"]
+            if health in ("healthy", "unhealthy"):
+                break
+            time.sleep(2)
+        assert svc.status(inst.name)["running"] is True and health == "healthy"
+
         assert svc.stop(inst.name)["running"] is False
         assert svc.start(inst.name)["running"] is True
     finally:

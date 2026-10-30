@@ -137,6 +137,14 @@ acceptance list in `deployment-gpo.md`.
   normalization (IDNA, leading dot, invalid names), unsafe instance names, API 401/403 without
   or with a wrong token, 404/422, reload 409 when the container ignores the list or is stopped,
   CLI and `--help` warnings.
+- **Lists squid 6 refuses** (`FATAL: Bungled`: a name covered by a listed parent before it,
+  or the bare apex next to it), both lists: unit (`uncovered`, `add` keeps the parent and
+  drops what it covers, a hand-edited file is cleaned on the next write), blocklist smoke
+  (`blocklist-refresh.sh` drops `a.bad3.example` under `bad3.example`), E2E (`squid-noauth`
+  mounts such hand-edited lists: starts, logs the ignored entries, reloads, comes back after a
+  restart, blocked subdomain → 403), cp-docker-it (real DockerService: such lists written after
+  the start → reload ok → restart → healthy; counter-check with an image whose `lists-sync.sh`
+  only copies: the reload fails with `Bungled`).
 - **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;
   bypass/traversal; DC outage does not stall (ttl/grace).
 

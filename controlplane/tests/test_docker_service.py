@@ -105,12 +105,25 @@ def test_noauth_active_reads_the_rendered_config(
     _registry(ds, {"lmnsquid-s-teachers": c})
     assert ds.noauth_active("s-teachers") is expected
     cmd = c.exec_run.call_args.args[0]
-    assert cmd == [
-        "grep",
-        "-qF",
-        "/etc/squid/lists/noauth.domains",
-        "/run/lmnsquid/squid.conf",
-    ]
+    assert cmd == ["grep", "-qF", "acl noauth_domains ", "/run/lmnsquid/squid.conf"]
+
+
+def test_reload_syncs_the_lists_then_reconfigures(tmp_path: Path) -> None:
+    ds = _service(tmp_path)
+    c = _container("lmnsquid-s-teachers")
+    c.exec_run.return_value = (0, b"")
+    _registry(ds, {"lmnsquid-s-teachers": c})
+    assert ds.reload("s-teachers") == {"name": "s-teachers", "reloaded": True}
+    cmd = c.exec_run.call_args.args[0]
+    assert cmd[:2] == ["sh", "-c"]
+    # lists-sync.sh first (only where the image has it), then squid -k reconfigure.
+    assert "[ -x /usr/local/bin/lists-sync.sh ]" in cmd[2]
+    assert cmd[2].index("lists-sync.sh;") < cmd[2].index("squid -k reconfigure")
+    assert cmd[2].endswith("exec squid -k reconfigure -f /run/lmnsquid/squid.conf")
+
+    c.exec_run.return_value = (1, b"FATAL: Bungled /run/lmnsquid/squid.conf line 59")
+    with pytest.raises(RuntimeError, match="Bungled"):
+        ds.reload("s-teachers")
 
 
 def test_noauth_active_errors(tmp_path: Path) -> None:

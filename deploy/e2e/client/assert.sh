@@ -132,6 +132,7 @@ check_tls_sni "noauth: CONNECT listed, no SNI -> cut"                "$NA_HOST" 
 check_via    "noauth instance: teacher -> 200"                    teacher1 "$NA" "$ALLOWED" 200
 check_via    "noauth instance: student -> 403"                    student1 "$NA" "$ALLOWED" 403
 check_via    "noauth instance: blocked (teacher) -> 403"          teacher1 "$NA" "http://blocked.example.com/" 403
+check_via    "noauth instance: blocked subdomain (teacher) -> 403" teacher1 "$NA" "http://a.blocked.example.com/" 403
 check_via    "noauth instance: listed+blocked (teacher) -> 403"   teacher1 "$NA" "http://both.example.internal/" 403
 check_via    "noauth instance: listed (teacher) -> 200"           teacher1 "$NA" "http://secure.example.internal/" 200
 check_tunnel "noauth instance: HTTPS not listed (teacher) -> 200" teacher1 "$NA" "https://secure2.example.internal/" "200 200"

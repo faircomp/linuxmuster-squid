@@ -150,6 +150,34 @@ else
   echo "  [FAIL] squid2: notice about the missing noauth.domains not logged"; rc=$((rc + 1))
 fi
 
+# squid-noauth's mounted lists hold entries squid 6 refuses to load next to their parent
+# (hand-edited): lists-sync.sh must have dropped them (logged), the instance must reload and
+# come back after a restart (before, such a list stopped squid: "FATAL: Bungled").
+log "lists with covered entries: logged, reload, restart"
+if $DC logs squid-noauth 2>/dev/null | grep 'entries ignored, already covered' >/dev/null; then
+  echo "  [PASS] covered entries dropped and logged"
+else
+  echo "  [FAIL] no notice about covered entries"; rc=$((rc + 1))
+fi
+if $DC exec -T squid-noauth sh -c '/usr/local/bin/lists-sync.sh 2>/dev/null && squid -k reconfigure -f /run/lmnsquid/squid.conf'; then
+  echo "  [PASS] reload (lists-sync.sh + squid -k reconfigure) with these lists"
+else
+  echo "  [FAIL] reload with these lists"; rc=$((rc + 1))
+fi
+$DC restart squid-noauth >/dev/null 2>&1
+if wait_healthy squid-noauth; then
+  echo "  [PASS] squid-noauth healthy again after a restart"
+else
+  echo "  [FAIL] squid-noauth did not come back after a restart"; rc=$((rc + 1))
+fi
+code=$($DC run --rm --entrypoint sh test-client -c \
+  'curl -s -o /dev/null -w "%{http_code}" --proxy http://squid4.example.internal:3128 http://secure.example.internal/' 2>/dev/null | tr -cd '0-9')
+if [ "$code" = 200 ]; then
+  echo "  [PASS] after the restart: listed, no ticket -> 200"
+else
+  echo "  [FAIL] after the restart: expected 200, got '$code'"; rc=$((rc + 1))
+fi
+
 log "squid-noauth access.log (excerpt)"
 $DC exec -T squid-noauth sh -c 'tail -25 /var/log/squid/access.log' 2>/dev/null || true
 

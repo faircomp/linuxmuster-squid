@@ -72,15 +72,19 @@ Status document. Keep it up to date with every substantive change (see
   `/etc/squid/lists` — the path the template reads for `dstdomain` and
   `ssl::server_name`. Managed via `lmnsquid blocklist <name> add|remove|list|reload`
   (the API endpoints below); `reload` = `squid -k reconfigure` inside the container
-  (docker exec), no restart. Entries are `.example.org` = domain + subdomains. UT Capitole/Toulouse
+  (docker exec), no restart. Entries are `.example.org` = domain + subdomains. Squid reads
+  copies under `/run/lmnsquid/lists/` that `lists-sync.sh` builds from the mounted files at
+  start and before every reload, without entries a listed parent domain covers (squid 6 stops
+  with `FATAL: Bungled` when such an entry precedes its parent); the control plane never writes
+  them in the first place. UT Capitole/Toulouse
   category lists via `blocklist-refresh.sh` (host cron) into the same file.
 - **Domains without proxy authentication per instance (ADR-016, optional):**
   `<blocklists_dir>/<name>/noauth.domains` in the same mounted directory (no extra mount, the
   container spec is unchanged), managed via `lmnsquid noauth <name> add|remove|list|reload`.
   A listed domain is reachable from `school_net` without a ticket; the blocklist wins; a
   CONNECT on this path must carry a listed SNI (no SNI → terminated); the list ACL is
-  `dstdomain -n` (no reverse DNS). Empty by default (= the old behaviour). The entrypoint uses
-  an empty stand-in when the mounted directory has no `noauth.domains` (older control plane);
+  `dstdomain -n` (no reverse DNS). Empty by default (= the old behaviour). A missing
+  `noauth.domains` (older control plane) is an empty list;
   `noauth reload` refuses (409) when the running container does not read the list (an image
   from before ADR-016). Price: no identity for these requests (exam mode, Internetsperre;
   threat model T16).
