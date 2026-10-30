@@ -195,8 +195,8 @@ as well; a different SNI or none cuts the handshake. Check from a client in `<su
 a ticket: `kdestroy; req $P:3129 https://<listed-domain>/` gives 200,
 `req $P:3129 http://example.com/` still 407. The recommended Microsoft 365 list with its source
 and the details: [`operations.md`](operations.md#domains-without-proxy-authentication-per-instance).
-`reload` answers 409 while the instance still runs an image that does not know the list (the
-data-plane image must be updated first).
+`reload` answers 409 while the instance still runs a data-plane image that does not support the
+list; a package release whose pinned image supports it moves the instances onto it.
 
 ## 9. Clients
 

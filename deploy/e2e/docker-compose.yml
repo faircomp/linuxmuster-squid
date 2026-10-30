@@ -152,16 +152,16 @@ services:
     cap_add: ["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"]
     security_opt: ["no-new-privileges:true"]
 
-  # The image installed systems run (DEFAULT_IMAGE of the control plane, set by
-  # e2e_kerberos.sh) with a list directory that holds noauth.domains: an image that does not
-  # know the list must ignore it and keep asking for a ticket.
-  squid-pinned:
+  # An image from before ADR-016 (the one 7.3.7 pins; set by e2e_kerberos.sh) with a list
+  # directory that holds noauth.domains: what an instance runs until the upgrade replaces its
+  # container. It must ignore the list and keep asking for a ticket.
+  squid-old:
     # (default only for the other smokes that start the DC from this file)
-    image: ${LMNSQUID_PINNED_IMAGE:-linuxmuster-squid:dev}
+    image: ${LMNSQUID_OLD_IMAGE:-linuxmuster-squid:dev}
     hostname: squid5.example.internal
     depends_on: [samba-dc, squid]
     environment:
-      INSTANCE: "e2e-pinned"
+      INSTANCE: "e2e-old"
       VISIBLE_HOSTNAME: "squid5.example.internal"
       REALM: "EXAMPLE.INTERNAL"
       AD_GROUP: "teachers"
@@ -174,7 +174,7 @@ services:
         ipv4_address: 172.28.0.14
     volumes:
       - shared:/shared:ro
-      - ./lists-pinned:/etc/squid/lists:ro
+      - ./lists-old:/etc/squid/lists:ro
     read_only: true
     tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
     cap_drop: ["ALL"]

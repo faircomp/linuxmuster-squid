@@ -198,7 +198,9 @@ def test_noauth_reload_refuses_an_image_that_ignores_the_list(
     client.post(f"/v1/instances/{name}/noauth", json={"domain": "office.com"}, headers=auth_headers)
     resp = client.post(f"/v1/instances/{name}/noauth/reload", headers=auth_headers)
     assert resp.status_code == 409
-    assert "does not read the noauth list" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "does not support the noauth list" in detail and "release" in detail
+    assert "lmnsquid update" not in detail  # does not help while DEFAULT_IMAGE is the old one
     assert docker.reloaded == []  # no "reloaded" that changes nothing
     # the blocklist reload is unaffected
     resp = client.post(f"/v1/instances/{name}/blocklist/reload", headers=auth_headers)

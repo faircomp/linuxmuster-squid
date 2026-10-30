@@ -145,9 +145,12 @@ lmnsquid noauth all-students reload                  # squid re-reads both lists
   purpose: blocking a TLD (`zip`) is a legitimate choice and a wrong entry there only blocks
   more. API:
   `GET/POST /v1/instances/{name}/noauth`, `DELETE …/noauth/{domain}`, `POST …/noauth/reload`.
-- **`reload` answers 409** when the running container does not read the list: its image
-  predates the list (update the instance to a data-plane image that has it, `lmnsquid update
-  <name>`). Without that check a reload would report success and change nothing.
+- **`reload` answers 409** when the instance's data-plane image does not support the list
+  (an image from before the list). That is a release matter, not an admin step: a
+  linuxmuster-squid release whose pinned image supports the list moves the instances onto it
+  when the package is upgraded (`update-all` in the postinst); `lmnsquid update <name>` only
+  helps once such a release is installed. Without that check a reload would report success and
+  change nothing.
   `blocklist reload` is not affected. A `noauth.domains` created after the container started
   (an older control plane) is picked up by the next reload.
 - **What `lmnsquid rm` removes:** the directory with both lists.

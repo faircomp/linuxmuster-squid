@@ -2,5 +2,5 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# The image of squid-pinned predates ADR-016 and must ignore this list.
+# The image of squid-old predates ADR-016 and must ignore this list.
 .secure.example.internal

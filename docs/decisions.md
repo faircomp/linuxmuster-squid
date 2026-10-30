@@ -241,7 +241,8 @@ connections and asks to exempt its required endpoints; a client-side bypass (pro
 **Price (threat model T16):** a listed domain is reachable by everyone in the school subnets
 without identity: exam accounts reach it in exam mode, the Internetsperre does not apply to it,
 and the access log shows `-` instead of a user for it. **Rollout:** the template is in the
-data-plane image; until `DEFAULT_IMAGE` points at an image with this template, the list is
+data-plane image; `DEFAULT_IMAGE` must point at an image built with it before the release
+that ships the control plane is tagged (RELEASE.md). Until then the list is
 ignored and `lmnsquid noauth <name> reload` answers 409 instead of reporting a reload that
 changes nothing (it checks the rendered `squid.conf` in the container). An image with the
 template next to a directory without `noauth.domains` (an older control plane) uses an empty

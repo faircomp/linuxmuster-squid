@@ -128,12 +128,13 @@ acceptance list in `deployment-gpo.md`.
   outside `school_net` → 407 (HTTP and CONNECT, squidclient from another container); with a
   ticket the 200/403/407 matrix is unchanged on that instance. Empty list (`squid`) and a list
   directory without `noauth.domains` (`squid2`, as an older control plane mounts it) → 407 as
-  before, the latter logs a notice. The pinned image of installed systems (`squid-pinned`,
-  `DEFAULT_IMAGE` from `models.py`) next to a directory with `noauth.domains`: unchanged
+  before, the latter logs a notice. The image from before ADR-016 (`squid-old`, the digest
+  7.3.7 pins, a constant that does not follow `DEFAULT_IMAGE`) next to a directory with
+  `noauth.domains`: unchanged
   (407 without ticket, 200/403 with). Counter-runs: without `-n` the IP-literal case and
   without the SNI rule the foreign-SNI case fail. `cp-docker-it` (real DockerService): both
   list files exist before the container starts, the new image reads the noauth list and
-  reloads, the pinned image is healthy with it and `noauth_active` is false. Unit: name
+  reloads, the image from before ADR-016 is healthy with it and `noauth_active` is false. Unit: name
   normalization (IDNA, leading dot, invalid names; IP literals as dotted, short, hex, decimal
   and IPv6 forms and single labels refused for noauth, accepted for the blocklist; E2E: such
   hand-written lines ignored and logged, `http://<ip>/` → 407), unsafe instance names, API 401/403 without

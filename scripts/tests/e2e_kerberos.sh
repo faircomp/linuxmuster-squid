@@ -23,13 +23,11 @@ dcx(){ $DC exec -T samba-dc "$@"; }        # exec in the DC, no TTY
 cleanup(){ $DC down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-# The image installed systems run: DEFAULT_IMAGE of the control plane (squid-pinned service).
-LMNSQUID_PINNED_IMAGE="$(sed -n 's/^ *"\(ghcr\.io\/[^"]*\)"$/\1/p; s/^ *"\(@sha256:[0-9a-f]*\)"$/\1/p' \
-  "$ROOT/controlplane/lmnsquid/models.py" | tr -d '\n')"
-case "$LMNSQUID_PINNED_IMAGE" in
-  ghcr.io/*@sha256:*) export LMNSQUID_PINNED_IMAGE ;;
-  *) echo "cannot read DEFAULT_IMAGE from models.py (got '$LMNSQUID_PINNED_IMAGE')"; exit 1 ;;
-esac
+# squid-old: the data-plane image 7.3.7 pins, the last one without ADR-016 (lists-sync.sh,
+# noauth). A constant on purpose, not DEFAULT_IMAGE: it stands for what installed instances run
+# until the upgrade replaces their containers, and DEFAULT_IMAGE moves to an image that reads
+# the noauth list before 7.3.8 is tagged (RELEASE.md).
+export LMNSQUID_OLD_IMAGE="ghcr.io/faircomp/linuxmuster-squid@sha256:d13625b51a99d62f14c37d18453092bbde651cb34df080dd49f3937f7f5f46ef"
 
 log "reset"
 $DC down -v --remove-orphans >/dev/null 2>&1 || true
@@ -83,7 +81,7 @@ dcx samba-tool group addmembers schule2-internet inetor          >/dev/null 2>&1
 dcx samba-tool spn   add "HTTP/squid3.$DLC" squidsvc             >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid3 A 172.28.0.12    -U "Administrator%$PW" >/dev/null 2>&1 || true
 
-# Domains without proxy auth (ADR-016): squid4 = squid-noauth, squid5 = the pinned image;
+# Domains without proxy auth (ADR-016): squid4 = squid-noauth, squid5 = squid-old (image from before ADR-016);
 # more names on the HTTPS origin (a listed subdomain, an unlisted name).
 dcx samba-tool spn   add "HTTP/squid4.$DLC" squidsvc             >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid5.$DLC" squidsvc             >/dev/null 2>&1 || true
@@ -92,8 +90,8 @@ dcx samba-tool dns add 127.0.0.1 "$DLC" squid5 A 172.28.0.14    -U "Administrato
 dcx samba-tool dns add 127.0.0.1 "$DLC" www.secure A 172.28.0.21 -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" secure2 A 172.28.0.21   -U "Administrator%$PW" >/dev/null 2>&1 || true
 
-log "start origin + origin-https + squid + squid2 + squid-inet + squid-noauth + squid-pinned"
-$DC up -d origin origin-https squid squid2 squid-inet squid-noauth squid-pinned || exit 1
+log "start origin + origin-https + squid + squid2 + squid-inet + squid-noauth + squid-old"
+$DC up -d origin origin-https squid squid2 squid-inet squid-noauth squid-old || exit 1
 
 wait_healthy() {
   local svc="$1" ready=0 st=none cid
@@ -110,7 +108,7 @@ wait_healthy squid     || exit 1
 wait_healthy squid2    || exit 1
 wait_healthy squid-inet || exit 1
 wait_healthy squid-noauth || exit 1
-wait_healthy squid-pinned || exit 1
+wait_healthy squid-old || exit 1
 
 log "run assertions (test-client)"
 $DC run --rm test-client

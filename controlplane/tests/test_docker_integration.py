@@ -20,6 +20,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 IMAGE = os.environ.get("LMNSQUID_IT_IMAGE", "linuxmuster-squid:dev")
+# The data-plane image 7.3.7 pins, the last one without ADR-016: a constant, not DEFAULT_IMAGE,
+# which moves to an image that reads the noauth list before 7.3.8 is tagged.
+OLD_IMAGE = os.environ.get(
+    "LMNSQUID_IT_OLD_IMAGE",
+    "ghcr.io/faircomp/linuxmuster-squid"
+    "@sha256:d13625b51a99d62f14c37d18453092bbde651cb34df080dd49f3937f7f5f46ef",
+)
 
 
 def test_real_container_lifecycle(tmp_path: Path) -> None:
@@ -135,14 +142,14 @@ def test_real_update_auto_rollback(tmp_path: Path) -> None:
         docker.remove(inst.name)
 
 
-def test_real_pinned_image_ignores_the_noauth_list(tmp_path: Path) -> None:
-    """The image installed systems run (DEFAULT_IMAGE) next to a list directory with
-    noauth.domains: it starts healthy, and the noauth reload is refused instead of
-    reporting a reload that changes nothing (ADR-016)."""
+def test_real_old_image_ignores_the_noauth_list(tmp_path: Path) -> None:
+    """An image from before ADR-016 (what installed instances run until the upgrade replaces
+    their containers) next to a list directory with noauth.domains: it starts healthy, and the
+    noauth reload is refused instead of reporting a reload that changes nothing."""
     from lmnsquid.docker_service import DockerService
-    from lmnsquid.models import DEFAULT_IMAGE, Instance
+    from lmnsquid.models import Instance
 
-    old_image = os.environ.get("LMNSQUID_IT_OLD_IMAGE", DEFAULT_IMAGE)
+    old_image = OLD_IMAGE
     secrets = tmp_path / "secrets"
     secrets.mkdir()
     (secrets / "it.keytab").write_bytes(b"dummy-keytab-not-valid")

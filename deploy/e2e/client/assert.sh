@@ -141,11 +141,11 @@ check_tunnel "noauth instance: HTTPS not listed (teacher) -> 200" teacher1 "$NA"
 # as an older control plane mounts it) change nothing:
 check_via    "empty list: listed elsewhere, no ticket -> 407"     "" "$PROXY"  "http://secure.example.internal/" 407
 check_via    "no list file: no ticket -> 407"                     "" "$PROXY2" "http://secure.example.internal/" 407
-# The pinned image of installed systems with a directory that holds noauth.domains:
+# The image from before ADR-016 (7.3.7's pin) with a directory that holds noauth.domains:
 PROXY5="http://squid5.example.internal:3128"
-check_via    "pinned image + noauth.domains: no ticket -> 407"    "" "$PROXY5" "http://secure.example.internal/" 407
-check_via    "pinned image + noauth.domains: teacher -> 200"      teacher1 "$PROXY5" "http://secure.example.internal/" 200
-check_via    "pinned image + noauth.domains: student -> 403"      student1 "$PROXY5" "$ALLOWED" 403
+check_via    "old image + noauth.domains: no ticket -> 407"       "" "$PROXY5" "http://secure.example.internal/" 407
+check_via    "old image + noauth.domains: teacher -> 200"         teacher1 "$PROXY5" "http://secure.example.internal/" 200
+check_via    "old image + noauth.domains: student -> 403"         student1 "$PROXY5" "$ALLOWED" 403
 
 echo
 if [ "$fail" -eq 0 ]; then echo "E2E: ALL ASSERTIONS OK"; else echo "E2E: FAILED"; fi

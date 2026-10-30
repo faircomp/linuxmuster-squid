@@ -271,10 +271,10 @@ def create_app(
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=(
-                        f"the running container of {name!r} does not read the noauth list "
-                        "(its image predates the list, or it started without noauth.domains): "
-                        f"update it to an image that supports the list, or `lmnsquid restart "
-                        f"{name}` when it already runs one"
+                        f"the data-plane image of {name!r} does not support the noauth list, "
+                        "so the list has no effect: it needs a linuxmuster-squid release whose "
+                        "pinned data-plane image supports it (the package upgrade moves the "
+                        "instances onto that image)"
                     ),
                 )
             return docker.reload(name)

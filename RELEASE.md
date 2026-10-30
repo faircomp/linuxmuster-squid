@@ -64,6 +64,21 @@ does not yet exist — every `lmnsquid create --image ghcr.io/…@sha256:<digest
 
 ## Ongoing releases
 
+**A release whose `image/` changed pins that image before it is tagged.** The control plane
+installs and updates instances with `DEFAULT_IMAGE` (`controlplane/lmnsquid/models.py`); a
+changed template that is not pinned never reaches an installed system. Order: merge the change
+→ `build-image.yml` builds and pushes it on `main` (the digest is in the job log, "Report
+digest") → a PR sets `DEFAULT_IMAGE` to that `@sha256:` digest (by hand while Renovate is
+disabled) → CI green → set the changelog version and tag. The package upgrade then moves every
+instance onto the new image (`update-all` in the postinst, health-gated with rollback).
+**7.3.8** is such a release: the noauth list (ADR-016) and `lists-sync.sh` live in the image;
+until the digest is pinned, `lmnsquid noauth <name> reload` answers 409 and the lists still
+reach squid unfiltered. The E2E service `squid-old` and the integration test
+`test_real_old_image_ignores_the_noauth_list` deliberately keep testing the image 7.3.7 pins
+(`…@sha256:d13625b5…`, a constant in `scripts/tests/e2e_kerberos.sh` and
+`controlplane/tests/test_docker_integration.py`), i.e. what instances run until the upgrade
+replaces their containers; they do not follow `DEFAULT_IMAGE` and need no change for the pin.
+
 Code + docs + a `debian/changelog` bullet in the same commit (Conventional Commits) → push →
 CI green (`ci.yml`: fast tier, container build, install smoke, upgrade smoke) → Kevin sets the
 release version in the changelog head and tags `v<version>` → `release.yml` builds, smokes and
