@@ -124,14 +124,16 @@ e2e(){
   else
     skip "kerberos-e2e" "scripts/tests/e2e_kerberos.sh missing (comes in P1)"
   fi
+  # Docker directly, or via sudo when the user is not (yet) in the docker group (crabbox).
+  local asroot=(); docker info >/dev/null 2>&1 || asroot=(sudo)
   # Build broken image (FROM :dev) for the auto-rollback test.
   if have docker; then
-    sudo docker build -q -t linuxmuster-squid:broken deploy/e2e/broken-image >/dev/null 2>&1 || true
+    "${asroot[@]}" docker build -q -t linuxmuster-squid:broken deploy/e2e/broken-image >/dev/null 2>&1 || true
   fi
   # Control-plane Docker integration: real DockerService creates a container
-  # + update/auto-rollback; via sudo, since the crabbox user may not be in the docker group.
+  # + update/auto-rollback.
   if [ -x .venv/bin/pytest ]; then
-    if sudo env LMNSQUID_DOCKER_IT=1 ./.venv/bin/pytest -q controlplane/tests/test_docker_integration.py; then
+    if "${asroot[@]}" env LMNSQUID_DOCKER_IT=1 ./.venv/bin/pytest -q controlplane/tests/test_docker_integration.py; then
       pass "cp-docker-it"
     else
       fail "cp-docker-it"

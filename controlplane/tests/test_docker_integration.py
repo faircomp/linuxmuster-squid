@@ -32,7 +32,7 @@ def test_real_container_lifecycle(tmp_path: Path) -> None:
     # exercised by the compose E2E, not here — this proves docker-py lifecycle.
     (secrets / "it.keytab").write_bytes(b"dummy-keytab-not-valid")
 
-    svc = DockerService(secrets_dir=str(secrets))
+    svc = DockerService(secrets_dir=str(secrets), blocklists_dir=str(tmp_path / "lists"))
     inst = Instance(
         school="it",
         role="teachers",
@@ -78,7 +78,7 @@ def test_real_update_auto_rollback(tmp_path: Path) -> None:
     (secrets / "it.keytab").write_bytes(b"dummy-keytab-not-valid")
 
     store = Store(str(tmp_path / "instances"))
-    docker = DockerService(secrets_dir=str(secrets))
+    docker = DockerService(secrets_dir=str(secrets), blocklists_dir=str(tmp_path / "lists"))
     reconciler = Reconciler(store, docker)
     updater = Updater(store, docker, reconciler, health_timeout=45.0, poll_interval=2.0)
 
