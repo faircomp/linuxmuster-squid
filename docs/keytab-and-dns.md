@@ -82,7 +82,8 @@ file; the control plane does **not** provision it itself (least privilege).
   `HTTP/<fqdn>`, `host/<fqdn>` and `host/<short-name>` on any other account on every run (also
   when the SPN is already on the service account) and stops with `FATAL`, exit ≠ 0, before it
   changes or exports anything. Without `ldbsearch` (package `ldb-tools`, a dependency of
-  linuxmuster-base7) or read access to `sam.ldb` it stops as well.
+  linuxmuster-base7), without read access to `sam.ldb` or when `ldbsearch` fails it stops as
+  well, with the reason.
 
 ## DNS & time requirements (hard)
 

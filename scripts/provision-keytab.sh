@@ -44,8 +44,13 @@ account_lc=$(printf '%s' "${ACCOUNT%\$}" | tr '[:upper:]' '[:lower:]')
 conflict=0
 echo "== check ${SPN}, host/${FQDN}, host/${SHORT} on other accounts =="
 for spn in "${SPN}" "host/${FQDN}" "host/${SHORT}"; do
-    owners=$(ldbsearch -H "${SAM_LDB}" "(servicePrincipalName=${spn})" sAMAccountName \
-        2>/dev/null | awk '/^sAMAccountName:/ {print $2}')
+    if ! found=$(ldbsearch -H "${SAM_LDB}" "(servicePrincipalName=${spn})" sAMAccountName 2>&1); then
+        echo "FATAL: ldbsearch on ${SAM_LDB} failed, cannot check for conflicting SPNs:" >&2
+        printf '%s\n' "${found}" | sed 's/^/       /' >&2
+        echo "       Nothing was changed and no keytab was exported." >&2
+        exit 1
+    fi
+    owners=$(printf '%s\n' "${found}" | awk '/^sAMAccountName:/ {print $2}')
     for owner in ${owners}; do
         owner_lc=$(printf '%s' "${owner%\$}" | tr '[:upper:]' '[:lower:]')
         [ "${owner_lc}" = "${account_lc}" ] && continue

@@ -25,9 +25,9 @@ linuxmuster-squid (7.3.8) lmn73; urgency=medium
     run, also when the SPN is already on the service account, it now looks
     for HTTP/<fqdn>, host/<fqdn> and host/<short-name> on other accounts and
     stops with FATAL and a hint (devices.csv role iponly) before it changes or
-    exports anything. It also stops when it cannot check (no ldbsearch or no
-    read access to sam.ldb) and refuses an argument that is not a fully
-    qualified host name.
+    exports anything. It also stops when it cannot check (no ldbsearch, no
+    read access to sam.ldb, or ldbsearch failing, with its message) and
+    refuses an argument that is not a fully qualified host name.
   * discover-ad-facts.sh reads the realm on the DC (smb.conf realm, via
     testparm) instead of trusting REALM: a REALM given in the environment is
     only compared, and a mismatch prints a WARNING (a short REALM such as

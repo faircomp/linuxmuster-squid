@@ -99,5 +99,16 @@ echo "== G: not a host name -> abort before any LDAP query =="
 if dcx bash /tmp/pk.sh 'x)(servicePrincipalName=*' ktsvc1 /tmp/kt4.keytab; then bad "filter injection accepted"; else pass "invalid FQDN refused"; fi
 if dcx bash /tmp/pk.sh proxy ktsvc1 /tmp/kt4.keytab; then bad "short name accepted"; else pass "short name refused (FQDN required)"; fi
 
+echo "== H: sam.ldb that ldbsearch cannot read -> FATAL with a reason, no export =="
+dcx sh -c 'echo "not an ldb" > /tmp/broken.ldb'
+dcx env SAM_LDB=/tmp/broken.ldb bash /tmp/pk.sh kproxy.example.internal ktsvc3 /tmp/kt5.keytab > /tmp/pk_h.out 2>&1
+hrc=$?
+if [ "$hrc" -ne 0 ] && grep -q 'FATAL: ldbsearch on /tmp/broken.ldb failed' /tmp/pk_h.out; then
+  pass "broken sam.ldb: FATAL with the reason (exit $hrc)"
+else
+  bad "broken sam.ldb: exit $hrc, output: $(tr '\n' ' ' < /tmp/pk_h.out)"
+fi
+if dcx test -e /tmp/kt5.keytab; then bad "broken sam.ldb: keytab exported"; else pass "broken sam.ldb: no keytab"; fi
+
 echo "== provision-keytab smoke: $fail errors =="
 exit "$fail"
