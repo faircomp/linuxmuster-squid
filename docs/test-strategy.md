@@ -78,7 +78,11 @@ from the caller's PATH.
 ## Heavy tier — Kerberos E2E (Docker)
 
 docker-compose stack: `samba-dc` + `squid` + `origin` + `test-client` (details in
-the `/test` skill). **Core proof** (P1), assertions on `%{http_code}`:
+the `/test` skill). `run.sh e2e` (and `all`) also runs the admin-script smokes against the
+same Samba DC image: `provision_keytab_smoke.sh` (SPN/alias conflicts, idempotence, fail-closed
+cases) and `discover_ad_facts_smoke.sh` (groups, realm from the DC, templates). Not in GitHub
+CI: the heavy tier stays out of it (`ci.yml` header), and a new job would be a new required
+check of the `main` ruleset. **Core proof** (P1), assertions on `%{http_code}`:
 
 | Case | Action | Expectation |
 |---|---|---|

@@ -124,6 +124,10 @@ e2e(){
   else
     skip "kerberos-e2e" "scripts/tests/e2e_kerberos.sh missing (comes in P1)"
   fi
+  # The admin scripts against the E2E Samba DC (each starts and removes its own DC from the
+  # same compose file, so they run one after the other, after the Kerberos suite).
+  run_step "provision-keytab-smoke" docker bash scripts/tests/provision_keytab_smoke.sh
+  run_step "discover-ad-facts-smoke" docker bash scripts/tests/discover_ad_facts_smoke.sh
   # Docker directly, or via sudo when the user is not (yet) in the docker group (crabbox).
   local asroot=(); docker info >/dev/null 2>&1 || asroot=(sudo)
   # Build broken image (FROM :dev) for the auto-rollback test.
