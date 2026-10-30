@@ -118,6 +118,7 @@ check_via    "noauth: not listed, no ticket -> 407"               "" "$NA" "$ALL
 # squid-noauth knows 172.28.0.21 -> secure.example.internal (extra_hosts = its reverse
 # cache): without dstdomain -n this IP-literal URL would match the list (200, measured).
 check_via    "noauth: IP literal of a listed host -> 407"         "" "$NA" "http://172.28.0.21/" 407
+check_via    "noauth: IP written into the list -> 407"           "" "$NA" "http://172.28.0.20/" 407
 check_via    "noauth: listed AND blocked HTTP, no ticket -> 403"  "" "$NA" "http://both.example.internal/" 403
 check_tunnel "noauth: listed HTTPS, no ticket -> tunnel + TLS"   "" "$NA" "https://secure.example.internal/" "200 200"
 check_tunnel "noauth: not listed HTTPS, no ticket -> 407"         "" "$NA" "https://secure2.example.internal/" "407 000"

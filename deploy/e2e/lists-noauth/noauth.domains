@@ -8,4 +8,8 @@
 .a.secure.example.internal
 secure.example.internal
 .secure.example.internal
+# Also hand-written, and ignored by lists-sync.sh for this list: an address (origin) and a
+# single label that would open every *.internal name.
+172.28.0.20
+internal
 .both.example.internal

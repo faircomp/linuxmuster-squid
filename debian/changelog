@@ -8,8 +8,9 @@ linuxmuster-squid (7.3.8) lmn73; urgency=medium
     the blocklist. A listed domain and its subdomains are reachable without a
     ticket from --school-subnets only; the blocklist still wins; HTTPS passes
     only when the TLS SNI is on the list too (another SNI or none cuts the
-    handshake); IP addresses never match. Empty by default, so nothing
-    changes until you add a domain. Warning: exam accounts reach listed
+    handshake); IP addresses and single labels (a whole TLD) are refused as
+    entries, and an IP-literal URL never matches. Empty by default, so
+    nothing changes until you add a domain. Warning: exam accounts reach listed
     domains during an exam, the Internetsperre does not apply to them, and
     the access log shows no user for them. A recommended Microsoft 365 list
     with its source is in docs/operations.md. The list needs a data-plane

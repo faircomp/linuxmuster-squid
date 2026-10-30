@@ -51,6 +51,24 @@ def normalize_domain(value: str) -> str:
     return f".{name}"
 
 
+def normalize_noauth_domain(value: str) -> str:
+    """:func:`normalize_domain`, but only a domain below a TLD: at least two labels, the last
+    one not numeric.
+
+    An entry opens access without authentication, so it must name a domain: an IP literal
+    (``10.0.0.1``, ``127.1``, ``0x7f000001``, ``2887516181``) would put an address on the list
+    (squid matches IP-literal URLs against the list text) and a single label (``com``) a whole
+    top-level domain. The blocklist accepts both on purpose: a wrong entry there only blocks.
+    """
+    entry = normalize_domain(value)
+    labels = entry[1:].split(".")
+    if len(labels) < 2:
+        raise ValueError(f"{value!r} is not a domain below a top-level domain")
+    if labels[-1].isdigit():
+        raise ValueError(f"{value!r} looks like an IP address, not a domain")
+    return entry
+
+
 def uncovered(entries: Iterable[str]) -> list[str]:
     """Return ``entries`` without the ones another entry already covers, sorted.
 
@@ -82,8 +100,8 @@ def uncovered(entries: Iterable[str]) -> list[str]:
 class Blocklist:
     """Read and modify one list file (``blocked.domains`` by default) under ``root``.
 
-    One directory per instance; ``Blocklist(root, NOAUTH_FILE_NAME)`` handles the noauth list
-    in the same directories.
+    One directory per instance; ``noauth_list(root)`` handles the noauth list in the same
+    directories.
     """
 
     def __init__(
@@ -175,3 +193,8 @@ class Blocklist:
             if os.path.exists(tmp):
                 os.unlink(tmp)
             raise
+
+
+def noauth_list(root: str) -> Blocklist:
+    """The noauth list (ADR-016) of the instances under ``root``, with its stricter names."""
+    return Blocklist(root, NOAUTH_FILE_NAME, normalize_noauth_domain)

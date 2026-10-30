@@ -134,7 +134,9 @@ acceptance list in `deployment-gpo.md`.
   without the SNI rule the foreign-SNI case fail. `cp-docker-it` (real DockerService): both
   list files exist before the container starts, the new image reads the noauth list and
   reloads, the pinned image is healthy with it and `noauth_active` is false. Unit: name
-  normalization (IDNA, leading dot, invalid names), unsafe instance names, API 401/403 without
+  normalization (IDNA, leading dot, invalid names; IP literals as dotted, short, hex, decimal
+  and IPv6 forms and single labels refused for noauth, accepted for the blocklist; E2E: such
+  hand-written lines ignored and logged, `http://<ip>/` → 407), unsafe instance names, API 401/403 without
   or with a wrong token, 404/422, reload 409 when the container ignores the list or is stopped,
   CLI and `--help` warnings.
 - **Lists squid 6 refuses** (`FATAL: Bungled`: a name covered by a listed parent before it,

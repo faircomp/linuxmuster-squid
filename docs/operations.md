@@ -131,12 +131,19 @@ lmnsquid noauth all-students reload                  # squid re-reads both lists
 
 - **Rules:** the blocklist wins (a domain on both lists gets **403**; HTTPS is cut). The
   existing rules stay in front (Safe_ports, CONNECT only to 443, no IP literals on CONNECT); an
-  IP-literal URL never matches the list (`dstdomain -n`, no reverse DNS). HTTPS through the
+  IP-literal URL never matches the list (`dstdomain -n`, no reverse DNS; addresses cannot be
+  put on it, see below). HTTPS through the
   list passes only when the TLS **SNI** is on the list too; a different SNI or a ClientHello
   without SNI is **terminated** (no domain fronting into other names; no decryption, ADR-002).
   With a ticket nothing changes (200 / 403 / 407 as before).
 - `add`/`remove` write the file (same format and rules as the blocklist, one `.domain` per
-  line, `#` comments allowed when hand-edited) and take effect on the next **`reload`**. API:
+  line, `#` comments allowed when hand-edited) and take effect on the next **`reload`**.
+  Stricter names than the blocklist: only a domain below a top-level domain, so `add` refuses
+  IP addresses in any form (`10.0.0.1`, `127.1`, `0x7f000001`, IPv6) and single labels such as
+  `com` (they would open an address or a whole TLD); hand-written lines of that kind are
+  ignored by the container and named in `lmnsquid logs <name>`. The blocklist accepts both on
+  purpose: blocking a TLD (`zip`) is a legitimate choice and a wrong entry there only blocks
+  more. API:
   `GET/POST /v1/instances/{name}/noauth`, `DELETE …/noauth/{domain}`, `POST …/noauth/reload`.
 - **`reload` answers 409** when the running container does not read the list: its image
   predates the list (update the instance to a data-plane image that has it, `lmnsquid update

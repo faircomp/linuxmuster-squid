@@ -217,7 +217,9 @@ with `--python-version=3.12`; environment markers then evaluate as on the target
 **Status:** Proposed (2026-10-30, Kevin's request: Microsoft 365 through the proxy, without a
 login, no client-side bypass). **Decision:** each instance may list domains in
 `<blocklists_dir>/<name>/noauth.domains`, managed like the blocklist (`lmnsquid noauth <name>
-list|add|remove|reload`, entries `.example.org` = domain + subdomains). A request to a listed
+list|add|remove|reload`, entries `.example.org` = domain + subdomains; only names below a
+top-level domain: IP literals in any form and single labels are refused, and ignored in the
+container when hand-written). A request to a listed
 domain from `school_net` is allowed **without** proxy authentication; the rules, in order:
 the existing denies (Safe_ports, CONNECT only to 443, no IP literals on CONNECT) stay first;
 `deny noauth_domains blocked_domains` (the blocklist wins, 403); `allow noauth_domains

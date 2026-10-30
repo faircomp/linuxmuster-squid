@@ -15,7 +15,7 @@ import re
 
 from pydantic import BaseModel, computed_field, field_validator
 
-from .blocklist import normalize_domain
+from .blocklist import normalize_domain, normalize_noauth_domain
 
 # school/role -> name -> filename + container/volume name: no '/', '..' (case allowed).
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,30}$")
@@ -203,7 +203,7 @@ class UpdateRequest(BaseModel):
 
 
 class BlocklistEntry(BaseModel):
-    """Body for ``POST /v1/instances/{name}/blocklist`` and ``…/noauth``: one domain."""
+    """Body for ``POST /v1/instances/{name}/blocklist``: one domain to block."""
 
     domain: str
 
@@ -212,3 +212,15 @@ class BlocklistEntry(BaseModel):
     def _v_domain(cls, v: str) -> str:
         # Normalized here so an invalid name is a 422 at the boundary, not a 500.
         return normalize_domain(v)
+
+
+class NoauthEntry(BaseModel):
+    """Body for ``POST /v1/instances/{name}/noauth``: one domain below a top-level domain."""
+
+    domain: str
+
+    @field_validator("domain")
+    @classmethod
+    def _v_domain(cls, v: str) -> str:
+        # No IP literals, no single labels (ADR-016): a 422 at the boundary.
+        return normalize_noauth_domain(v)

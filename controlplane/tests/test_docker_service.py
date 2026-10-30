@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 from docker.errors import APIError, NotFound
 
-from lmnsquid.blocklist import NOAUTH_FILE_NAME, Blocklist
+from lmnsquid.blocklist import Blocklist, noauth_list
 from lmnsquid.docker_service import SPEC_LABEL, DockerService
 from lmnsquid.models import Instance
 
@@ -22,7 +22,7 @@ def _service(tmp_path: Path) -> DockerService:
     ds.client = MagicMock()
     ds.secrets_dir = str(tmp_path / "secrets")
     ds.blocklist = Blocklist(str(tmp_path / "blocklists"))
-    ds.noauth = Blocklist(str(tmp_path / "blocklists"), NOAUTH_FILE_NAME)
+    ds.noauth = noauth_list(str(tmp_path / "blocklists"))
     ds.container_bind_ip = "0.0.0.0"
     ds.log_max_size = "20m"
     ds.log_max_file = 5

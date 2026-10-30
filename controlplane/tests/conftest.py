@@ -15,7 +15,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from lmnsquid.api import create_app
-from lmnsquid.blocklist import NOAUTH_FILE_NAME, Blocklist
+from lmnsquid.blocklist import Blocklist, noauth_list
 from lmnsquid.config import Settings
 from lmnsquid.models import Instance
 from lmnsquid.reconciler import Reconciler
@@ -42,7 +42,7 @@ class FakeDockerService:
         self.docker_host = docker_host
         self.secrets_dir = secrets_dir
         self.blocklist = Blocklist(blocklists_dir)
-        self.noauth = Blocklist(blocklists_dir, NOAUTH_FILE_NAME)
+        self.noauth = noauth_list(blocklists_dir)
         self.containers: dict[str, dict[str, Any]] = {}
         self.volumes: set[str] = set()
         # Test-observability hooks.

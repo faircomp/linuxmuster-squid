@@ -12,7 +12,7 @@ from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from lmnsquid import cli
-from lmnsquid.blocklist import NOAUTH_FILE_NAME, Blocklist
+from lmnsquid.blocklist import Blocklist, noauth_list, normalize_noauth_domain
 from lmnsquid.config import Settings
 
 runner = CliRunner()
@@ -37,16 +37,38 @@ def _create(client: TestClient, auth: dict[str, str], data: dict[str, Any]) -> s
     ],
 )
 def test_noauth_add_normalizes(tmp_path: Path, raw: str, expected: list[str]) -> None:
-    na = Blocklist(str(tmp_path), NOAUTH_FILE_NAME)
+    na = noauth_list(str(tmp_path))
     assert na.add("s-teachers", raw) == expected
     assert (tmp_path / "s-teachers" / "noauth.domains").read_text() == f"{expected[0]}\n"
 
 
 @pytest.mark.parametrize(
-    "bad", ["", ".", "*.office.com", "office.com/x", "a b.com", "-x.com", "x_y.com", "a" * 64]
+    "bad",
+    [
+        "",
+        ".",
+        "*.office.com",
+        "office.com/x",
+        "a b.com",
+        "-x.com",
+        "x_y.com",
+        "a" * 64,
+        # IP literals in every form squid would see as a host, and single labels (a TLD)
+        "172.28.0.20",
+        "10.0.0.1",
+        "127.1",
+        "0x7f000001",
+        "2887516181",
+        "::1",
+        "[::1]",
+        "::ffff:172.28.0.21",
+        "com",
+        ".com",
+        "intranet",
+    ],
 )
 def test_noauth_add_rejects_invalid_names(tmp_path: Path, bad: str) -> None:
-    na = Blocklist(str(tmp_path), NOAUTH_FILE_NAME)
+    na = noauth_list(str(tmp_path))
     with pytest.raises(ValueError):
         na.add("s-teachers", bad)
     assert not (tmp_path / "s-teachers" / "noauth.domains").exists()
@@ -54,7 +76,7 @@ def test_noauth_add_rejects_invalid_names(tmp_path: Path, bad: str) -> None:
 
 @pytest.mark.parametrize("bad", ["../x", "a/b", "..", "", "a", "a.b", "/etc"])
 def test_noauth_rejects_unsafe_instance_name(tmp_path: Path, bad: str) -> None:
-    na = Blocklist(str(tmp_path / "lists"), NOAUTH_FILE_NAME)
+    na = noauth_list(str(tmp_path / "lists"))
     with pytest.raises(ValueError):
         na.add(bad, "office.com")
     assert not (tmp_path / "x").exists() and not (tmp_path / "lists").exists()
@@ -62,7 +84,7 @@ def test_noauth_rejects_unsafe_instance_name(tmp_path: Path, bad: str) -> None:
 
 def test_both_lists_share_the_directory(tmp_path: Path) -> None:
     root = str(tmp_path)
-    bl, na = Blocklist(root), Blocklist(root, NOAUTH_FILE_NAME)
+    bl, na = Blocklist(root), noauth_list(root)
     bl.add("s-teachers", "blocked.example")
     na.add("s-teachers", "office.com")
     directory = tmp_path / "s-teachers"
@@ -74,6 +96,27 @@ def test_both_lists_share_the_directory(tmp_path: Path) -> None:
     assert bl.read("s-teachers") == [".blocked.example"]  # the other list is untouched
     na.delete("s-teachers")  # rm: the directory goes with both lists
     assert not directory.exists()
+
+
+def test_noauth_names_vs_blocklist_names(tmp_path: Path) -> None:
+    # a domain below a TLD with letters in the last label passes, also IDNA and digits inside
+    assert normalize_noauth_domain("1und1.de") == ".1und1.de"
+    assert normalize_noauth_domain("x.co.uk") == ".x.co.uk"
+    # the blocklist keeps accepting a TLD and an address on purpose: a wrong entry there
+    # only blocks more
+    bl = Blocklist(str(tmp_path))
+    assert bl.add("s-teachers", "zip") == [".zip"]
+    assert bl.add("s-teachers", "10.0.0.1") == [".10.0.0.1", ".zip"]
+
+
+def test_noauth_remove_accepts_what_add_refuses(tmp_path: Path) -> None:
+    # a hand-written "com" or address can still be taken out with the CLI
+    file = tmp_path / "s-teachers" / "noauth.domains"
+    file.parent.mkdir()
+    file.write_text(".com\n10.0.0.1\n.office.com\n")
+    na = noauth_list(str(tmp_path))
+    assert na.remove("s-teachers", "com") == [".office.com", "10.0.0.1"]
+    assert na.remove("s-teachers", "10.0.0.1") == [".office.com"]
 
 
 # --------------------------------------------------------------------- API
@@ -124,10 +167,12 @@ def test_noauth_endpoints(
         "domains": [],
     }
 
-    resp = client.post(
-        f"/v1/instances/{name}/noauth", json={"domain": "not a host"}, headers=auth_headers
-    )
-    assert resp.status_code == 422
+    for bad in ("not a host", "172.28.0.20", "com", "127.1", "::1"):
+        resp = client.post(
+            f"/v1/instances/{name}/noauth", json={"domain": bad}, headers=auth_headers
+        )
+        assert resp.status_code == 422, bad
+    assert file.read_text() == ".office.com\n"
 
     resp = client.post(f"/v1/instances/{name}/noauth/reload", headers=auth_headers)
     assert resp.status_code == 200 and resp.json() == {"name": name, "reloaded": True}
@@ -201,6 +246,8 @@ def test_cli_noauth(patch_client: None, instance_data: dict[str, Any], docker: A
     assert r.exit_code == 0 and '".office.com"' not in r.output
     assert runner.invoke(cli.app, ["noauth", NAME, "remove", "office.com"]).exit_code == 1
     assert runner.invoke(cli.app, ["noauth", NAME, "add", "bad host"]).exit_code == 1
+    assert runner.invoke(cli.app, ["noauth", NAME, "add", "10.0.0.1"]).exit_code == 1
+    assert runner.invoke(cli.app, ["noauth", NAME, "add", "com"]).exit_code == 1
 
 
 def test_cli_noauth_help_warns() -> None:

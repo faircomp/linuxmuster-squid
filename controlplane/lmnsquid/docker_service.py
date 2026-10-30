@@ -16,7 +16,7 @@ from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig
 
-from .blocklist import CONTAINER_DIR, NOAUTH_FILE_NAME, Blocklist
+from .blocklist import CONTAINER_DIR, Blocklist, noauth_list
 from .models import Instance
 
 logger = logging.getLogger("lmnsquid.docker")
@@ -62,7 +62,7 @@ class DockerService:
         self.log_max_size: str = log_max_size
         self.log_max_file: int = log_max_file
         self.blocklist = Blocklist(blocklists_dir)
-        self.noauth = Blocklist(blocklists_dir, NOAUTH_FILE_NAME)
+        self.noauth = noauth_list(blocklists_dir)
         self.health_timeout = health_timeout
         self.poll_interval = poll_interval
         self.client: docker.DockerClient = (

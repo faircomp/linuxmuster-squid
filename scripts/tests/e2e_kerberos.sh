@@ -159,6 +159,11 @@ if $DC logs squid-noauth 2>/dev/null | grep 'entries ignored, already covered' >
 else
   echo "  [FAIL] no notice about covered entries"; rc=$((rc + 1))
 fi
+if $DC logs squid-noauth 2>/dev/null | grep 'noauth.domains: ignored, not a domain name: 172.28.0.20' >/dev/null; then
+  echo "  [PASS] IP literal in noauth.domains ignored and logged"
+else
+  echo "  [FAIL] no notice about the IP literal in noauth.domains"; rc=$((rc + 1))
+fi
 if $DC exec -T squid-noauth sh -c '/usr/local/bin/lists-sync.sh 2>/dev/null && squid -k reconfigure -f /run/lmnsquid/squid.conf'; then
   echo "  [PASS] reload (lists-sync.sh + squid -k reconfigure) with these lists"
 else

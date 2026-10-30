@@ -11,7 +11,10 @@
 # squid 6 stops with "FATAL: Bungled ... acl ... dstdomain" when a list holds a name that
 # another entry already covers and comes first (".a.example.org" before ".example.org",
 # or "example.org" next to ".example.org"); measured with squid 6.14. Such names are
-# dropped here (the dotted parent matches them anyway) and reported on stderr (docker logs).
+# dropped here (the dotted parent matches them anyway). For the noauth list (ADR-016)
+# entries that are not host names with at least two labels and a non-numeric last label
+# (IP literals, numeric forms, single labels like "com") are dropped as well: they would
+# open far more than a domain. Dropped entries are reported on stderr (docker logs).
 set -eu
 
 SRC=/etc/squid/lists
@@ -42,15 +45,21 @@ uncovered() {
     }'
 }
 
-# sync <name>: a missing file becomes an empty list.
+# sync <name> <kind>: kind "noauth" also drops what is not a multi-label host name.
 sync_list() {
-    name=$1 src="${SRC}/$1" tmp="${DST}/.$1.tmp"
-    if [ -f "${src}" ]; then
-        uncovered < "${src}" 2>"${DST}/.$1.covered" | sort > "${tmp}"
-    else
+    name=$1 kind=$2 src="${SRC}/$1" tmp="${DST}/.$1.tmp"
+    if [ ! -f "${src}" ]; then
         : > "${tmp}"
-        [ "${name}" = noauth.domains ] \
+        [ "${kind}" = noauth ] \
             && echo "linuxmuster-squid: no ${src}, domains without proxy auth: none" >&2
+    elif [ "${kind}" = noauth ]; then
+        sed -e 's/#.*//' "${src}" | awk '{ e = tolower($1); sub(/\.+$/, "", e); if (e != "") print e }' \
+            | awk -v list="${name}" '
+                /^\.?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z0-9-]*[a-z][a-z0-9-]*$/ { print; next }
+                { print "linuxmuster-squid: " list ": ignored, not a domain name: " $0 > "/dev/stderr" }' \
+            | uncovered 2>"${DST}/.$1.covered" | sort > "${tmp}"
+    else
+        uncovered < "${src}" 2>"${DST}/.$1.covered" | sort > "${tmp}"
     fi
     if [ -s "${DST}/.$1.covered" ]; then
         echo "linuxmuster-squid: ${name}: $(wc -l < "${DST}/.$1.covered") entries ignored, already covered by a listed parent domain:" \
@@ -61,5 +70,5 @@ sync_list() {
     mv -f "${tmp}" "${DST}/${name}"
 }
 
-sync_list blocked.domains
-sync_list noauth.domains
+sync_list blocked.domains blocklist
+sync_list noauth.domains noauth
