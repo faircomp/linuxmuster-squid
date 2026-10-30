@@ -18,7 +18,8 @@ set -uo pipefail
 command -v samba-tool >/dev/null 2>&1 \
     || { echo "samba-tool not found — run this script on the Samba-DC." >&2; exit 2; }
 
-GIVEN_REALM="${REALM:-}"
+# Kerberos realms of AD are the DNS domain in upper case: compare and print them that way.
+GIVEN_REALM="$(printf '%s' "${REALM:-}" | tr '[:lower:]' '[:upper:]')"
 DC_REALM="$(testparm -s --parameter-name=realm 2>/dev/null | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')"
 if [ -n "$DC_REALM" ]; then
     REALM="$DC_REALM"

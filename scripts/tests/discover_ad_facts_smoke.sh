@@ -61,6 +61,9 @@ dcx env REALM=EXAMPLE bash /tmp/disc.sh > /tmp/disc_wrong.txt 2>/tmp/disc_wrong.
 grep -q "WARNING: REALM='EXAMPLE' differs" /tmp/disc_wrong.err && pass "wrong REALM: warning" || bad "wrong REALM: no warning"
 grep -q -- '--realm EXAMPLE ' /tmp/disc_wrong.txt && bad "wrong REALM used in the commands" || pass "wrong REALM not used"
 grep -q -- '--realm EXAMPLE.INTERNAL ' /tmp/disc_wrong.txt && pass "wrong REALM: DC realm used" || bad "wrong REALM: DC realm not used"
+dcx env REALM=example.internal bash /tmp/disc.sh > /tmp/disc_lower.txt 2>/tmp/disc_lower.err
+grep -q WARNING /tmp/disc_lower.err && bad "lower-case REALM: spurious warning" || pass "lower-case REALM: no warning"
+grep -q -- '--realm EXAMPLE.INTERNAL ' /tmp/disc_lower.txt && pass "lower-case REALM: printed upper-case" || bad "lower-case REALM: realm not upper-case"
 dcx env PROXY_FQDN=squid.example.internal bash /tmp/disc.sh > /tmp/disc_fqdn.txt 2>/dev/null
 grep -q -- '--visible-hostname squid.example.internal' /tmp/disc_fqdn.txt \
   && pass "PROXY_FQDN overrides the host name" || bad "PROXY_FQDN ignored"
