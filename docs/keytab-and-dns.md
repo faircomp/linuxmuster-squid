@@ -70,6 +70,19 @@ file; the control plane does **not** provision it itself (least privilege).
   NTLM fallback). `provision-keytab.sh` checks this beforehand (`ldbsearch`) and is idempotent;
   to check manually: `setspn -X` (Windows) or
   `ldbsearch -H .../sam.ldb '(servicePrincipalName=HTTP/<fqdn>)' sAMAccountName` (Samba).
+- **No computer account with the proxy's name** — `host/` is an alias of `HTTP/` (the
+  `sPNMappings` attribute on `CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration,…`
+  lists `http` under `host=`, in AD and in Samba). A computer account `PROXY$` holds
+  `host/proxy` and `host/proxy.<domain>` and with them, for the KDC, `HTTP/proxy.<domain>`.
+  `samba-tool spn add HTTP/proxy.<domain> svc-squid` then only logs
+  `check_spn_alias_collision: … when 'host/proxy.<domain>' is on 'CN=PROXY,…'` and adds the SPN
+  anyway (seen in a real installation, 2026-10-30). Typical cause: the proxy host in
+  `devices.csv` with a role that gets a computer account; use the role **`iponly`** (DNS
+  records, no account; [`install.md`](install.md) step 1). `provision-keytab.sh` looks for
+  `HTTP/<fqdn>`, `host/<fqdn>` and `host/<short-name>` on any other account on every run (also
+  when the SPN is already on the service account) and stops with `FATAL`, exit ≠ 0, before it
+  changes or exports anything. Without `ldbsearch` (package `ldb-tools`, a dependency of
+  linuxmuster-base7) or read access to `sam.ldb` it stops as well.
 
 ## DNS & time requirements (hard)
 

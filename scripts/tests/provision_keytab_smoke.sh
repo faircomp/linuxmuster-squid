@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Smoke against the E2E Samba DC: provision-keytab.sh is idempotent and aborts cleanly on
-# a duplicate SPN (same SPN on a different account). Needs Docker.
+# a duplicate SPN (same SPN on a different account) and on a computer account named like the
+# proxy (its host/ SPNs are aliases of HTTP/), also when HTTP/ is already on the service
+# account. Needs Docker.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -45,6 +47,57 @@ if dcx bash /tmp/pk.sh "$FQDN" ktsvc1 /tmp/kt1b.keytab; then pass "second run id
 
 echo "== C: same SPN on ktsvc2 -> duplicate SPN abort =="
 if dcx bash /tmp/pk.sh "$FQDN" ktsvc2 /tmp/kt2.keytab; then bad "duplicate SPN NOT aborted"; else pass "duplicate SPN aborts (exit != 0)"; fi
+
+echo "== D: computer account named like the proxy (host/ alias of HTTP/) -> abort =="
+# What sophomorix creates for a devices.csv entry whose role gets an account
+# (SophomorixSambaAD.pm AD_computer_create: HOST/<name>, HOST/<name>.<dnsdomain>, ...).
+dcx samba-tool computer create kproxy >/dev/null 2>&1 || true
+for spn in HOST/kproxy HOST/kproxy.example.internal RestrictedKrbHost/kproxy RestrictedKrbHost/kproxy.example.internal; do
+  dcx samba-tool spn add "$spn" 'kproxy$' >/dev/null 2>&1 || true
+done
+dcx samba-tool user create ktsvc3 "$PW" >/dev/null 2>&1 || true
+# The alias the check relies on: host= in sPNMappings lists http (LDIF lines unfolded).
+if dcx sh -c 'ldbsearch -H /var/lib/samba/private/sam.ldb -s base -b "CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration,DC=example,DC=internal" sPNMappings' 2>/dev/null \
+     | awk '/^ /{printf "%s", substr($0,2); next} {printf "\n%s", $0}' | grep -i '^sPNMappings: host=' | tr ',=' '\n\n' | grep -x http >/dev/null; then
+  pass "sPNMappings: host= includes http"
+else
+  bad "sPNMappings: http not under host="
+fi
+echo "   SPNs of kproxy\$: $(dcx samba-tool spn list 'kproxy$' 2>/dev/null | grep -i '/kproxy' | tr -d ' \t' | tr '\n' ' ')"
+if dcx bash /tmp/pk.sh kproxy.example.internal ktsvc3 /tmp/kt3.keytab; then
+  bad "host/ conflict NOT aborted"
+else
+  pass "host/ conflict aborts (exit != 0)"
+fi
+if dcx test -e /tmp/kt3.keytab; then bad "keytab exported despite the conflict"; else pass "no keytab exported"; fi
+if dcx samba-tool spn list ktsvc3 2>/dev/null | grep -qi 'HTTP/kproxy'; then bad "SPN added despite the conflict"; else pass "SPN not added"; fi
+
+echo "== E: same conflict, HTTP/ already on the account (idempotent branch) -> abort =="
+dcx samba-tool spn add HTTP/kproxy.example.internal ktsvc3 >/dev/null 2>&1 || true
+if dcx samba-tool spn list ktsvc3 2>/dev/null | grep -qi 'HTTP/kproxy.example.internal'; then
+  pass "fixture: samba-tool spn add put HTTP/ on ktsvc3 despite the alias collision"
+else
+  echo "   (samba-tool refused the colliding SPN here; the branch is still run)"
+fi
+if dcx bash /tmp/pk.sh kproxy.example.internal ktsvc3 /tmp/kt3b.keytab; then
+  bad "idempotent branch: host/ conflict NOT aborted"
+else
+  pass "idempotent branch: host/ conflict aborts"
+fi
+if dcx test -e /tmp/kt3b.keytab; then bad "idempotent branch: keytab exported"; else pass "idempotent branch: no keytab exported"; fi
+
+echo "== F: the computer account is gone (devices.csv role iponly) -> runs =="
+dcx samba-tool computer delete kproxy >/dev/null 2>&1 || true
+dcx samba-tool spn add HTTP/kproxy.example.internal ktsvc3 >/dev/null 2>&1 || true
+if dcx bash /tmp/pk.sh kproxy.example.internal ktsvc3 /tmp/kt3c.keytab && dcx test -s /tmp/kt3c.keytab; then
+  pass "without the computer account: keytab exported"
+else
+  bad "without the computer account: failed"
+fi
+
+echo "== G: not a host name -> abort before any LDAP query =="
+if dcx bash /tmp/pk.sh 'x)(servicePrincipalName=*' ktsvc1 /tmp/kt4.keytab; then bad "filter injection accepted"; else pass "invalid FQDN refused"; fi
+if dcx bash /tmp/pk.sh proxy ktsvc1 /tmp/kt4.keytab; then bad "short name accepted"; else pass "short name refused (FQDN required)"; fi
 
 echo "== provision-keytab smoke: $fail errors =="
 exit "$fail"

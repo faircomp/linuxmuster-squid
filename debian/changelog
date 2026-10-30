@@ -16,6 +16,17 @@ linuxmuster-squid (7.3.8) lmn73; urgency=medium
     image that knows it: until the instances run one, "noauth reload" answers
     409 and the list has no effect. Existing instances are not restarted for
     it.
+  * provision-keytab.sh refuses a proxy name that a computer account already
+    answers for. Samba treats host/ as an alias of HTTP/, so a computer
+    account PROXY$ (the proxy host in devices.csv with a role that gets an
+    account) holds HTTP/<proxy-fqdn> too; samba-tool only logged the
+    collision and the script exported a keytab that could not work. On every
+    run, also when the SPN is already on the service account, it now looks
+    for HTTP/<fqdn>, host/<fqdn> and host/<short-name> on other accounts and
+    stops with FATAL and a hint (devices.csv role iponly) before it changes or
+    exports anything. It also stops when it cannot check (no ldbsearch or no
+    read access to sam.ldb) and refuses an argument that is not a fully
+    qualified host name.
 
  -- Kevin Stenzel <mail@kevin-stenzel.de>  Fri, 30 Oct 2026 14:58:39 +0100
 
