@@ -25,8 +25,18 @@ groups are prefixed, e.g. `<school>-internet`). All commands as root.
 - `apt-get install -y docker.io krb5-user curl` (`krb5-user` only for the checks below).
 - **DNS:** the proxy FQDN needs an A record (and PTR). The linuxmuster DHCP does *not*
   register dynamic leases in the Samba DNS: add the proxy host as a static device in
-  `devices.csv` (import creates A/PTR), or on the DC
-  `samba-tool dns add <dc-ip> <domain> proxy A <proxy-ip> -U <domain-admin>`.
+  `devices.csv` with the **role `iponly`** (9th column) and run `linuxmuster-import-devices`,
+  or on the DC `samba-tool dns add <dc-ip> <domain> proxy A <proxy-ip> -U <domain-admin>`.
+  **Not with another role:** the default (`classroom-studentcomputer`), `server` and the other
+  roles with a computer account give the proxy a computer account `PROXY$` with
+  `host/<proxy-fqdn>`, and Samba treats `host/` as an alias of `HTTP/` (`sPNMappings`): that
+  account then holds the proxy's `HTTP/` name too, Kerberos SSO breaks, and
+  `provision-keytab.sh` (step 3) stops with a `FATAL`. sophomorix creates the A/PTR records for
+  every device with a fixed IP, a computer account only for roles with `COMPUTER_ACCOUNT =
+  TRUE` (`iponly`: `FALSE`; `sophomorix.ini`, `sophomorix-device`). Check on the DC:
+  `samba-tool computer show proxy` → `Unable to find computer "proxy$"`, and
+  `host <proxy-fqdn>` → the proxy's address. A proxy that already got an account: set the role
+  to `iponly`, import again (sophomorix removes the account), then run step 3.
 - **Time:** NTP in sync with the DC (`timedatectl`; Kerberos tolerates < 5 min).
 - **`/etc/hosts` on the proxy host:** the proxy FQDN must resolve to the host's LAN IP *on the
   host itself*. cloud-init writes `127.0.1.1 <proxy-fqdn>`; with that, requests from the host

@@ -86,7 +86,9 @@ file; the control plane does **not** provision it itself (least privilege).
 
 ## DNS & time requirements (hard)
 
-- **A record** for every proxy FQDN (`visible_hostname`).
+- **A record** for every proxy FQDN (`visible_hostname`). From `devices.csv`: role
+  **`iponly`** (A/PTR without a computer account), never a role with a computer account (see
+  "No computer account with the proxy's name" above).
 - **Forward + reverse DNS** OR `rdns = false` — the image already generates
   `/etc/krb5.conf` with `rdns=false` + `/etc/ldap/ldap.conf` `SASL_NOCANON on`, so that
   the `ldap/` SPN is formed from the literal DC name (not via PTR).
