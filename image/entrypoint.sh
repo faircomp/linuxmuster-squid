@@ -77,9 +77,19 @@ export KRB5CCNAME="FILE:${RUN}/krb5cc_${INSTANCE}"
 export KRB5RCACHEDIR="${RUN}"
 export KRB5_CONFIG="${RUN}/krb5.conf"
 export LDAPCONF="${RUN}/ldap.conf"
+# Domains reachable without proxy auth (ADR-016): a control plane that knows the list puts
+# noauth.domains into the mounted list directory before the container starts. A directory
+# from an older control plane has none: then an empty file under /run stands in (feature
+# off, no squid ERROR about a missing file).
+NOAUTH_LIST=/etc/squid/lists/noauth.domains
+if [ ! -f "${NOAUTH_LIST}" ]; then
+    NOAUTH_LIST="${RUN}/noauth.domains"
+    : > "${NOAUTH_LIST}"
+    echo "linuxmuster-squid: no /etc/squid/lists/noauth.domains, domains without proxy auth: none" >&2
+fi
 # envsubst substitutes only EXPORTED variables (otherwise "http_port " => FATAL).
 export INSTANCE HTTP_PORT CACHE_SIZE_MB KEYTAB REALM AD_GROUP VISIBLE_HOSTNAME SCHOOL_SUBNETS
-export ACCESS_LOG_DIRECTIVE INTERNET_ACL_DEF INTERNET_ACL_REF
+export ACCESS_LOG_DIRECTIVE INTERNET_ACL_DEF INTERNET_ACL_REF NOAUTH_LIST
 
 # krb5.conf: rdns/canonicalize=false so that the ldap/ SPN is built from the literal DC name
 # (via SRV) and NOT via reverse DNS (-> SASL "Local error").
@@ -113,7 +123,7 @@ TEMPLATE=/etc/squid/templates/squid.conf.template
 CONF="${RUN}/squid.conf"
 
 # Only substitute OUR variables so Squid's own %-tokens survive untouched.
-envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROUP} ${VISIBLE_HOSTNAME} ${SCHOOL_SUBNETS} ${ACCESS_LOG_DIRECTIVE} ${INTERNET_ACL_DEF} ${INTERNET_ACL_REF}' \
+envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROUP} ${VISIBLE_HOSTNAME} ${SCHOOL_SUBNETS} ${ACCESS_LOG_DIRECTIVE} ${INTERNET_ACL_DEF} ${INTERNET_ACL_REF} ${NOAUTH_LIST}' \
     < "${TEMPLATE}" > "${CONF}"
 
 # The blocklist file is normally mounted read-only; create an empty one only if absent.

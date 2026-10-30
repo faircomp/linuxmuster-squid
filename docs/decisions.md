@@ -205,6 +205,38 @@ rejects `--python-platform`, so the lock is compiled on linux/x86_64 (CI, Renova
 with `--python-version=3.12`; environment markers then evaluate as on the target.
 **Price:** dependency updates need a merged PR; the lock is regenerated, never hand-edited.
 
+### ADR-016 — Domains without proxy authentication, per instance, beside the blocklist
+**Status:** Proposed (2026-10-30, Kevin's request: Microsoft 365 through the proxy, without a
+login, no client-side bypass). **Decision:** each instance may list domains in
+`<blocklists_dir>/<name>/noauth.domains`, managed like the blocklist (`lmnsquid noauth <name>
+list|add|remove|reload`, entries `.example.org` = domain + subdomains). A request to a listed
+domain from `school_net` is allowed **without** proxy authentication; the rules, in order:
+the existing denies (Safe_ports, CONNECT only to 443, no IP literals on CONNECT) stay first;
+`deny noauth_domains blocked_domains` (the blocklist wins, 403); `allow noauth_domains
+school_net`; then the unchanged chain (`deny !authenticated`, …). The list ACL is `dstdomain
+-n`: no reverse DNS for IP-literal URLs, otherwise whoever controls a PTR record could put an
+address on the list (measured: without `-n`, `http://<ip>/` with a PTR to a listed name got
+200 without a ticket). A CONNECT that came through this way may not hand its tunnel to another
+name: at `SslBump2` it is terminated when the SNI is not on the list (`ssl::server_name
+--client-requested`) or when the ClientHello carries no SNI (`external_acl_type … %ssl::>sni`
+with a four-line helper, because `ssl::server_name` falls back to the CONNECT host without
+SNI). Still no decryption (peek, splice, terminate only; ADR-002). The empty list is the
+default and there is no built-in content; a recommended Microsoft 365 list lives in
+`docs/operations.md` with its source. The file sits in the directory already mounted at
+`/etc/squid/lists` (ADR-014), so the container spec does not change: an upgrade replaces no
+container for it.
+**Why:** Microsoft lists proxy authentication among the techniques that break Microsoft 365
+connections and asks to exempt its required endpoints; a client-side bypass (proxy exceptions
++ firewall rules) was not wanted, the traffic should still pass the proxy's domain filter.
+**Price (threat model T16):** a listed domain is reachable by everyone in the school subnets
+without identity: exam accounts reach it in exam mode, the Internetsperre does not apply to it,
+and the access log shows `-` instead of a user for it. **Rollout:** the template is in the
+data-plane image; until `DEFAULT_IMAGE` points at an image with this template, the list is
+ignored and `lmnsquid noauth <name> reload` answers 409 instead of reporting a reload that
+changes nothing (it checks the rendered `squid.conf` in the container). An image with the
+template next to a directory without `noauth.domains` (an older control plane) uses an empty
+list.
+
 ---
 
 ## Site facts to be verified (P0, enter with source/date)

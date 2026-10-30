@@ -13,7 +13,7 @@ from docker.errors import DockerException
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
-from .blocklist import Blocklist
+from .blocklist import NOAUTH_FILE_NAME, Blocklist
 from .config import Settings
 from .docker_service import DockerService
 from .models import DEFAULT_IMAGE, BlocklistEntry, Instance, InstancePatch, UpdateRequest
@@ -38,6 +38,7 @@ def create_app(
     """Build the FastAPI app wiring routes to the store, reconciler and docker service."""
     verify = make_verify_token(settings)
     blocklist = Blocklist(settings.blocklists_dir)
+    noauth = Blocklist(settings.blocklists_dir, NOAUTH_FILE_NAME)
     app = FastAPI(title="linuxmuster-squid control plane")
 
     @app.exception_handler(DockerException)
@@ -210,6 +211,65 @@ def create_app(
         _require(name)
         audit.info("blocklist reload name=%s", name)
         try:
+            return docker.reload(name)
+        except LookupError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            ) from exc
+
+    # ------------------------------------------- domains without proxy auth (ADR-016)
+    @app.get("/v1/instances/{name}/noauth", dependencies=auth)
+    async def get_noauth(name: str) -> dict[str, Any]:
+        _require(name)
+        return {"name": name, "domains": noauth.read(name)}
+
+    @app.post("/v1/instances/{name}/noauth", dependencies=auth)
+    async def add_noauth_domain(name: str, entry: BlocklistEntry) -> dict[str, Any]:
+        """Let ``entry.domain`` and its subdomains through without proxy auth (after ``reload``)."""
+        _require(name)
+        domains = noauth.add(name, entry.domain)
+        audit.info("noauth add name=%s domain=%s", name, entry.domain)
+        return {"name": name, "domains": domains}
+
+    @app.delete("/v1/instances/{name}/noauth/{domain}", dependencies=auth)
+    async def remove_noauth_domain(name: str, domain: str) -> dict[str, Any]:
+        _require(name)
+        try:
+            domains = noauth.remove(name, domain)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            ) from exc
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{domain!r} is not on the noauth list of {name!r}",
+            ) from exc
+        audit.info("noauth remove name=%s domain=%s", name, domain)
+        return {"name": name, "domains": domains}
+
+    @app.post("/v1/instances/{name}/noauth/reload", dependencies=auth)
+    def reload_noauth(name: str) -> dict[str, Any]:
+        """Re-read the lists (``squid -k reconfigure``), refused if squid ignores the noauth list.
+
+        An image from before ADR-016, or a container started without ``noauth.domains`` in
+        its list directory, never reads the list: answer 409 instead of a silent "reloaded".
+        """
+        _require(name)
+        audit.info("noauth reload name=%s", name)
+        try:
+            if not docker.noauth_active(name):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"the running container of {name!r} does not read the noauth list "
+                        "(its image predates the list, or it started without noauth.domains): "
+                        f"update it to an image that supports the list, or `lmnsquid restart "
+                        f"{name}` when it already runs one"
+                    ),
+                )
             return docker.reload(name)
         except LookupError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

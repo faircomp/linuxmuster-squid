@@ -203,7 +203,7 @@ class UpdateRequest(BaseModel):
 
 
 class BlocklistEntry(BaseModel):
-    """Body for ``POST /v1/instances/{name}/blocklist``: one domain to block."""
+    """Body for ``POST /v1/instances/{name}/blocklist`` and ``…/noauth``: one domain."""
 
     domain: str
 

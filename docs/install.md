@@ -156,12 +156,38 @@ HTTP to a blocked domain → **403**. HTTPS to a blocked domain is **cut at the 
 connection/TLS error, not a block page. Details, the file path and UT-Capitole category
 lists: [`operations.md`](operations.md#blocklist-per-instance).
 
-## 8. Clients
+## 8. Domains without proxy authentication (optional)
+
+Some services break behind proxy authentication; Microsoft names it among the techniques that
+cause Microsoft 365 connection problems. Instead of a bypass on the clients, an instance can let
+listed domains through **without a ticket**, still through the proxy (domain filter, no
+decryption):
+
+```bash
+lmnsquid noauth all-students add sharepoint.com      # -> [".sharepoint.com"]: domain + subdomains
+lmnsquid noauth all-students list
+lmnsquid noauth all-students reload                  # squid re-reads the lists (no restart)
+```
+
+> **Warning:** a listed domain is open to **everyone in `--school-subnets`** without identity:
+> exam accounts reach it during an **exam** (OneDrive, Teams, Outlook …), the **Internetsperre**
+> does not apply to it, and the access log shows `-` instead of a user. Keep `--school-subnets`
+> tight (the default `0.0.0.0/0` means everyone who reaches the port) and the list short.
+
+The blocklist still wins (403 / TLS cut). HTTPS passes only when the TLS SNI is on the list
+as well; a different SNI or none cuts the handshake. Check from a client in `<subnet>` without
+a ticket: `kdestroy; req $P:3129 https://<listed-domain>/` gives 200,
+`req $P:3129 http://example.com/` still 407. The recommended Microsoft 365 list with its source
+and the details: [`operations.md`](operations.md#domains-without-proxy-authentication-per-instance).
+`reload` answers 409 while the instance still runs an image that does not know the list (the
+data-plane image must be updated first).
+
+## 9. Clients
 
 Assign the proxy per role by GPO (silent Kerberos SSO) and force the proxy at the firewall:
 [`deployment-gpo.md`](deployment-gpo.md). Clients must use the **FQDN**, never the IP.
 
-## 9. Updates
+## 10. Updates
 
 ```bash
 apt-get install -y ./linuxmuster-squid_<new>_amd64.deb # restarts the service, then update-all (*)
@@ -182,10 +208,10 @@ Verify with `docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' lmnsq
 `journalctl -t linuxmuster-squid` and print a `WARNING:` in the apt output naming any instance
 that could not be brought up; the apt transaction itself never fails over them.
 
-## 10. Removing
+## 11. Removing
 
 ```bash
-lmnsquid rm all-students               # container, cache + log volumes, blocklist, definition
+lmnsquid rm all-students               # container, cache + log volumes, both lists, definition
 lmnsquid rm all-students --keep-logs   # same, but keeps the access-log volume lmnsquid-logs-all-students
 ```
 

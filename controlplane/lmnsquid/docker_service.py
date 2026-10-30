@@ -16,7 +16,7 @@ from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig
 
-from .blocklist import CONTAINER_DIR, Blocklist
+from .blocklist import CONTAINER_DIR, NOAUTH_FILE_NAME, Blocklist
 from .models import Instance
 
 logger = logging.getLogger("lmnsquid.docker")
@@ -55,6 +55,7 @@ class DockerService:
         self.log_max_size: str = log_max_size
         self.log_max_file: int = log_max_file
         self.blocklist = Blocklist(blocklists_dir)
+        self.noauth = Blocklist(blocklists_dir, NOAUTH_FILE_NAME)
         self.health_timeout = health_timeout
         self.poll_interval = poll_interval
         self.client: docker.DockerClient = (
@@ -183,9 +184,12 @@ class DockerService:
 
         spec = self.spec_for(inst)
         digest = self.fingerprint(spec)
-        # Blocklist: created empty if absent (create, reconcile, update all pass through
+        # Lists: created empty if absent (create, reconcile, update all pass through
         # here, so instances from before 7.3.1 get the mount on their next replacement).
+        # noauth.domains must exist before a container starts: the entrypoint only reads
+        # it from the mount when it is there at start (ADR-016).
         self.blocklist.ensure(inst.name)
+        self.noauth.ensure(inst.name)
 
         cname = inst.container_name
         existing = self._get(inst.name)
@@ -323,8 +327,49 @@ class DockerService:
                 logger.warning("volume %s not removed: %s", volume, exc)
         self.blocklist.delete(name)
 
+    def _running(self, name: str) -> Container:
+        """The running container of ``name``; ``LookupError`` when there is none."""
+        container = self._get(name)
+        if container is None:
+            raise LookupError(f"instance {name!r} has no container")
+        container.reload()
+        state: dict[str, Any] = container.attrs.get("State", {}) or {}
+        if not state.get("Running", False):
+            raise LookupError(f"instance {name!r} is not running")
+        return container
+
+    def _exec(self, container: Container, cmd: list[str]) -> tuple[int, str]:
+        try:
+            exit_code, output = container.exec_run(cmd)
+        except APIError as exc:
+            # The daemon is alive; exec itself was refused (socket proxy with EXEC: 0).
+            raise RuntimeError(
+                f"docker exec refused ({exc.explanation or exc}); list reload needs "
+                "EXEC at the docker socket proxy (ADR-012/ADR-014)"
+            ) from exc
+        text = (
+            output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
+        )
+        return exit_code, text
+
+    def noauth_active(self, name: str) -> bool:
+        """Whether the running squid reads ``noauth.domains`` from the list directory.
+
+        Not so for an image from before ADR-016 (its template has no such ACL) or for a
+        container started while the directory held no ``noauth.domains`` (the entrypoint
+        then stands in an empty file); a reload cannot change either, only a new container
+        of a supporting image can. Same preconditions and errors as :meth:`reload`.
+        """
+        container = self._running(name)
+        exit_code, text = self._exec(
+            container, ["grep", "-qF", f"{CONTAINER_DIR}/{NOAUTH_FILE_NAME}", _SQUID_CONF]
+        )
+        if exit_code not in (0, 1):
+            raise RuntimeError(f"cannot read {_SQUID_CONF} (exit {exit_code}): {text.strip()}")
+        return exit_code == 0
+
     def reload(self, name: str) -> dict[str, Any]:
-        """Make the running squid re-read squid.conf and its ACL list files (the blocklist).
+        """Make the running squid re-read squid.conf and its ACL list files (both lists).
 
         Runs ``squid -k reconfigure`` inside the container: squid parses the config and
         signals its running copy (SIGHUP). No restart -- the cache and open client
@@ -336,26 +381,8 @@ class DockerService:
         Raises ``LookupError`` when there is no running container, ``RuntimeError``
         when the exec is refused or squid does.
         """
-        container = self._get(name)
-        if container is None:
-            raise LookupError(f"instance {name!r} has no container")
-        container.reload()
-        state: dict[str, Any] = container.attrs.get("State", {}) or {}
-        if not state.get("Running", False):
-            raise LookupError(f"instance {name!r} is not running")
-        try:
-            exit_code, output = container.exec_run(
-                ["squid", "-k", "reconfigure", "-f", _SQUID_CONF]
-            )
-        except APIError as exc:
-            # The daemon is alive; exec itself was refused (socket proxy with EXEC: 0).
-            raise RuntimeError(
-                f"docker exec refused ({exc.explanation or exc}); blocklist reload needs "
-                "EXEC at the docker socket proxy (ADR-012/ADR-014)"
-            ) from exc
-        text = (
-            output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
-        )
+        container = self._running(name)
+        exit_code, text = self._exec(container, ["squid", "-k", "reconfigure", "-f", _SQUID_CONF])
         if exit_code != 0:
             raise RuntimeError(f"squid -k reconfigure exited {exit_code}: {text.strip()}")
         return {"name": name, "reloaded": True}

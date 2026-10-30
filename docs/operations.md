@@ -38,7 +38,7 @@ lmnsquid list
 lmnsquid status default-school-teachers
 lmnsquid stop|start|restart default-school-teachers
 lmnsquid logs default-school-teachers --tail 100
-lmnsquid rm default-school-teachers               # + cache/log volumes, blocklist, .prev; --keep-logs keeps the log volume
+lmnsquid rm default-school-teachers               # + cache/log volumes, both lists, .prev; --keep-logs keeps the log volume
 ```
 The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
 (`/etc/linuxmuster-squid/secrets`) — see `keytab-and-dns.md`.
@@ -53,7 +53,8 @@ The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
   msg-internet`) so it covers **visitors** too and works with global `role-teacher`/`role-student`
   proxies — a user passes if in **any** listed group. Omit to enforce the role group only.
 - **`lmnsquid rm <name>`** removes the container, the cache volume, the **log volume**
-  (`lmnsquid-logs-<name>` = access-log history, personal data), the blocklist directory and
+  (`lmnsquid-logs-<name>` = access-log history, personal data), the list directory (blocklist
+  and noauth list) and
   the definition (+ its `.prev` rollback note). `--keep-logs` (API: `?keep_logs=true`) keeps
   the log volume, e.g. for a retention obligation; delete it later with
   `docker volume rm lmnsquid-logs-<name>`. The keytab in `secrets/` stays (operator-managed).
@@ -92,6 +93,90 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
   `lmnsquid` so the API can keep writing (it replaces the file atomically).
 - **Upgraded from 7.3.0?** Containers created before 7.3.1 run without the mount until
   recreated once; the postinst runs `lmnsquid reconcile` for that (see Updates).
+
+## Domains without proxy authentication (per instance)
+
+Each instance can let a list of domains through **without proxy authentication** (ADR-016),
+`/etc/linuxmuster-squid/blocklists/<name>/noauth.domains` (created empty with the instance),
+seen by the container at `/etc/squid/lists/noauth.domains` — the same mounted directory as the
+blocklist. Empty = every request needs a ticket, as before.
+
+```
+lmnsquid noauth all-students add sharepoint.com      # -> [".sharepoint.com"]: the domain and all subdomains
+lmnsquid noauth all-students list
+lmnsquid noauth all-students remove sharepoint.com
+lmnsquid noauth all-students reload                  # squid re-reads both lists: no restart
+```
+
+> **⚠️ Warning — read before adding anything:**
+> - **Exam mode:** exam accounts (and every other device in the school subnets) reach a listed
+>   domain without a ticket during an exam, e.g. OneDrive, Teams and Outlook with the
+>   Microsoft 365 list below, although the proxy refuses them everything else.
+> - **Internetsperre:** does not apply to listed domains (without identity there is no group
+>   check); a user removed from the `internet` group still reaches them.
+> - **No user in the log:** these requests appear as `-` in the access log.
+> - **Only from `--school-subnets`:** from anywhere else a ticket is still required. With the
+>   default `0.0.0.0/0` that is everyone who can reach the proxy port, so set the real client
+>   subnets (`lmnsquid edit <name> --school-subnets …`) before using the list.
+
+- **Rules:** the blocklist wins (a domain on both lists gets **403**; HTTPS is cut). The
+  existing rules stay in front (Safe_ports, CONNECT only to 443, no IP literals on CONNECT); an
+  IP-literal URL never matches the list (`dstdomain -n`, no reverse DNS). HTTPS through the
+  list passes only when the TLS **SNI** is on the list too; a different SNI or a ClientHello
+  without SNI is **terminated** (no domain fronting into other names; no decryption, ADR-002).
+  With a ticket nothing changes (200 / 403 / 407 as before).
+- `add`/`remove` write the file (same format and rules as the blocklist, one `.domain` per
+  line, `#` comments allowed when hand-edited) and take effect on the next **`reload`**. API:
+  `GET/POST /v1/instances/{name}/noauth`, `DELETE …/noauth/{domain}`, `POST …/noauth/reload`.
+- **`reload` answers 409** when the running container does not read the list: its image
+  predates the list (update the instance to a data-plane image that has it, `lmnsquid update
+  <name>`), or it was started while its list directory had no `noauth.domains` (only possible
+  with an older control plane; `lmnsquid restart <name>`). Without that check a reload would
+  report success and change nothing. `blocklist reload` is not affected.
+- **What `lmnsquid rm` removes:** the directory with both lists.
+
+### Recommended list: Microsoft 365
+
+Microsoft asks to exempt the **required** Microsoft 365 endpoints from proxy authentication and
+inspection and does not support allowing only some of them ("Routing connections through
+network infrastructure applying its own authentication such as proxy authentication" is listed
+among the configurations "known to cause connectivity issues"; Microsoft 365 network
+connectivity principles, learn.microsoft.com, updated 2026-08-31). Source of the entries:
+the Microsoft 365 endpoints web service, `https://endpoints.office.com/endpoints/worldwide`
+(service areas Common, Exchange, SharePoint, Skype/Teams; version `2026103000`, fetched
+2026-10-30): every **required** item of category **Optimize** or **Allow** with TCP ports
+80/443 (ids 1, 9, 12, 31, 46, 56, 64). `*.x` and `x` are both one entry `x` here (the list
+always covers the domain and its subdomains, which is slightly wider than `*.x`); names under
+an entry already listed are left out (`ccs.` and `device.login.microsoftonline.com`,
+`api.passwordreset.microsoftonline.com`), squid only warns about them.
+
+```
+for d in outlook.cloud.microsoft outlook.office.com outlook.office365.com protection.outlook.com \
+         lync.com teams.cloud.microsoft teams.microsoft.com sharepoint.com \
+         officeapps.live.com online.office.com office.live.com \
+         auth.microsoft.com msftidentity.com account.activedirectory.windowsazure.com \
+         accounts.accesscontrol.windows.net adminwebservice.microsoftonline.com \
+         autologon.microsoftazuread-sso.com clientconfig.microsoftonline-p.net \
+         companymanager.microsoftonline.com graph.microsoft.com \
+         graph.windows.net login-us.microsoftonline.com login.microsoft.com \
+         login.microsoftonline-p.com login.microsoftonline.com login.windows.net \
+         logincert.microsoftonline.com loginex.microsoftonline.com nexus.microsoftonline-p.com \
+         passwordreset.microsoftonline.com protection.office.com security.microsoft.com \
+         compliance.microsoft.com defender.microsoft.com purview.microsoft.com; do
+  lmnsquid noauth all-students add "$d" >/dev/null
+done
+lmnsquid noauth all-students list && lmnsquid noauth all-students reload
+```
+
+- **Not on the list, on purpose:** items for mail protocols and SMTP (ids 2 and 10: TCP 25,
+  143, 587, 993, 995 — not HTTP proxy traffic) and Teams media (id 11: UDP 3478–3481, no URLs;
+  a forward proxy cannot carry UDP — allow it at the firewall if Teams calls are needed).
+  Endpoints of category **Default** keep going through the proxy with authentication.
+- **The list changes** (Microsoft recommends updating it automatically). Compare from time to
+  time with `curl -s 'https://endpoints.office.com/version/worldwide?clientrequestid=<uuid>'`
+  and the endpoints call above; for a client that still fails, look for `TCP_DENIED/407` lines
+  of Microsoft names in `lmnsquid logs <name>` before adding anything: every entry widens what
+  is reachable without identity.
 
 ## Updates (digest-pinned, health auto-rollback)
 
@@ -235,7 +320,7 @@ Access logs show **who visited/was blocked from which site** = personal data
 ## Backup
 
 - `/etc/linuxmuster-squid/config.yml` (API token!), `/etc/linuxmuster-squid/secrets/` (keytabs),
-  `/etc/linuxmuster-squid/blocklists/` (per-instance blocklists),
+  `/etc/linuxmuster-squid/blocklists/` (per-instance blocklists and noauth lists),
 - `instances_dir` (`/var/lib/linuxmuster-squid/instances/*.yaml` — git-versioned = change log;
   the postinst creates and configures the repo as its owner `lmnsquid`, with git's background
   maintenance off; every create/edit/update/rm is one commit:

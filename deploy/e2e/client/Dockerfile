@@ -6,7 +6,7 @@
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
- && apt-get install -y --no-install-recommends krb5-user curl ca-certificates \
+ && apt-get install -y --no-install-recommends krb5-user curl ca-certificates openssl \
  && rm -rf /var/lib/apt/lists/*
 COPY krb5.conf /etc/krb5.conf
 COPY assert.sh /assert.sh

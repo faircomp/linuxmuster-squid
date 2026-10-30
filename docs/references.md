@@ -106,3 +106,28 @@ research workflows on **2026-07-02** (confidence in parentheses).
   — https://github.com/containrrr/watchtower · https://docs.renovatebot.com/docker/
 - `.deb` reproducible via dh-virtualenv (no pip-in-postinst). (high)
   — https://dh-virtualenv.readthedocs.io/en/latest/
+
+## Domains without proxy authentication (ADR-016, checked 2026-10-30)
+
+- `dstdomain`: "a reverse lookup is tried if a IP based URL is used and no match is found";
+  `-n` disables lookups (mismatch instead). `ssl::server_name`: no DNS lookups; without SNI the
+  CONNECT target is used instead; `--client-requested` = the SNI. `at_step SslBump2` = after the
+  ClientHello. Quoted `"file"` = one entry per line. (high)
+  — https://www.squid-cache.org/Doc/config/acl/
+- `external_acl_type`: FORMAT takes logformat codes, unavailable values expand to `-`, `%DATA`
+  (the ACL arguments) is `-` without any; replies `OK`/`ERR`/`BH`. `%ssl::>sni` = "SSL client
+  SNI sent to Squid". (high) — https://www.squid-cache.org/Doc/config/external_acl_type/ ·
+  https://www.squid-cache.org/Doc/config/logformat/
+- `ssl_bump` takes fast and slow ACLs; first match wins; actions peek/splice/terminate. (high)
+  — https://www.squid-cache.org/Doc/config/ssl_bump/
+- Measured with squid-openssl 6.14 (the image): the helper line is `<sni> <data>`, i.e. `- -`
+  without SNI; a missing ACL file is an `ERROR` plus an empty ACL, not fatal; without `-n` an
+  IP-literal URL whose address maps back to a listed name (squid's reverse cache) matched
+  `dstdomain`; a denied CONNECT on an ssl-bump port gets `200` and squid's 403 page inside TLS
+  with the throwaway certificate. (measured, E2E)
+- Microsoft 365: proxy authentication is among the configurations "known to cause
+  connectivity issues"; exempt the full set of required endpoints, selective allow-listing is
+  not supported. (high) —
+  https://learn.microsoft.com/en-us/microsoft-365/enterprise/microsoft-365-network-connectivity-principles
+  (updated 2026-08-31) · endpoints web service https://endpoints.office.com/endpoints/worldwide
+  (version 2026103000).

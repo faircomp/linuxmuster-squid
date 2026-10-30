@@ -122,7 +122,7 @@ def rm(
         "default removes it together with the cache volume",
     ),
 ) -> None:
-    """Remove an instance: container, cache + log volumes, blocklist and definition."""
+    """Remove an instance: container, cache + log volumes, both lists and definition."""
     with _get_client() as c:
         _emit(
             c.delete(f"/v1/instances/{name}", params={"keep_logs": "true"} if keep_logs else None)
@@ -169,6 +169,51 @@ def blocklist_reload(ctx: typer.Context) -> None:
     """Apply the list to the running proxy without a restart (squid reconfigure)."""
     with _get_client() as c:
         _emit(c.post(f"/v1/instances/{ctx.obj}/blocklist/reload"))
+
+
+noauth_app = typer.Typer(
+    help="Per-instance domains reachable WITHOUT proxy authentication, from --school-subnets "
+    "only (e.g. Microsoft 365). The blocklist still wins; HTTPS only when the TLS SNI is on "
+    "the list too. WARNING: anyone in the school subnets reaches these domains without a "
+    "ticket, so exam accounts reach them in exam mode (OneDrive, Teams, Outlook ...) and the "
+    "Internetsperre does not apply to them. Changes take effect after `reload`.",
+    no_args_is_help=True,
+)
+app.add_typer(noauth_app, name="noauth")
+
+
+@noauth_app.callback()
+def _noauth(ctx: typer.Context, name: str = typer.Argument(..., help="instance name")) -> None:
+    """Manage the noauth list of one instance: list | add <domain> | remove <domain> | reload."""
+    ctx.obj = name
+
+
+@noauth_app.command("list")
+def noauth_list(ctx: typer.Context) -> None:
+    """Show the domains reachable without proxy authentication."""
+    with _get_client() as c:
+        _emit(c.get(f"/v1/instances/{ctx.obj}/noauth"))
+
+
+@noauth_app.command("add")
+def noauth_add(ctx: typer.Context, domain: str) -> None:
+    """Let a domain and all its subdomains through without authentication (then `reload`)."""
+    with _get_client() as c:
+        _emit(c.post(f"/v1/instances/{ctx.obj}/noauth", json={"domain": domain}))
+
+
+@noauth_app.command("remove")
+def noauth_remove(ctx: typer.Context, domain: str) -> None:
+    """Require authentication for a domain again (then `reload`)."""
+    with _get_client() as c:
+        _emit(c.delete(f"/v1/instances/{ctx.obj}/noauth/{quote(domain, safe='')}"))
+
+
+@noauth_app.command("reload")
+def noauth_reload(ctx: typer.Context) -> None:
+    """Apply the list without a restart; fails if the instance's image ignores the list."""
+    with _get_client() as c:
+        _emit(c.post(f"/v1/instances/{ctx.obj}/noauth/reload"))
 
 
 @app.command()

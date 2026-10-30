@@ -89,7 +89,8 @@ the `/test` skill). **Core proof** (P1), assertions on `%{http_code}`:
 | No ticket | `kdestroy`; request | **407** |
 
 The 403-vs-407 split is the actual proof (authenticated-but-unauthorized
-vs. not-authenticated). The compose stack bind-mounts `deploy/e2e/blocked.domains`; the
+vs. not-authenticated). The compose stack bind-mounts `deploy/e2e/blocked.domains` (and the
+directories `deploy/e2e/lists-noauth/`, `deploy/e2e/lists-legacy/` for the noauth cases); the
 **product path** (`lmnsquid blocklist <name> add … && … reload` on a managed instance →
 403) is proven against a real domain in the lab (7.3.1 campaign fix) and is part of the
 acceptance list in `deployment-gpo.md`.
@@ -118,6 +119,24 @@ acceptance list in `deployment-gpo.md`.
   back to `lmnsquid`, history kept; a service the admin disabled (`systemctl disable
   --now`) before the upgrade from the release stays disabled and stopped across two upgrades
   in a row, with the "instances not updated" line in the apt output (CI upgrade-smoke).
+- **Domains without proxy auth (ADR-016)** (E2E, instance `squid-noauth` with the list
+  directory mounted like the control plane, `school_net` = the test client only): listed
+  domain and subdomain without ticket → 200, HTTPS → tunnel + TLS; unlisted → 407 (HTTP and
+  CONNECT); listed **and** blocked → 403 (HTTP; HTTPS: squid's 403 inside TLS); CONNECT to a
+  listed name with a foreign SNI, a blocked SNI or **no** SNI → TLS cut (openssl s_client);
+  IP-literal URL whose address maps back to a listed name → 407 (`dstdomain -n`); request from
+  outside `school_net` → 407 (HTTP and CONNECT, squidclient from another container); with a
+  ticket the 200/403/407 matrix is unchanged on that instance. Empty list (`squid`) and a list
+  directory without `noauth.domains` (`squid2`, as an older control plane mounts it) → 407 as
+  before, the latter logs a notice. The pinned image of installed systems (`squid-pinned`,
+  `DEFAULT_IMAGE` from `models.py`) next to a directory with `noauth.domains`: unchanged
+  (407 without ticket, 200/403 with). Counter-runs: without `-n` the IP-literal case and
+  without the SNI rule the foreign-SNI case fail. `cp-docker-it` (real DockerService): both
+  list files exist before the container starts, the new image reads the noauth list and
+  reloads, the pinned image is healthy with it and `noauth_active` is false. Unit: name
+  normalization (IDNA, leading dot, invalid names), unsafe instance names, API 401/403 without
+  or with a wrong token, 404/422, reload 409 when the container ignores the list or is stopped,
+  CLI and `--help` warnings.
 - **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;
   bypass/traversal; DC outage does not stall (ttl/grace).
 

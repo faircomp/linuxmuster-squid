@@ -39,6 +39,8 @@ the same AD/Kerberos infrastructure the school already operates.
   `ext_kerberos_ldap_group_acl` against the instance's AD group. HTTPS is
   **not decrypted** (SNI peek/splice or CONNECT `dstdomain`). Per-instance domain
   blocklist: HTTP → 403, HTTPS → the TLS handshake is cut (no block page without decryption).
+  Optional per-instance list of domains reachable without proxy login from the school subnets
+  (e.g. Microsoft 365; the blocklist still wins).
 - **Control Plane:** hardened systemd service with **REST API** (FastAPI) and
   **CLI** (Typer, thin client) — creates instances, configures policies, and
   **updates digest-pinned with health-check auto-rollback**. Shipped as a
@@ -92,7 +94,9 @@ lmnsquid rollback all-teachers             # to the last known-good
 lmnsquid reconcile                         # re-apply stored state (restore / after a crash)
 lmnsquid blocklist all-students add example.org    # block a domain + subdomains (HTTP 403, HTTPS TLS abort)
 lmnsquid blocklist all-students reload             # apply without restart; list / remove likewise
-lmnsquid rm all-students                   # container + cache/log volumes + blocklist (--keep-logs keeps the logs)
+lmnsquid noauth all-students add sharepoint.com    # reachable WITHOUT proxy login from the school subnets
+lmnsquid noauth all-students reload                # (exam mode and Internetsperre do not apply: docs/operations.md)
+lmnsquid rm all-students                   # container + cache/log volumes + both lists (--keep-logs keeps the logs)
 lmnsquid version
 ```
 

@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Kerberos E2E stack for linuxmuster-squid (heavy tier / crabbox).
-# Proves: teacher->200, student->403, blocked domain->403, no ticket->407.
+# Proves: teacher->200, student->403, blocked domain->403, no ticket->407, and the
+# domains without proxy auth (ADR-016) incl. their negative cases.
 # Orchestrated by scripts/tests/e2e_kerberos.sh (brings services up in order,
 # creates fixtures and runs the assertions). Realm/domain: EXAMPLE.INTERNAL.
 name: lmnsquid-e2e
@@ -83,7 +84,8 @@ services:
         ipv4_address: 172.28.0.11
     volumes:
       - shared:/shared:ro
-      - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
+      # The list directory of a control plane without ADR-016 (no noauth.domains).
+      - ./lists-legacy:/etc/squid/lists:ro
     read_only: true
     tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
     cap_drop: ["ALL"]
@@ -113,6 +115,66 @@ services:
     volumes:
       - shared:/shared:ro
       - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
+    read_only: true
+    tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+
+  # Domains without proxy auth (ADR-016): the list directory mounted like the control plane
+  # does it; school_net is the test client alone, so a request from any other container is
+  # "outside the school subnets".
+  squid-noauth:
+    image: linuxmuster-squid:dev
+    hostname: squid4.example.internal
+    depends_on: [samba-dc, squid]
+    environment:
+      INSTANCE: "e2e-noauth"
+      VISIBLE_HOSTNAME: "squid4.example.internal"
+      REALM: "EXAMPLE.INTERNAL"
+      AD_GROUP: "teachers"
+      SCHOOL_SUBNETS: "172.28.0.30/32"
+      KEYTAB: "/shared/squid.keytab"
+      CACHE_SIZE_MB: "200"
+    dns: ["172.28.0.2"]
+    # squid loads /etc/hosts into its reverse cache too: the IP-literal test needs the
+    # address to map back to a listed name (proves dstdomain -n).
+    extra_hosts: ["secure.example.internal:172.28.0.21"]
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.13
+    volumes:
+      - shared:/shared:ro
+      - ./lists-noauth:/etc/squid/lists:ro
+    read_only: true
+    tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+
+  # The image installed systems run (DEFAULT_IMAGE of the control plane, set by
+  # e2e_kerberos.sh) with a list directory that holds noauth.domains: an image that does not
+  # know the list must ignore it and keep asking for a ticket.
+  squid-pinned:
+    # (default only for the other smokes that start the DC from this file)
+    image: ${LMNSQUID_PINNED_IMAGE:-linuxmuster-squid:dev}
+    hostname: squid5.example.internal
+    depends_on: [samba-dc, squid]
+    environment:
+      INSTANCE: "e2e-pinned"
+      VISIBLE_HOSTNAME: "squid5.example.internal"
+      REALM: "EXAMPLE.INTERNAL"
+      AD_GROUP: "teachers"
+      SCHOOL_SUBNETS: "0.0.0.0/0"
+      KEYTAB: "/shared/squid.keytab"
+      CACHE_SIZE_MB: "200"
+    dns: ["172.28.0.2"]
+    networks:
+      e2e:
+        ipv4_address: 172.28.0.14
+    volumes:
+      - shared:/shared:ro
+      - ./lists-noauth:/etc/squid/lists:ro
     read_only: true
     tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
     cap_drop: ["ALL"]

@@ -23,6 +23,14 @@ dcx(){ $DC exec -T samba-dc "$@"; }        # exec in the DC, no TTY
 cleanup(){ $DC down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
+# The image installed systems run: DEFAULT_IMAGE of the control plane (squid-pinned service).
+LMNSQUID_PINNED_IMAGE="$(sed -n 's/^ *"\(ghcr\.io\/[^"]*\)"$/\1/p; s/^ *"\(@sha256:[0-9a-f]*\)"$/\1/p' \
+  "$ROOT/controlplane/lmnsquid/models.py" | tr -d '\n')"
+case "$LMNSQUID_PINNED_IMAGE" in
+  ghcr.io/*@sha256:*) export LMNSQUID_PINNED_IMAGE ;;
+  *) echo "cannot read DEFAULT_IMAGE from models.py (got '$LMNSQUID_PINNED_IMAGE')"; exit 1 ;;
+esac
+
 log "reset"
 $DC down -v --remove-orphans >/dev/null 2>&1 || true
 
@@ -75,8 +83,17 @@ dcx samba-tool group addmembers schule2-internet inetor          >/dev/null 2>&1
 dcx samba-tool spn   add "HTTP/squid3.$DLC" squidsvc             >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid3 A 172.28.0.12    -U "Administrator%$PW" >/dev/null 2>&1 || true
 
-log "start origin + origin-https + squid + squid2 + squid-inet"
-$DC up -d origin origin-https squid squid2 squid-inet || exit 1
+# Domains without proxy auth (ADR-016): squid4 = squid-noauth, squid5 = the pinned image;
+# more names on the HTTPS origin (a listed subdomain, an unlisted name).
+dcx samba-tool spn   add "HTTP/squid4.$DLC" squidsvc             >/dev/null 2>&1 || true
+dcx samba-tool spn   add "HTTP/squid5.$DLC" squidsvc             >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid4 A 172.28.0.13    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid5 A 172.28.0.14    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" www.secure A 172.28.0.21 -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" secure2 A 172.28.0.21   -U "Administrator%$PW" >/dev/null 2>&1 || true
+
+log "start origin + origin-https + squid + squid2 + squid-inet + squid-noauth + squid-pinned"
+$DC up -d origin origin-https squid squid2 squid-inet squid-noauth squid-pinned || exit 1
 
 wait_healthy() {
   local svc="$1" ready=0 st=none cid
@@ -92,6 +109,8 @@ log "wait for squid + squid2 + squid-inet healthy"
 wait_healthy squid     || exit 1
 wait_healthy squid2    || exit 1
 wait_healthy squid-inet || exit 1
+wait_healthy squid-noauth || exit 1
+wait_healthy squid-pinned || exit 1
 
 log "run assertions (test-client)"
 $DC run --rm test-client
@@ -110,6 +129,29 @@ if [ "$tcode" = 403 ]; then
 else
   echo "  [FAIL] internetsperre: expected 403, got '$tcode'"; rc=$((rc + 1))
 fi
+
+# Outside school_net (squid-noauth admits 172.28.0.30/32 only): from the squid container
+# (172.28.0.10) a listed domain without a ticket must still get 407, plain HTTP and CONNECT.
+log "noauth: request from outside school_net, no ticket -> 407"
+for req in "http://secure.example.internal/" "-m CONNECT secure.example.internal:443"; do
+  # shellcheck disable=SC2086  # $req carries squidclient's options on purpose
+  line=$($DC exec -T squid squidclient -T 10 -h 172.28.0.13 -p 3128 $req 2>/dev/null | head -1 | tr -d '\r')
+  case "$line" in
+    *" 407 "*) echo "  [PASS] outside school_net: $req -> $line" ;;
+    *) echo "  [FAIL] outside school_net: $req: expected 407, got '$line'"; rc=$((rc + 1)) ;;
+  esac
+done
+# squid2 got a list directory without noauth.domains (older control plane): the entrypoint
+# says so and stands in an empty list.
+# (grep without -q: an early exit would SIGPIPE `compose logs`, a failure under pipefail)
+if $DC logs squid2 2>/dev/null | grep 'no /etc/squid/lists/noauth.domains' >/dev/null; then
+  echo "  [PASS] list directory without noauth.domains: empty list, notice logged"
+else
+  echo "  [FAIL] squid2: notice about the missing noauth.domains not logged"; rc=$((rc + 1))
+fi
+
+log "squid-noauth access.log (excerpt)"
+$DC exec -T squid-noauth sh -c 'tail -25 /var/log/squid/access.log' 2>/dev/null || true
 
 log "squid access.log (excerpt)"
 $DC exec -T squid sh -c 'tail -20 /var/log/squid/access.log' 2>/dev/null \
