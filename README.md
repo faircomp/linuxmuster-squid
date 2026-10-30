@@ -78,8 +78,9 @@ sudo lmnsquid create --school all --role students --ad-group role-student \
   --realm EXAMPLE.ORG --visible-hostname proxy.example.org \
   --keytab-secret proxy.keytab --http-port 3129 --school-subnets 10.0.0.0/8
 ```
-> `REALM=EXAMPLE.ORG bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh` (on the DC)
-> prints the global role groups, the internet groups per school and the two `create` commands.
+> `bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh` (on the DC) reads the realm
+> there and prints the global role groups, the internet groups per school and the `create`
+> commands.
 > `--image` defaults to the maintained, digest-pinned image.
 
 **3. Everyday commands:**

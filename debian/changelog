@@ -27,6 +27,14 @@ linuxmuster-squid (7.3.8) lmn73; urgency=medium
     exports anything. It also stops when it cannot check (no ldbsearch or no
     read access to sam.ldb) and refuses an argument that is not a fully
     qualified host name.
+  * discover-ad-facts.sh reads the realm on the DC (smb.conf realm, via
+    testparm) instead of trusting REALM: a REALM given in the environment is
+    only compared, and a mismatch prints a WARNING (a short REALM such as
+    BS-WIZ for BS-WIZ.LLAN used to end up in the printed commands). The
+    commands now carry proxy.<domain> instead of the placeholder
+    proxy.<fqdn> (PROXY_FQDN overrides it), and a third template creates one
+    proxy for everybody in the group internet, which per sophomorix.ini also
+    holds parents, staff and the school admins.
 
  -- Kevin Stenzel <mail@kevin-stenzel.de>  Fri, 30 Oct 2026 14:58:39 +0100
 

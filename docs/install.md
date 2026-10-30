@@ -97,13 +97,19 @@ and `lmnsquid restart <name>` ([`keytab-and-dns.md`](keytab-and-dns.md)).
 ## 4. Which groups? (on the DC)
 
 ```bash
-REALM=<REALM> bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh
+bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh
 ```
 
-prints the **global role groups** `role-teacher` / `role-student` / `role-staff` (each spans
-every school of the domain) for `--ad-group`, the **internet groups** (`internet` for the
-default school, `<school>-internet` for the others) for `--internet-group`, and two ready-made
-`create` commands. Use the global role groups: a visitor from another school is then accepted at
+reads the realm on the DC (`realm` in its `smb.conf`, the Kerberos realm; a `REALM=…` given in
+the environment is only compared with it and a mismatch is reported as `WARNING`), and prints
+the **global role groups** `role-teacher` / `role-student` / `role-staff` (each spans every
+school of the domain) for `--ad-group`, the **internet groups** (`internet` for the default
+school, `<school>-internet` for the others) for `--internet-group`, and ready-made `create`
+commands with `--realm <REALM> --visible-hostname proxy.<domain>` filled in
+(`PROXY_FQDN=<name>` for another host name): template A, a teacher and a student proxy, and
+template B, one proxy for everybody in `internet` (no teacher/student separation; per
+`sophomorix.ini` the group holds teachers, students, parents, staff, extra students/course
+members and the school admins of the default school). Use the global role groups: a visitor from another school is then accepted at
 the local proxy while teacher/student separation still holds. Do **not** use the per-school
 `teachers`/`students` groups unless schools must filter differently, and never a class group
 (`5a-students` looks like a role group but is not).
