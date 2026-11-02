@@ -78,7 +78,9 @@ from the caller's PATH.
 ## Heavy tier — Kerberos E2E (Docker)
 
 docker-compose stack: `samba-dc` + `squid` + `origin` + `test-client` (details in
-the `/test` skill). `run.sh e2e` (and `all`) also runs the admin-script smokes against the
+the `/test` skill), on the fixed network `10.228.0.0/24`: outside Docker's default address
+pools (`172.17–31.0.0/16`, `192.168.0.0/16`), which other compose projects on the same host take
+one after the other, so the stack does not fail with "Pool overlaps". `run.sh e2e` (and `all`) also runs the admin-script smokes against the
 same Samba DC image: `provision_keytab_smoke.sh` (SPN/alias conflicts, idempotence, fail-closed
 cases) and `discover_ad_facts_smoke.sh` (groups, realm from the DC, templates). Not in GitHub
 CI: the heavy tier stays out of it (`ci.yml` header), and a new job would be a new required

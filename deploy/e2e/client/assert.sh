@@ -108,17 +108,17 @@ check_via "Internet-gate OR: teacher in 'schule2-internet' -> ok" inetor "$PROXY
 check_via "Internet-gate: teacher in NO internet group -> deny" inetno "$PROXY3" "$ALLOWED" 403
 
 # Domains without proxy auth (ADR-016). squid-noauth lists secure.example.internal and
-# both.example.internal (the latter also blocked); school_net = this client (172.28.0.30).
+# both.example.internal (the latter also blocked); school_net = this client (10.228.0.30).
 NA="http://squid4.example.internal:3128"
 NA_HOST="squid4.example.internal:3128"
-echo "-- noauth (client $(hostname -I 2>/dev/null | tr -d ' '), school_net 172.28.0.30/32) --"
+echo "-- noauth (client $(hostname -I 2>/dev/null | tr -d ' '), school_net 10.228.0.30/32) --"
 check_via    "noauth: listed HTTP, no ticket -> 200"              "" "$NA" "http://secure.example.internal/" 200
 check_via    "noauth: listed subdomain, no ticket -> 200"         "" "$NA" "http://www.secure.example.internal/" 200
 check_via    "noauth: not listed, no ticket -> 407"               "" "$NA" "$ALLOWED" 407
-# squid-noauth knows 172.28.0.21 -> secure.example.internal (extra_hosts = its reverse
+# squid-noauth knows 10.228.0.21 -> secure.example.internal (extra_hosts = its reverse
 # cache): without dstdomain -n this IP-literal URL would match the list (200, measured).
-check_via    "noauth: IP literal of a listed host -> 407"         "" "$NA" "http://172.28.0.21/" 407
-check_via    "noauth: IP written into the list -> 407"           "" "$NA" "http://172.28.0.20/" 407
+check_via    "noauth: IP literal of a listed host -> 407"         "" "$NA" "http://10.228.0.21/" 407
+check_via    "noauth: IP written into the list -> 407"           "" "$NA" "http://10.228.0.20/" 407
 check_via    "noauth: listed AND blocked HTTP, no ticket -> 403"  "" "$NA" "http://both.example.internal/" 403
 check_tunnel "noauth: listed HTTPS, no ticket -> tunnel + TLS"   "" "$NA" "https://secure.example.internal/" "200 200"
 check_tunnel "noauth: not listed HTTPS, no ticket -> 407"         "" "$NA" "https://secure2.example.internal/" "407 000"

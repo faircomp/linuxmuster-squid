@@ -14,7 +14,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.28.0.0/24
+        - subnet: 10.228.0.0/24
 
 volumes:
   shared: {}          # DC exports the Keytab here, Squid reads it (ro)
@@ -29,11 +29,11 @@ services:
       DOMAIN: "EXAMPLE.INTERNAL"
       DOMAINPASS: "Passw0rd!"
       NOCOMPLEXITY: "true"
-      HOSTIP: "172.28.0.2"
+      HOSTIP: "10.228.0.2"
       INSECURELDAP: "true"
     networks:
       e2e:
-        ipv4_address: 172.28.0.2
+        ipv4_address: 10.228.0.2
     volumes:
       - shared:/shared
 
@@ -51,10 +51,10 @@ services:
       SCHOOL_SUBNETS: "0.0.0.0/0"      # Subnet scope is tested in P3
       KEYTAB: "/shared/squid.keytab"
       CACHE_SIZE_MB: "200"
-    dns: ["172.28.0.2"]               # AD-DNS: resolves SRV/_ldap._tcp + origin A-record
+    dns: ["10.228.0.2"]               # AD-DNS: resolves SRV/_ldap._tcp + origin A-record
     networks:
       e2e:
-        ipv4_address: 172.28.0.10
+        ipv4_address: 10.228.0.10
     volumes:
       - shared:/shared:ro
       - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
@@ -78,10 +78,10 @@ services:
       SCHOOL_SUBNETS: "0.0.0.0/0"
       KEYTAB: "/shared/squid.keytab"
       CACHE_SIZE_MB: "200"
-    dns: ["172.28.0.2"]
+    dns: ["10.228.0.2"]
     networks:
       e2e:
-        ipv4_address: 172.28.0.11
+        ipv4_address: 10.228.0.11
     volumes:
       - shared:/shared:ro
       # The list directory of a control plane without ADR-016 (no noauth.domains).
@@ -108,10 +108,10 @@ services:
       SCHOOL_SUBNETS: "0.0.0.0/0"
       KEYTAB: "/shared/squid.keytab"
       CACHE_SIZE_MB: "200"
-    dns: ["172.28.0.2"]
+    dns: ["10.228.0.2"]
     networks:
       e2e:
-        ipv4_address: 172.28.0.12
+        ipv4_address: 10.228.0.12
     volumes:
       - shared:/shared:ro
       - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
@@ -133,16 +133,16 @@ services:
       VISIBLE_HOSTNAME: "squid4.example.internal"
       REALM: "EXAMPLE.INTERNAL"
       AD_GROUP: "teachers"
-      SCHOOL_SUBNETS: "172.28.0.30/32"
+      SCHOOL_SUBNETS: "10.228.0.30/32"
       KEYTAB: "/shared/squid.keytab"
       CACHE_SIZE_MB: "200"
-    dns: ["172.28.0.2"]
+    dns: ["10.228.0.2"]
     # squid loads /etc/hosts into its reverse cache too: the IP-literal test needs the
     # address to map back to a listed name (proves dstdomain -n).
-    extra_hosts: ["secure.example.internal:172.28.0.21"]
+    extra_hosts: ["secure.example.internal:10.228.0.21"]
     networks:
       e2e:
-        ipv4_address: 172.28.0.13
+        ipv4_address: 10.228.0.13
     volumes:
       - shared:/shared:ro
       - ./lists-noauth:/etc/squid/lists:ro
@@ -168,10 +168,10 @@ services:
       SCHOOL_SUBNETS: "0.0.0.0/0"
       KEYTAB: "/shared/squid.keytab"
       CACHE_SIZE_MB: "200"
-    dns: ["172.28.0.2"]
+    dns: ["10.228.0.2"]
     networks:
       e2e:
-        ipv4_address: 172.28.0.14
+        ipv4_address: 10.228.0.14
     volumes:
       - shared:/shared:ro
       - ./lists-old:/etc/squid/lists:ro
@@ -187,7 +187,7 @@ services:
     hostname: origin.example.internal
     networks:
       e2e:
-        ipv4_address: 172.28.0.20
+        ipv4_address: 10.228.0.20
 
   # Allowed HTTPS target (self-signed) — for the splice test.
   origin-https:
@@ -195,13 +195,13 @@ services:
     hostname: secure.example.internal
     networks:
       e2e:
-        ipv4_address: 172.28.0.21
+        ipv4_address: 10.228.0.21
 
   # Kerberos client that runs the four assertions (ENTRYPOINT = /assert.sh).
   test-client:
     build: ./client
     depends_on: [squid]
-    dns: ["172.28.0.2"]
+    dns: ["10.228.0.2"]
     networks:
       e2e:
-        ipv4_address: 172.28.0.30
+        ipv4_address: 10.228.0.30

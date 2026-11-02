@@ -14,8 +14,8 @@ DOCKER="docker"; docker info >/dev/null 2>&1 || DOCKER="sudo docker"
 DC="$DOCKER compose -f $CF"
 DLC="example.internal"
 PW="Passw0rd!"
-SQUID_IP="172.28.0.10"
-ORIGIN_IP="172.28.0.20"
+SQUID_IP="10.228.0.10"
+ORIGIN_IP="10.228.0.20"
 
 log(){ printf '\n== %s ==\n' "$1"; }
 dcx(){ $DC exec -T samba-dc "$@"; }        # exec in the DC, no TTY
@@ -60,13 +60,13 @@ dcx samba-tool domain exportkeytab /shared/squid.keytab --principal=squidsvc || 
 dcx chmod 0600 /shared/squid.keytab   # 0600: tests the production keytab path (proxy copy in the entrypoint)
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid  A "$SQUID_IP"  -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" origin A "$ORIGIN_IP"   -U "Administrator%$PW" >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" secure A 172.28.0.21    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" secure A 10.228.0.21    -U "Administrator%$PW" >/dev/null 2>&1 || true
 # Multischool fixtures: 2nd school "schule2" with prefixed group + its own teacher
 dcx samba-tool user  create teacher2 "$PW"                      >/dev/null 2>&1 || true
 dcx samba-tool group add schule2-teachers                      >/dev/null 2>&1 || true
 dcx samba-tool group addmembers schule2-teachers teacher2      >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid2.$DLC" squidsvc           >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" squid2 A 172.28.0.11   -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid2 A 10.228.0.11   -U "Administrator%$PW" >/dev/null 2>&1 || true
 # Internet-gate fixtures: 'internet' + 'schule2-internet' groups + 3 teachers that differ
 # ONLY by internet membership (in internet / in schule2-internet / in none). squid-inet
 # requires teachers AND (internet OR schule2-internet). The new SPN uses the squidsvc key.
@@ -79,16 +79,16 @@ dcx samba-tool group addmembers teachers "inetok,inetor,inetno"  >/dev/null 2>&1
 dcx samba-tool group addmembers internet inetok                  >/dev/null 2>&1 || true
 dcx samba-tool group addmembers schule2-internet inetor          >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid3.$DLC" squidsvc             >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" squid3 A 172.28.0.12    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid3 A 10.228.0.12    -U "Administrator%$PW" >/dev/null 2>&1 || true
 
 # Domains without proxy auth (ADR-016): squid4 = squid-noauth, squid5 = squid-old (image from before ADR-016);
 # more names on the HTTPS origin (a listed subdomain, an unlisted name).
 dcx samba-tool spn   add "HTTP/squid4.$DLC" squidsvc             >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid5.$DLC" squidsvc             >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" squid4 A 172.28.0.13    -U "Administrator%$PW" >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" squid5 A 172.28.0.14    -U "Administrator%$PW" >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" www.secure A 172.28.0.21 -U "Administrator%$PW" >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" secure2 A 172.28.0.21   -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid4 A 10.228.0.13    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid5 A 10.228.0.14    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" www.secure A 10.228.0.21 -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" secure2 A 10.228.0.21   -U "Administrator%$PW" >/dev/null 2>&1 || true
 
 log "start origin + origin-https + squid + squid2 + squid-inet + squid-noauth + squid-old"
 $DC up -d origin origin-https squid squid2 squid-inet squid-noauth squid-old || exit 1
@@ -128,12 +128,12 @@ else
   echo "  [FAIL] internetsperre: expected 403, got '$tcode'"; rc=$((rc + 1))
 fi
 
-# Outside school_net (squid-noauth admits 172.28.0.30/32 only): from the squid container
-# (172.28.0.10) a listed domain without a ticket must still get 407, plain HTTP and CONNECT.
+# Outside school_net (squid-noauth admits 10.228.0.30/32 only): from the squid container
+# (10.228.0.10) a listed domain without a ticket must still get 407, plain HTTP and CONNECT.
 log "noauth: request from outside school_net, no ticket -> 407"
 for req in "http://secure.example.internal/" "-m CONNECT secure.example.internal:443"; do
   # shellcheck disable=SC2086  # $req carries squidclient's options on purpose
-  line=$($DC exec -T squid squidclient -T 10 -h 172.28.0.13 -p 3128 $req 2>/dev/null | head -1 | tr -d '\r')
+  line=$($DC exec -T squid squidclient -T 10 -h 10.228.0.13 -p 3128 $req 2>/dev/null | head -1 | tr -d '\r')
   case "$line" in
     *" 407 "*) echo "  [PASS] outside school_net: $req -> $line" ;;
     *) echo "  [FAIL] outside school_net: $req: expected 407, got '$line'"; rc=$((rc + 1)) ;;
@@ -157,7 +157,7 @@ if $DC logs squid-noauth 2>/dev/null | grep 'entries ignored, already covered' >
 else
   echo "  [FAIL] no notice about covered entries"; rc=$((rc + 1))
 fi
-if $DC logs squid-noauth 2>/dev/null | grep 'noauth.domains: ignored, not a domain name: 172.28.0.20' >/dev/null; then
+if $DC logs squid-noauth 2>/dev/null | grep 'noauth.domains: ignored, not a domain name: 10.228.0.20' >/dev/null; then
   echo "  [PASS] IP literal in noauth.domains ignored and logged"
 else
   echo "  [FAIL] no notice about the IP literal in noauth.domains"; rc=$((rc + 1))
