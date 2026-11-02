@@ -130,7 +130,8 @@ def rm(
 
 
 blocklist_app = typer.Typer(
-    help="Per-instance domain blocklist (HTTP -> 403; HTTPS is cut at the TLS handshake). "
+    help="Per-instance domain blocklist (HTTP -> 403; HTTPS -> certificate warning in the "
+    "browser, the blocked server is never contacted). "
     "Changes take effect after `reload`.",
     no_args_is_help=True,
 )

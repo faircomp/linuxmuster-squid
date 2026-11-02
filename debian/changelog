@@ -48,6 +48,14 @@ linuxmuster-squid (7.3.8) lmn73; urgency=medium
     data-plane image builds the lists squid reads without them at every
     start and reload, naming them in "lmnsquid logs <name>" and in the
     reload output ("notices").
+  * Documentation corrected: HTTPS to a blocked domain was described as cut
+    at the TLS handshake. squid answers a CONNECT it denies itself: "200",
+    then TLS with the instance's self-signed throwaway certificate and its
+    403 page inside; the blocked server is never contacted and browsers
+    show a certificate warning. Only a name blocked in the SNI behind an
+    allowed CONNECT host is cut during the handshake. Traffic to allowed
+    sites is spliced and never decrypted, as before; the behaviour itself
+    is unchanged (README, install.md, operations.md, ADR-002).
 
  -- Kevin Stenzel <mail@kevin-stenzel.de>  Fri, 30 Oct 2026 14:58:39 +0100
 

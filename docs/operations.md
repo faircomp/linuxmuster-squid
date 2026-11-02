@@ -81,11 +81,16 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
   `access-logs` — not available behind the socket proxy with `EXEC: 0`); the auth/group
   helpers restart, the cache stays. API:
   `GET/POST /v1/instances/{name}/blocklist`, `DELETE …/blocklist/{domain}`, `POST …/blocklist/reload`.
-- **What the user sees:** HTTP → **403** (Squid error page, also for teachers). HTTPS → the
-  proxy peeks at the SNI and **terminates the TLS handshake**: the browser shows a
-  connection/TLS error, *not* a block page (there is none without decryption, ADR-002).
-  A blocked name shows up as `TCP_DENIED/403 … GET http://…` resp. `TCP_DENIED/200 0 CONNECT …:443`
-  in the access log.
+- **What the user sees:** HTTP → **403** (Squid error page, also for teachers). HTTPS → a
+  **certificate warning**, no block page: squid refuses the CONNECT to the blocked host by
+  answering it itself, with `200` and then TLS with the instance's untrusted throwaway
+  certificate and its 403 page inside; the target is never contacted. Someone who clicks
+  through the warning sees the 403 page, and the proxy sees the path and headers of that
+  request (it never sees traffic of an allowed site, that is spliced). A blocked name only in
+  the SNI (behind an allowed CONNECT host) is cut during the TLS handshake: connection error.
+  ADR-002 (clarification) has the details. In the access log a blocked name shows up as
+  `TCP_DENIED/403 … GET http://…`, resp. `NONE_NONE/200 0 CONNECT <host>:443` followed by
+  `NONE_NONE/403 … GET https://<host>/…` when the client accepted the certificate.
 - **Hand-editing / category lists:** the file may be edited directly (one domain per line,
   leading dot = with subdomains; `#` comments; Windows line endings are fine) followed by
   `lmnsquid blocklist <name> reload`.

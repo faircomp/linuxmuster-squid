@@ -11,9 +11,11 @@
 # ============================================================
 
 # --- Explicit forward proxy (NEVER intercept: Kerberos 407 requires explicit) ---
-# ssl-bump only for SNI peek/splice (NO decryption). generate-host-certificates=off,
-# because we never MITM-bump; the tls-cert CA is only needed to activate the bump machinery
-# and is NEVER delivered to clients (splice = end-to-end tunnel).
+# ssl-bump only for SNI peek/splice/terminate: traffic to a real target is NEVER decrypted.
+# generate-host-certificates=off, because we never MITM-bump. The self-signed tls-cert enables
+# the bump machinery; squid also uses it to serve its own 403 page for a CONNECT that
+# http_access denies (error delivery on an ssl-bump port; browsers reject the certificate).
+# It is never distributed or trusted (ADR-002, clarification).
 http_port ${HTTP_PORT} ssl-bump generate-host-certificates=off tls-cert=/run/lmnsquid/ssl/bump.pem
 sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/spool/squid/ssl_db -M 4MB
 visible_hostname ${VISIBLE_HOSTNAME}
@@ -60,7 +62,7 @@ acl blocked_domains dstdomain "/run/lmnsquid/lists/blocked.domains"
 # whoever owns the address and must never put an IP on this list.
 acl noauth_domains dstdomain -n "/run/lmnsquid/lists/noauth.domains"
 
-# --- HTTPS: SNI peek + splice (NO decryption) ---
+# --- HTTPS: SNI peek + splice (NO decryption of allowed traffic) ---
 # step1 reads the TLS ClientHello (SNI); blocked SNIs are disconnected (terminate),
 # everything else is tunneled (splice, no MITM). Also catches cases where the
 # CONNECT host differs from the real SNI (domain fronting).

@@ -167,9 +167,11 @@ lmnsquid blocklist all-students reload              # squid re-reads the list (n
 lmnsquid blocklist all-students remove example.org && lmnsquid blocklist all-students reload
 ```
 
-HTTP to a blocked domain → **403**. HTTPS to a blocked domain is **cut at the TLS handshake**
-(the proxy peeks at the SNI and terminates, it never decrypts): the browser shows a
-connection/TLS error, not a block page. Details, the file path and UT-Capitole category
+HTTP to a blocked domain → **403**. HTTPS to a blocked domain → the browser shows a
+**certificate warning**, no block page: the proxy answers the CONNECT itself with its 403 page
+inside TLS with an untrusted throwaway certificate; the blocked server is never contacted, and
+traffic to allowed sites is never decrypted (it is spliced). Details, the file path and
+UT-Capitole category
 lists: [`operations.md`](operations.md#blocklist-per-instance).
 
 ## 8. Domains without proxy authentication (optional)
@@ -190,8 +192,8 @@ lmnsquid noauth all-students reload                  # squid re-reads the lists 
 > does not apply to it, and the access log shows `-` instead of a user. Keep `--school-subnets`
 > tight (the default `0.0.0.0/0` means everyone who reaches the port) and the list short.
 
-The blocklist still wins (403 / TLS cut). HTTPS passes only when the TLS SNI is on the list
-as well; a different SNI or none cuts the handshake. Check from a client in `<subnet>` without
+The blocklist still wins (HTTP 403; HTTPS certificate warning as in step 7). HTTPS passes only
+when the TLS SNI is on the list as well; a different SNI or none cuts the handshake. Check from a client in `<subnet>` without
 a ticket: `kdestroy; req $P:3129 https://<listed-domain>/` gives 200,
 `req $P:3129 http://example.com/` still 407. The recommended Microsoft 365 list with its source
 and the details: [`operations.md`](operations.md#domains-without-proxy-authentication-per-instance).

@@ -63,10 +63,14 @@ Status document. Keep it up to date with every substantive change (see
 - **School scope:** `acl school_net src ${SCHOOL_SUBNETS}` (a school is identified
   by its subnet — no marker "on the wire").
 - **HTTPS filtering without decryption:** preferably SNI **peek + splice**
-  (squid-openssl; throwaway CA only for the peek step, **never** distributed to
-  clients), fallback CONNECT `dstdomain` (no SSL needed). A blocked HTTPS name is
-  **terminated at the TLS handshake** (`ssl_bump terminate`): the client sees a
-  connection error, not a 403 page — there is no error page without decryption.
+  (squid-openssl; throwaway certificate only to enable the bump machinery, **never**
+  distributed to clients), fallback CONNECT `dstdomain` (no SSL needed). Allowed traffic is
+  spliced, never decrypted. A CONNECT that `http_access` denies (e.g. a blocked host) is
+  answered by squid itself: `200`, then TLS with the untrusted throwaway certificate and its 403
+  page inside (squid's error delivery on an ssl-bump port; the target is never contacted; the
+  browser shows a certificate warning). A blocked SNI behind an allowed CONNECT host is
+  **terminated during the handshake** (`ssl_bump terminate`), without any page (ADR-002,
+  clarification).
 - **Blocklist per instance:** `<blocklists_dir>/<name>/blocked.domains` on the host
   (`/etc/linuxmuster-squid/blocklists/…`), the directory bind-mounted read-only at
   `/etc/squid/lists` — the path the template reads for `dstdomain` and

@@ -30,6 +30,22 @@ requires explicit mode. **Source:** Squid wiki Features/Authentication.
 CONNECT `dstdomain`; **no** SSL-bump MITM. The peek CA is never distributed to clients.
 **Why:** privacy-friendly, no client CA rollout, no breaking of
 cert pinning; SSL-bumped traffic could no longer carry Kerberos identity.
+**Clarification (2026-11-02, measured in the E2E and the lab; Kevin: keep the behaviour):**
+traffic to a real target is never decrypted: an allowed CONNECT is spliced. Two things still
+happen at the TLS layer. (1) `ssl_bump terminate` closes the connection during the handshake,
+without a certificate or a page, for a blocked SNI behind an allowed CONNECT host and, on the
+noauth path (ADR-016), for a foreign or missing SNI. (2) A CONNECT that `http_access` denies with
+403 (blocked CONNECT host, not in the role or internet group, CONNECT to an IP literal or a port
+other than 443, outside the school subnets) is answered by squid itself: on an ssl-bump port it
+confirms the CONNECT (`200`), completes TLS with the client using the instance's self-signed
+throwaway certificate (`bump.pem`, `generate-host-certificates=off`) and sends its 403 page
+inside that session. squid.conf does not describe this; the squid 6 source does
+(`client_side_request.cc`: "we will attempt to bump the client to serve the error"). The target is
+never contacted. Browsers reject the certificate and show a certificate warning, no block page; a
+client that accepts it anyway (`curl -k`, a user clicking through the warning) sends its request
+line and headers for that denied name to the proxy, which logs the URL. A 407 is never answered
+this way (squid does not bump during authentication). The certificate is presented, never
+distributed or trusted.
 
 ### ADR-003 — One instance per (school × role)
 **Status:** Accepted (user decision). **Decision:** separate Squid containers
@@ -144,8 +160,10 @@ inode); reconfigure keeps the cache and client connections. **Not** `docker kill
 although squid is PID 1 and would reconfigure: Docker records every kill(), whatever the
 signal, as a manual stop, and an `unless-stopped` container then stays down after a reboot
 (seen in the lab). Price: like `access-logs`, `reload` needs `docker exec` (ADR-012).
-**Limit (documented):** a blocked HTTPS name is terminated at the TLS handshake, there is
-no 403 page without decryption (ADR-002).
+**Limit (documented):** HTTPS to a blocked name never shows a usable block page: a blocked
+CONNECT host gets squid's 403 inside TLS with an untrusted certificate (browser: certificate
+warning), a blocked SNI behind an allowed CONNECT host is cut during the handshake (ADR-002,
+clarification).
 **Amendment (2026-10-30, with ADR-016):** squid 6 refuses to load a `dstdomain` /
 `ssl::server_name` list in which a name covered by a listed parent domain comes first
 (`.a.example.org` before `.example.org`, or `example.org` next to it: `FATAL: Bungled`; a

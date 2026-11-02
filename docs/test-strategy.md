@@ -89,7 +89,7 @@ check of the `main` ruleset. **Core proof** (P1), assertions on `%{http_code}`:
 | Teacher allowed | `kinit teacher1`; via teacher instance | **200** |
 | Student denied (authN ok, authZ fail) | `kinit student1`; via teacher instance | **403** (not 407) |
 | Blocked domain (HTTP) | Teacher → entry from `blocked.domains` | **403** |
-| Blocked domain (HTTPS) | Teacher → CONNECT to a blocked name | **not 200**: TLS handshake terminated (curl exit ≠ 0), no 403 page |
+| Blocked domain (HTTPS) | Teacher → CONNECT to a blocked name | **not 200** behind the tunnel: squid answers the CONNECT itself and serves its 403 inside TLS with the throwaway certificate (`curl -k`: `200 403`; without `-k` curl fails the certificate) |
 | No ticket | `kdestroy`; request | **407** |
 
 The 403-vs-407 split is the actual proof (authenticated-but-unauthorized
@@ -102,7 +102,8 @@ acceptance list in `deployment-gpo.md`.
 ## Negative/security catalog (grows per phase; part of the DoD)
 
 - **P1:** no ticket→407; student→403; SPN mismatch/FQDN-as-IP → no 200.
-- **P2:** blocked HTTPS domain (SNI/CONNECT)→TLS handshake terminated, never 200,
+- **P2:** blocked HTTPS domain: CONNECT host blocked → squid's 403 inside TLS (untrusted
+  throwaway certificate), blocked SNI → TLS handshake terminated; never 200,
   **without** client CA; allowed→200; behavior on missing SNI defined.
 - **P3:** teacher of school A via school-B instance→403; prefixed group names take effect;
   subnet scope takes effect.
