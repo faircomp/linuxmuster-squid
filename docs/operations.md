@@ -154,7 +154,8 @@ lmnsquid noauth all-students reload                  # squid re-reads both lists
   (an image from before the list). That is a release matter, not an admin step: a
   linuxmuster-squid release whose pinned image supports the list moves the instances onto it
   when the package is upgraded (`update-all` in the postinst); `lmnsquid update <name>` only
-  helps once such a release is installed. Without that check a reload would report success and
+  helps once such a release is installed (then it moves an instance that stayed on its old
+  image, e.g. after a rollback). The 409 text says the same. Without that check a reload would report success and
   change nothing.
   `blocklist reload` is not affected. A `noauth.domains` created after the container started
   (an older control plane) is picked up by the next reload.

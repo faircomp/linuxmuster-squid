@@ -222,7 +222,8 @@ def test_noauth_reload_refuses_an_image_that_ignores_the_list(
     assert resp.status_code == 409
     detail = resp.json()["detail"]
     assert "does not support the noauth list" in detail and "release" in detail
-    assert "lmnsquid update" not in detail  # does not help while DEFAULT_IMAGE is the old one
+    # `lmnsquid update` only after the release (before it, it pulls the same old image)
+    assert "installing that release" in detail and f"lmnsquid update {name}" in detail
     assert docker.reloaded == []  # no "reloaded" that changes nothing
     # the blocklist reload is unaffected
     resp = client.post(f"/v1/instances/{name}/blocklist/reload", headers=auth_headers)

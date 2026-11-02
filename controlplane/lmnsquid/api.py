@@ -273,8 +273,9 @@ def create_app(
                     detail=(
                         f"the data-plane image of {name!r} does not support the noauth list, "
                         "so the list has no effect: it needs a linuxmuster-squid release whose "
-                        "pinned data-plane image supports it (the package upgrade moves the "
-                        "instances onto that image)"
+                        "pinned data-plane image supports it; installing that release moves the "
+                        "instances onto that image (update-all), and `lmnsquid update "
+                        f"{name}` moves this one if it stayed on its old image"
                     ),
                 )
             return docker.reload(name)
