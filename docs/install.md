@@ -42,6 +42,15 @@ groups are prefixed, e.g. `<school>-internet`). All commands as root.
   host itself*. cloud-init writes `127.0.1.1 <proxy-fqdn>`; with that, requests from the host
   reach the container via Docker's userland proxy as `172.17.0.1`, outside
   `--school-subnets`, and get 403. Put `<proxy-ip> <proxy-fqdn>` there.
+  **cloud-init hosts:** check `grep -rs manage_etc_hosts /etc/cloud/ /var/lib/cloud/instance/`.
+  With `manage_etc_hosts: true` cloud-init rewrites `/etc/hosts` from a template on **every
+  boot**, so a hand edit is gone after the next reboot (seen in the lab). Change the template
+  instead: on Ubuntu 24.04 `/etc/cloud/templates/hosts.debian.tmpl`, line
+  `127.0.1.1 {{fqdn}} {{hostname}}` → `<proxy-ip> {{fqdn}} {{hostname}}`. With
+  `manage_etc_hosts: localhost` it appends `127.0.1.1 <fqdn>` on every boot; set it to `false`
+  where it is defined (the instance's user-data, or a file under `/etc/cloud/cloud.cfg.d/`) and
+  keep your line in `/etc/hosts`. (cloud-init docs, module "Update Etc Hosts"; the template name
+  checked with cloud-init 26.2 on Ubuntu 24.04.)
 - The proxy host does **not** join the domain (ADR-009); it only needs the keytab from step 3.
 
 ## 2. Install the package

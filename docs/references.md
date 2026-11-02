@@ -131,3 +131,17 @@ research workflows on **2026-07-02** (confidence in parentheses).
   https://learn.microsoft.com/en-us/microsoft-365/enterprise/microsoft-365-network-connectivity-principles
   (updated 2026-08-31) · endpoints web service https://endpoints.office.com/endpoints/worldwide
   (version 2026103000).
+
+## Data-plane HTTPS errors and cloud-init (checked 2026-11-02)
+
+- A CONNECT denied by `http_access` on an ssl-bump port is answered by bumping the client
+  connection to serve the error page (not described in squid.conf / the SslBump wiki pages; squid
+  6 source `src/client_side_request.cc`: "If it applies, we will attempt to bump the client to
+  serve the error", "Do not bump during authentication"). Measured: `200`, then the 403 page inside
+  TLS with the static `tls-cert`; the target is not contacted. (high, source + measurement)
+  — https://github.com/squid-cache/squid/blob/v6/src/client_side_request.cc
+- cloud-init `update_etc_hosts`: runs every boot; `manage_etc_hosts: true` re-renders `/etc/hosts`
+  from the template ("To make modifications persistent across a reboot, you must modify" the
+  template), `localhost` appends a `127.0.1.1` entry every boot, `false` (default) leaves the file
+  alone. Ubuntu 24.04 (cloud-init 26.2) uses `/etc/cloud/templates/hosts.debian.tmpl` with
+  `127.0.1.1 {{fqdn}} {{hostname}}`. (high) — https://docs.cloud-init.io/en/latest/reference/modules.html
