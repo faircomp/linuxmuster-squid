@@ -139,7 +139,9 @@ lmnsquid noauth all-students reload                  # squid re-reads both lists
 - `add`/`remove` write the file (same format and rules as the blocklist, one `.domain` per
   line, `#` comments allowed when hand-edited) and take effect on the next **`reload`**.
   Stricter names than the blocklist: only a domain below a top-level domain, so `add` refuses
-  IP addresses in any form (`10.0.0.1`, `127.1`, `0x7f000001`, IPv6) and single labels such as
+  IP addresses in any form (IPv6, and every IPv4 notation `inet_aton` reads: `10.0.0.1`,
+  `127.1`, `0x7f000001`, `0x7f.0x1`, `1.2.3.0x4`; refused is any name whose labels are all
+  decimal, octal or `0x` numbers) and single labels such as
   `com` (they would open an address or a whole TLD); hand-written lines of that kind are
   ignored by the container and named in `lmnsquid logs <name>`. The blocklist accepts both on
   purpose: blocking a TLD (`zip`) is a legitimate choice and a wrong entry there only blocks

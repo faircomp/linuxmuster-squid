@@ -218,7 +218,9 @@ with `--python-version=3.12`; environment markers then evaluate as on the target
 login, no client-side bypass). **Decision:** each instance may list domains in
 `<blocklists_dir>/<name>/noauth.domains`, managed like the blocklist (`lmnsquid noauth <name>
 list|add|remove|reload`, entries `.example.org` = domain + subdomains; only names below a
-top-level domain: IP literals in any form and single labels are refused, and ignored in the
+top-level domain: IP literals in any form (IPv6; IPv4 in every `inet_aton` notation, i.e. a
+name whose labels are all decimal, octal or `0x` numbers) and single labels are refused, and
+ignored in the
 container when hand-written). A request to a listed
 domain from `school_net` is allowed **without** proxy authentication; the rules, in order:
 the existing denies (Safe_ports, CONNECT only to 443, no IP literals on CONNECT) stay first;

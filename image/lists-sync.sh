@@ -17,8 +17,9 @@
 # open far more than a domain. Dropped entries are reported on stderr (docker logs).
 set -eu
 
-SRC=/etc/squid/lists
-DST=/run/lmnsquid/lists
+# (Overridable only so that controlplane/tests/test_lists_sync.py can run this file as is.)
+SRC="${LISTS_SYNC_SRC:-/etc/squid/lists}"
+DST="${LISTS_SYNC_DST:-/run/lmnsquid/lists}"
 mkdir -p "${DST}"
 chmod 0755 "${DST}"
 
@@ -45,7 +46,9 @@ uncovered() {
     }'
 }
 
-# sync <name> <kind>: kind "noauth" also drops what is not a multi-label host name.
+# sync <name> <kind>: kind "noauth" also drops what is not a multi-label host name, and a
+# name whose labels are all inet_aton numbers (decimal, octal, 0x-hex: 1.2.3.0x4, 0x7f.0x1),
+# i.e. an IPv4 address in any notation (same rule as normalize_noauth_domain in Python).
 sync_list() {
     name=$1 kind=$2 src="${SRC}/$1" tmp="${DST}/.$1.tmp"
     if [ ! -f "${src}" ]; then
@@ -55,7 +58,13 @@ sync_list() {
     elif [ "${kind}" = noauth ]; then
         sed -e 's/#.*//' "${src}" | awk '{ e = tolower($1); sub(/\.+$/, "", e); if (e != "") print e }' \
             | awk -v list="${name}" '
-                /^\.?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z0-9-]*[a-z][a-z0-9-]*$/ { print; next }
+                function numeric(name,    n, i, l) {
+                    n = split(name, l, ".")
+                    for (i = 1; i <= n; i++)
+                        if (l[i] != "" && l[i] !~ /^(0x[0-9a-f]*|[0-9]+)$/) return 0
+                    return 1
+                }
+                /^\.?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z0-9-]*[a-z][a-z0-9-]*$/ && !numeric($0) { print; next }
                 { print "linuxmuster-squid: " list ": ignored, not a domain name: " $0 > "/dev/stderr" }' \
             | uncovered 2>"${DST}/.$1.covered" | sort > "${tmp}"
     else

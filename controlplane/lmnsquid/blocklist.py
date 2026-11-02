@@ -30,6 +30,7 @@ _INSTANCE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{1,62}$")
 # One DNS name (labels of letters/digits/hyphens), after IDNA encoding and lower-casing.
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 _DOMAIN_RE = re.compile(rf"^{_LABEL}(?:\.{_LABEL})*$")
+_INET_ATON_PART = re.compile(r"^(?:0x[0-9a-f]*|[0-9]+)$")
 
 
 def normalize_domain(value: str) -> str:
@@ -64,7 +65,9 @@ def normalize_noauth_domain(value: str) -> str:
     labels = entry[1:].split(".")
     if len(labels) < 2:
         raise ValueError(f"{value!r} is not a domain below a top-level domain")
-    if labels[-1].isdigit():
+    # Every label an inet_aton number (decimal, octal, 0x-hex): an IPv4 address in some
+    # notation (1.2.3.0x4, 0x7f.0x1). Same rule as image/lists-sync.sh.
+    if labels[-1].isdigit() or all(_INET_ATON_PART.match(label) for label in labels):
         raise ValueError(f"{value!r} looks like an IP address, not a domain")
     return entry
 
