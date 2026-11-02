@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -276,8 +277,12 @@ def test_cli_noauth(patch_client: None, instance_data: dict[str, Any], docker: A
 
 
 def test_cli_noauth_help_warns() -> None:
-    r = runner.invoke(cli.app, ["noauth", "--help"])
+    # Rich styles and wraps the help after the environment: on GitHub Actions (GITHUB_ACTIONS,
+    # FORCE_COLOR) it inserts ANSI codes inside words, and the width follows COLUMNS. So: no
+    # colour variables, a wide terminal, and still strip escape codes and line breaks.
+    plain = {"GITHUB_ACTIONS": None, "FORCE_COLOR": None, "NO_COLOR": "1", "TERM": "dumb"}
+    r = runner.invoke(cli.app, ["noauth", "--help"], env={**plain, "COLUMNS": "200"})
     assert r.exit_code == 0
-    text = " ".join(r.output.split())
+    text = " ".join(re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", r.output).split())
     for needle in ("exam mode", "Internetsperre", "school-subnets", "blocklist still wins"):
         assert needle in text, needle
