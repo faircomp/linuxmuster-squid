@@ -259,10 +259,12 @@ def create_app(
 
     @app.post("/v1/instances/{name}/noauth/reload", dependencies=auth)
     def reload_noauth(name: str) -> dict[str, Any]:
-        """Re-read the lists (``squid -k reconfigure``), refused if squid ignores the noauth list.
+        """Re-read the lists (lists-sync.sh, ``squid -k reconfigure``), refused if the image
+        has no noauth list.
 
-        An image from before ADR-016, or a container started without ``noauth.domains`` in
-        its list directory, never reads the list: answer 409 instead of a silent "reloaded".
+        An image from before ADR-016 has no noauth ACL in its squid.conf and never reads the
+        list: answer 409 instead of a silent "reloaded". (A ``noauth.domains`` that appeared
+        after the container started is read by this reload.)
         """
         _require(name)
         audit.info("noauth reload name=%s", name)

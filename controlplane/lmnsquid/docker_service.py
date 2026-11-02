@@ -200,8 +200,8 @@ class DockerService:
         digest = self.fingerprint(spec)
         # Lists: created empty if absent (create, reconcile, update all pass through
         # here, so instances from before 7.3.1 get the mount on their next replacement).
-        # noauth.domains must exist before a container starts: the entrypoint only reads
-        # it from the mount when it is there at start (ADR-016).
+        # noauth.domains too, so the file an admin edits is there from the start (a missing
+        # one is an empty list to lists-sync.sh, which reads it again on every reload).
         self.blocklist.ensure(inst.name)
         self.noauth.ensure(inst.name)
 
