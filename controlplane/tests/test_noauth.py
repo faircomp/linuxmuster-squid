@@ -102,6 +102,20 @@ def test_both_lists_share_the_directory(tmp_path: Path) -> None:
     assert not directory.exists()
 
 
+def test_noauth_read_and_add_with_crlf(tmp_path: Path) -> None:
+    file = tmp_path / "s-teachers" / "noauth.domains"
+    file.parent.mkdir()
+    file.write_bytes(b".office.com\r\n.sharepoint.com\r\n")
+    na = noauth_list(str(tmp_path))
+    assert na.read("s-teachers") == [".office.com", ".sharepoint.com"]
+    assert na.add("s-teachers", "teams.microsoft.com") == [
+        ".office.com",
+        ".sharepoint.com",
+        ".teams.microsoft.com",
+    ]
+    assert b"\r" not in file.read_bytes()
+
+
 def test_noauth_names_vs_blocklist_names(tmp_path: Path) -> None:
     # a domain below a TLD with letters in the last label passes, also IDNA and digits inside
     assert normalize_noauth_domain("1und1.de") == ".1und1.de"

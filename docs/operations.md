@@ -87,7 +87,8 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
   A blocked name shows up as `TCP_DENIED/403 … GET http://…` resp. `TCP_DENIED/200 0 CONNECT …:443`
   in the access log.
 - **Hand-editing / category lists:** the file may be edited directly (one domain per line,
-  leading dot = with subdomains; `#` comments) followed by `lmnsquid blocklist <name> reload`.
+  leading dot = with subdomains; `#` comments; Windows line endings are fine) followed by
+  `lmnsquid blocklist <name> reload`.
   Squid does not read the mounted file itself: at every start and reload the image's
   `lists-sync.sh` builds the list it reads (`/run/lmnsquid/lists/`) and leaves out every entry
   a listed parent domain already covers, naming them in `lmnsquid logs <name>`

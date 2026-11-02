@@ -98,3 +98,15 @@ def test_missing_noauth_file_is_an_empty_list(tmp_path: Path) -> None:
     dst, stderr = _sync(tmp_path, blocked=b".example.org\n")
     assert (dst / "noauth.domains").read_text() == ""
     assert "domains without proxy auth: none" in stderr
+
+
+def test_crlf_line_endings_in_both_lists(tmp_path: Path) -> None:
+    # A list saved by a Windows editor: every entry must survive, without the \r.
+    dst, stderr = _sync(
+        tmp_path,
+        blocked=b".blocked.example.org\r\n.a.blocked.example.org\r\n",
+        noauth=b"# Microsoft 365\r\n.office.com\r\n.sharepoint.com  # comment\r\n",
+    )
+    assert (dst / "blocked.domains").read_text() == ".blocked.example.org\n"
+    assert (dst / "noauth.domains").read_text().split() == [".office.com", ".sharepoint.com"]
+    assert "not a domain name" not in stderr

@@ -56,7 +56,8 @@ sync_list() {
         [ "${kind}" = noauth ] \
             && echo "linuxmuster-squid: no ${src}, domains without proxy auth: none" >&2
     elif [ "${kind}" = noauth ]; then
-        sed -e 's/#.*//' "${src}" | awk '{ e = tolower($1); sub(/\.+$/, "", e); if (e != "") print e }' \
+        sed -e 's/#.*//' "${src}" \
+            | awk '{ gsub(/\r/, ""); e = tolower($1); sub(/\.+$/, "", e); if (e != "") print e }' \
             | awk -v list="${name}" '
                 function numeric(name,    n, i, l) {
                     n = split(name, l, ".")
