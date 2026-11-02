@@ -120,6 +120,9 @@ envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROU
 # squid 6 refuses to load, a missing file as an empty list (lists-sync.sh, also run by
 # `lmnsquid ... reload`).
 /usr/local/bin/lists-sync.sh
+# What later syncs report (`lmnsquid ... reload` appends it here) goes to the container log too.
+: > "${RUN}/lists-sync.log"
+stdbuf -oL tail -n 0 -F "${RUN}/lists-sync.log" >&2 2>/dev/null &
 
 # Validate config, then initialise cache dirs on first run.
 squid -k parse -f "${CONF}"

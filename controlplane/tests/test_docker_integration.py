@@ -69,7 +69,7 @@ def test_real_container_lifecycle(tmp_path: Path) -> None:
         assert (lists / inst.name / "noauth.domains").read_text() == ""
         assert svc.noauth_active(inst.name) is True
         svc.noauth.add(inst.name, "office.com")
-        assert svc.reload(inst.name) == {"name": inst.name, "reloaded": True}
+        assert svc.reload(inst.name) == {"name": inst.name, "reloaded": True, "notices": []}
 
         # Hand-edited lists that squid 6 refuses as such (a covered name before its parent,
         # the bare apex): lists-sync.sh drops those entries on reload and at the next start.
@@ -79,7 +79,12 @@ def test_real_container_lifecycle(tmp_path: Path) -> None:
         (lists / inst.name / "noauth.domains").write_text(
             ".graph.microsoft.com\n.microsoft.com\nmicrosoft.com\n"
         )
-        assert svc.reload(inst.name)["reloaded"] is True
+        reloaded = svc.reload(inst.name)
+        assert reloaded["reloaded"] is True
+        # what was ignored is in the response and in the container log (`lmnsquid logs`)
+        assert any("already covered" in n for n in reloaded["notices"]), reloaded
+        time.sleep(2)
+        assert "blocked.domains: 2 entries ignored, already covered" in svc.logs(inst.name, tail=50)
         svc.restart(inst.name)
         deadline = time.monotonic() + 60
         health = None

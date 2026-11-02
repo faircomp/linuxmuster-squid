@@ -46,7 +46,8 @@ linuxmuster-squid (7.3.8) lmn73; urgency=medium
     drops what it covers (adding a name below a listed domain changes
     nothing), blocklist-refresh.sh drops covered entries, and the new
     data-plane image builds the lists squid reads without them at every
-    start and reload, naming them in "lmnsquid logs <name>".
+    start and reload, naming them in "lmnsquid logs <name>" and in the
+    reload output ("notices").
 
  -- Kevin Stenzel <mail@kevin-stenzel.de>  Fri, 30 Oct 2026 14:58:39 +0100
 

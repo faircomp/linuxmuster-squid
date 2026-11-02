@@ -193,7 +193,11 @@ def test_noauth_endpoints(
     assert file.read_text() == ".office.com\n"
 
     resp = client.post(f"/v1/instances/{name}/noauth/reload", headers=auth_headers)
-    assert resp.status_code == 200 and resp.json() == {"name": name, "reloaded": True}
+    assert resp.status_code == 200 and resp.json() == {
+        "name": name,
+        "reloaded": True,
+        "notices": [],
+    }
     assert docker.reloaded == [name]
 
     resp = client.delete(f"/v1/instances/{name}/noauth/office.com", headers=auth_headers)

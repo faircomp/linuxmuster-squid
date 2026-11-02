@@ -26,11 +26,18 @@ logger = logging.getLogger("lmnsquid.docker")
 _SQUID_CONF = "/run/lmnsquid/squid.conf"
 # Reload: images with lists-sync.sh read the lists from /run/lmnsquid/lists, which the script
 # rebuilds from the mounted ones (without the entries squid refuses to load); older images read
-# the mounted files directly. Fixed text, nothing from a request goes into it.
+# the mounted files directly. Its messages (ignored entries) are printed for the API response
+# and appended to /run/lmnsquid/lists-sync.log, which the entrypoint mirrors into the container
+# log (`lmnsquid logs`). Fixed text, nothing from a request goes into it.
 _RELOAD = (
-    "set -e; if [ -x /usr/local/bin/lists-sync.sh ]; then /usr/local/bin/lists-sync.sh; fi; "
+    "set -e; if [ -x /usr/local/bin/lists-sync.sh ]; then "
+    "/usr/local/bin/lists-sync.sh 2>/run/lmnsquid/lists-sync.last "
+    "|| { cat /run/lmnsquid/lists-sync.last; exit 1; }; "
+    "cat /run/lmnsquid/lists-sync.last; "
+    "cat /run/lmnsquid/lists-sync.last >> /run/lmnsquid/lists-sync.log; fi; "
     f"exec squid -k reconfigure -f {_SQUID_CONF}"
 )
+_NOTICE_PREFIX = "linuxmuster-squid: "
 # Container label carrying the fingerprint of everything the container was created
 # from; a container whose label matches the desired spec is left alone by
 # ensure_running (reconcile is a no-op for it), one without or with another
@@ -386,13 +393,19 @@ class DockerService:
         started after a reboot (seen in the lab). Like ``access_logs`` this needs
         ``docker exec`` (not available behind the socket proxy with ``EXEC: 0``).
         Raises ``LookupError`` when there is no running container, ``RuntimeError``
-        when the exec is refused or squid does.
+        when the exec is refused or squid does. ``notices`` are the messages of
+        ``lists-sync.sh`` (entries it ignored), also written to the container log.
         """
         container = self._running(name)
         exit_code, text = self._exec(container, ["sh", "-c", _RELOAD])
         if exit_code != 0:
             raise RuntimeError(f"list reload exited {exit_code}: {text.strip()}")
-        return {"name": name, "reloaded": True}
+        notices = [
+            line[len(_NOTICE_PREFIX) :]
+            for line in text.splitlines()
+            if line.startswith(_NOTICE_PREFIX)
+        ]
+        return {"name": name, "reloaded": True, "notices": notices}
 
     # -- introspection -----------------------------------------------------
 

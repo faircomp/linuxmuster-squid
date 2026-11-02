@@ -92,7 +92,8 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
   Squid does not read the mounted file itself: at every start and reload the image's
   `lists-sync.sh` builds the list it reads (`/run/lmnsquid/lists/`) and leaves out every entry
   a listed parent domain already covers, naming them in `lmnsquid logs <name>`
-  (`… entries ignored, already covered by a listed parent domain: …`); so a hand-edited list
+  (`… entries ignored, already covered by a listed parent domain: …`) and, for a reload, also
+  in its answer (`"notices": [...]`); so a hand-edited list
   cannot stop the proxy. `blocklist-refresh.sh` drops those entries itself. (The image pinned
   by 7.3.7 and older reads the mounted file directly: with it such a list makes `reload` fail
   and the next start of the container fail.)
@@ -144,7 +145,8 @@ lmnsquid noauth all-students reload                  # squid re-reads both lists
   `127.1`, `0x7f000001`, `0x7f.0x1`, `1.2.3.0x4`; refused is any name whose labels are all
   decimal, octal or `0x` numbers) and single labels such as
   `com` (they would open an address or a whole TLD); hand-written lines of that kind are
-  ignored by the container and named in `lmnsquid logs <name>`. The blocklist accepts both on
+  ignored by the container and named in `lmnsquid logs <name>` and in the answer of
+  `lmnsquid noauth <name> reload` (`"notices"`). The blocklist accepts both on
   purpose: blocking a TLD (`zip`) is a legitimate choice and a wrong entry there only blocks
   more. API:
   `GET/POST /v1/instances/{name}/noauth`, `DELETE …/noauth/{domain}`, `POST …/noauth/reload`.

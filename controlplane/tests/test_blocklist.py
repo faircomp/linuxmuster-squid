@@ -149,7 +149,11 @@ def test_blocklist_endpoints(
 
     # reload -> squid -k reconfigure run in the running container
     resp = client.post(f"/v1/instances/{name}/blocklist/reload", headers=auth_headers)
-    assert resp.status_code == 200 and resp.json() == {"name": name, "reloaded": True}
+    assert resp.status_code == 200 and resp.json() == {
+        "name": name,
+        "reloaded": True,
+        "notices": [],
+    }
     assert docker.reloaded == [name]
 
     # stopped container -> 409, not a silent "ok"

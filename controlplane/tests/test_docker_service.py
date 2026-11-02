@@ -113,12 +113,22 @@ def test_reload_syncs_the_lists_then_reconfigures(tmp_path: Path) -> None:
     c = _container("lmnsquid-s-teachers")
     c.exec_run.return_value = (0, b"")
     _registry(ds, {"lmnsquid-s-teachers": c})
-    assert ds.reload("s-teachers") == {"name": "s-teachers", "reloaded": True}
+    c.exec_run.return_value = (
+        0,
+        b"linuxmuster-squid: noauth.domains: ignored, not a domain name: com\n"
+        b"squid: some other line\n",
+    )
+    assert ds.reload("s-teachers") == {
+        "name": "s-teachers",
+        "reloaded": True,
+        "notices": ["noauth.domains: ignored, not a domain name: com"],
+    }
     cmd = c.exec_run.call_args.args[0]
     assert cmd[:2] == ["sh", "-c"]
     # lists-sync.sh first (only where the image has it), then squid -k reconfigure.
     assert "[ -x /usr/local/bin/lists-sync.sh ]" in cmd[2]
-    assert cmd[2].index("lists-sync.sh;") < cmd[2].index("squid -k reconfigure")
+    assert cmd[2].index("lists-sync.sh 2>") < cmd[2].index("squid -k reconfigure")
+    assert ">> /run/lmnsquid/lists-sync.log" in cmd[2]
     assert cmd[2].endswith("exec squid -k reconfigure -f /run/lmnsquid/squid.conf")
 
     c.exec_run.return_value = (1, b"FATAL: Bungled /run/lmnsquid/squid.conf line 59")

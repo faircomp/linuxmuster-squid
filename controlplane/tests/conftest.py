@@ -128,7 +128,7 @@ class FakeDockerService:
         if container is None or not container["running"]:
             raise LookupError(f"instance {name!r} is not running")
         self.reloaded.append(name)
-        return {"name": name, "reloaded": True}
+        return {"name": name, "reloaded": True, "notices": []}
 
     def status(self, name: str) -> dict[str, Any]:
         container = self.containers.get(name)

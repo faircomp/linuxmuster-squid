@@ -74,7 +74,8 @@ Status document. Keep it up to date with every substantive change (see
   (the API endpoints below); `reload` = `squid -k reconfigure` inside the container
   (docker exec), no restart. Entries are `.example.org` = domain + subdomains. Squid reads
   copies under `/run/lmnsquid/lists/` that `lists-sync.sh` builds from the mounted files at
-  start and before every reload, without entries a listed parent domain covers (squid 6 stops
+  start and before every reload (its messages go to the container log and into the reload
+  answer as `notices`), without entries a listed parent domain covers (squid 6 stops
   with `FATAL: Bungled` when such an entry precedes its parent); the control plane never writes
   them in the first place. UT Capitole/Toulouse
   category lists via `blocklist-refresh.sh` (host cron) into the same file.
