@@ -482,19 +482,21 @@ jobs:
 
           # 3. modes and ownership in the config tree unchanged, with one expected addition
           #    (since 7.3.8, ADR-016): update-all/reconcile create an EMPTY noauth.domains next
-          #    to every blocked.domains, with that file's mode and owner. It is expected only
-          #    where the previous release had none; any other difference still fails.
+          #    to every instance's blocklists/<name>/blocked.domains, with that file's mode and
+          #    owner. It is expected only where the previous release had none; any other
+          #    difference (also next to the admin's own /etc/linuxmuster-squid/blocked.domains)
+          #    still fails.
           sudo find /etc/linuxmuster-squid -printf '%m %U:%G %p\n' | sort > after/etc-modes
           cp before/etc-modes before/etc-modes.expected
           while read -r mode owner path; do
-            new="${path%/blocked.domains}/noauth.domains"
-            if awk -v p="$new" '$3 == p { found = 1 } END { exit !found }' before/etc-modes; then
+            noauth_file="${path%/blocked.domains}/noauth.domains"
+            if awk -v p="$noauth_file" '$3 == p { found = 1 } END { exit !found }' before/etc-modes; then
               continue
             fi
-            echo "$mode $owner $new" >> before/etc-modes.expected
-            sudo test -f "$new" || { echo "missing: $new"; exit 1; }
-            if sudo test -s "$new"; then echo "not empty: $new"; exit 1; fi
-          done < <(awk '$3 ~ /\/blocked\.domains$/' before/etc-modes)
+            echo "$mode $owner $noauth_file" >> before/etc-modes.expected
+            sudo test -f "$noauth_file" || { echo "missing: $noauth_file"; exit 1; }
+            if sudo test -s "$noauth_file"; then echo "not empty: $noauth_file"; exit 1; fi
+          done < <(awk '$3 ~ /^\/etc\/linuxmuster-squid\/blocklists\/[^\/]+\/blocked\.domains$/' before/etc-modes)
           sort -o before/etc-modes.expected before/etc-modes.expected
           diff -u before/etc-modes.expected after/etc-modes
 
