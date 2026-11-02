@@ -91,7 +91,7 @@ check of the `main` ruleset. **Core proof** (P1), assertions on `%{http_code}`:
 | Teacher allowed | `kinit teacher1`; via teacher instance | **200** |
 | Student denied (authN ok, authZ fail) | `kinit student1`; via teacher instance | **403** (not 407) |
 | Blocked domain (HTTP) | Teacher → entry from `blocked.domains` | **403** |
-| Blocked domain (HTTPS) | Teacher → CONNECT to a blocked name | **not 200** behind the tunnel: squid answers the CONNECT itself and serves its 403 inside TLS with the throwaway certificate (`curl -k`: `200 403`; without `-k` curl fails the certificate) |
+| Blocked domain (HTTPS) | Teacher → CONNECT to a blocked name | **not 200** behind the tunnel (`curl -k`): squid answers the CONNECT itself and serves its 403 inside TLS with the throwaway certificate (the noauth case asserts `200 403`; the certificate itself is not asserted, it was checked by hand in the lab) |
 | No ticket | `kdestroy`; request | **407** |
 
 The 403-vs-407 split is the actual proof (authenticated-but-unauthorized

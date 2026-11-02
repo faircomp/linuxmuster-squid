@@ -89,8 +89,9 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
   request (it never sees traffic of an allowed site, that is spliced). A blocked name only in
   the SNI (behind an allowed CONNECT host) is cut during the TLS handshake: connection error.
   ADR-002 (clarification) has the details. In the access log a blocked name shows up as
-  `TCP_DENIED/403 … GET http://…`, resp. `NONE_NONE/200 0 CONNECT <host>:443` followed by
-  `NONE_NONE/403 … GET https://<host>/…` when the client accepted the certificate.
+  `TCP_DENIED/403 … GET http://…`, resp. `TCP_DENIED/200 0 CONNECT <host>:443`, followed by
+  `NONE_NONE/403 … GET https://<host>/…` when the client accepted the certificate
+  (`NONE_NONE/200 0 CONNECT …` followed by `TCP_TUNNEL/200` is an allowed, spliced connection).
 - **Hand-editing / category lists:** the file may be edited directly (one domain per line,
   leading dot = with subdomains; `#` comments; Windows line endings are fine) followed by
   `lmnsquid blocklist <name> reload`.
@@ -178,6 +179,9 @@ lmnsquid noauth all-students reload                  # squid re-reads both lists
   - `noauth list` shows the file as it is: after a hand edit it can contain lines the
     container ignores (an address, a single label, a line with a trailing comment). What squid
     really uses is what `reload` and `lmnsquid logs` do not report as ignored.
+  - Control characters in a hand-written entry appear unescaped in `docker logs` (the reload
+    answer escapes them), and `/run/lmnsquid/lists-sync.log` (tmpfs) grows by the messages of
+    each reload until the container restarts (a few hundred bytes per reload).
 
 ### Recommended list: Microsoft 365
 
