@@ -108,6 +108,11 @@ lmnsquid blocklist default-school-students reload               # squid re-reads
   file** — entries added with `lmnsquid blocklist add` are lost, so keep manually curated
   instances out of the refresh or re-add them afterwards. The directory must stay owned by
   `lmnsquid` so the API can keep writing (it replaces the file atomically).
+- **Large category lists (known limit):** `lists-sync.sh` reads the whole list at every start
+  and reload (measured in the cold verification of 2026-10-30: 2 million entries ≈ 25 s and ≈ 290 MiB), and squid then parses it
+  (≈ 55 s for the same list, twice at a start). With lists that size a start can exceed the
+  90 s health gate of `update`/`reconcile` and roll back. Keep category selections moderate
+  and check `lmnsquid status <name>` after enabling a large one.
 - **Upgraded from 7.3.0?** Containers created before 7.3.1 run without the mount until
   recreated once; the postinst runs `lmnsquid reconcile` for that (see Updates).
 
@@ -165,6 +170,14 @@ lmnsquid noauth all-students reload                  # squid re-reads both lists
   `blocklist reload` is not affected. A `noauth.domains` created after the container started
   (an older control plane) is picked up by the next reload.
 - **What `lmnsquid rm` removes:** the directory with both lists.
+- **Known limits:**
+  - Names with two labels pass the name check, including public suffixes such as `co.uk`,
+    `com.de` or `github.io` (anyone can publish under them): adding one opens a whole
+    registration space without authentication. There is no public-suffix list built in; add
+    only the organisation's own domains (`sharepoint.com`, not `com.de`).
+  - `noauth list` shows the file as it is: after a hand edit it can contain lines the
+    container ignores (an address, a single label, a line with a trailing comment). What squid
+    really uses is what `reload` and `lmnsquid logs` do not report as ignored.
 
 ### Recommended list: Microsoft 365
 
@@ -201,8 +214,9 @@ done
 lmnsquid noauth all-students list && lmnsquid noauth all-students reload
 ```
 
-- **Not on the list, on purpose:** items for mail protocols and SMTP (ids 2 and 10: TCP 25,
-  143, 587, 993, 995 — not HTTP proxy traffic) and Teams media (id 11: UDP 3478–3481, no URLs;
+- **Not on the list, on purpose:** mail protocols and SMTP (id 10, required: TCP 25; id 2 is
+  not even required: TCP 143, 587, 993, 995 — none of it HTTP proxy traffic) and Teams media
+  (id 11: UDP 3478–3481, no URLs;
   a forward proxy cannot carry UDP — allow it at the firewall if Teams calls are needed).
   Endpoints of category **Default** keep going through the proxy with authentication.
 - **The list changes** (Microsoft recommends updating it automatically). Compare from time to

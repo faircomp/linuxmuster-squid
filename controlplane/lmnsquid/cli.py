@@ -177,7 +177,8 @@ noauth_app = typer.Typer(
     "only (e.g. Microsoft 365). The blocklist still wins; HTTPS only when the TLS SNI is on "
     "the list too. WARNING: anyone in the school subnets reaches these domains without a "
     "ticket, so exam accounts reach them in exam mode (OneDrive, Teams, Outlook ...) and the "
-    "Internetsperre does not apply to them. Changes take effect after `reload`.",
+    "Internetsperre does not apply to them. Add the organisation's own domains only, never a "
+    "public suffix such as co.uk or github.io. Changes take effect after `reload`.",
     no_args_is_help=True,
 )
 app.add_typer(noauth_app, name="noauth")
