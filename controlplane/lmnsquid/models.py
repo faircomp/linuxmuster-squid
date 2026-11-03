@@ -38,7 +38,7 @@ _IMAGE_RE = re.compile(
 # their pinned digest until `update`).
 DEFAULT_IMAGE = (
     "ghcr.io/faircomp/linuxmuster-squid"
-    "@sha256:d13625b51a99d62f14c37d18453092bbde651cb34df080dd49f3937f7f5f46ef"
+    "@sha256:0f59a1d47b090de4c2e89b14b929751e5c422126a7d507fa6ac955d25a0b0fd7"
 )
 
 
