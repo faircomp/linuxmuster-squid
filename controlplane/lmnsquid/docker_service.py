@@ -16,7 +16,7 @@ from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig
 
-from .blocklist import CONTAINER_DIR, Blocklist
+from .blocklist import CONTAINER_DIR, Blocklist, noauth_list
 from .models import Instance
 
 logger = logging.getLogger("lmnsquid.docker")
@@ -24,6 +24,20 @@ logger = logging.getLogger("lmnsquid.docker")
 # The config entrypoint.sh renders and starts squid with (`squid -k` must read the same
 # file to find pid_filename).
 _SQUID_CONF = "/run/lmnsquid/squid.conf"
+# Reload: images with lists-sync.sh read the lists from /run/lmnsquid/lists, which the script
+# rebuilds from the mounted ones (without the entries squid refuses to load); older images read
+# the mounted files directly. Its messages (ignored entries) are printed for the API response
+# and appended to /run/lmnsquid/lists-sync.log, which the entrypoint mirrors into the container
+# log (`lmnsquid logs`). Fixed text, nothing from a request goes into it.
+_RELOAD = (
+    "set -e; if [ -x /usr/local/bin/lists-sync.sh ]; then "
+    "/usr/local/bin/lists-sync.sh 2>/run/lmnsquid/lists-sync.last "
+    "|| { cat /run/lmnsquid/lists-sync.last; exit 1; }; "
+    "cat /run/lmnsquid/lists-sync.last; "
+    "cat /run/lmnsquid/lists-sync.last >> /run/lmnsquid/lists-sync.log; fi; "
+    f"exec squid -k reconfigure -f {_SQUID_CONF}"
+)
+_NOTICE_PREFIX = "linuxmuster-squid: "
 # Container label carrying the fingerprint of everything the container was created
 # from; a container whose label matches the desired spec is left alone by
 # ensure_running (reconcile is a no-op for it), one without or with another
@@ -55,6 +69,7 @@ class DockerService:
         self.log_max_size: str = log_max_size
         self.log_max_file: int = log_max_file
         self.blocklist = Blocklist(blocklists_dir)
+        self.noauth = noauth_list(blocklists_dir)
         self.health_timeout = health_timeout
         self.poll_interval = poll_interval
         self.client: docker.DockerClient = (
@@ -183,9 +198,12 @@ class DockerService:
 
         spec = self.spec_for(inst)
         digest = self.fingerprint(spec)
-        # Blocklist: created empty if absent (create, reconcile, update all pass through
+        # Lists: created empty if absent (create, reconcile, update all pass through
         # here, so instances from before 7.3.1 get the mount on their next replacement).
+        # noauth.domains too, so the file an admin edits is there from the start (a missing
+        # one is an empty list to lists-sync.sh, which reads it again on every reload).
         self.blocklist.ensure(inst.name)
+        self.noauth.ensure(inst.name)
 
         cname = inst.container_name
         existing = self._get(inst.name)
@@ -323,19 +341,8 @@ class DockerService:
                 logger.warning("volume %s not removed: %s", volume, exc)
         self.blocklist.delete(name)
 
-    def reload(self, name: str) -> dict[str, Any]:
-        """Make the running squid re-read squid.conf and its ACL list files (the blocklist).
-
-        Runs ``squid -k reconfigure`` inside the container: squid parses the config and
-        signals its running copy (SIGHUP). No restart -- the cache and open client
-        connections survive, the auth/group helpers are restarted. Deliberately NOT
-        ``container.kill(signal="SIGHUP")``: Docker records every kill(), whatever the
-        signal, as a manual stop, and an ``unless-stopped`` container is then no longer
-        started after a reboot (seen in the lab). Like ``access_logs`` this needs
-        ``docker exec`` (not available behind the socket proxy with ``EXEC: 0``).
-        Raises ``LookupError`` when there is no running container, ``RuntimeError``
-        when the exec is refused or squid does.
-        """
+    def _running(self, name: str) -> Container:
+        """The running container of ``name``; ``LookupError`` when there is none."""
         container = self._get(name)
         if container is None:
             raise LookupError(f"instance {name!r} has no container")
@@ -343,22 +350,62 @@ class DockerService:
         state: dict[str, Any] = container.attrs.get("State", {}) or {}
         if not state.get("Running", False):
             raise LookupError(f"instance {name!r} is not running")
+        return container
+
+    def _exec(self, container: Container, cmd: list[str]) -> tuple[int, str]:
         try:
-            exit_code, output = container.exec_run(
-                ["squid", "-k", "reconfigure", "-f", _SQUID_CONF]
-            )
+            exit_code, output = container.exec_run(cmd)
         except APIError as exc:
             # The daemon is alive; exec itself was refused (socket proxy with EXEC: 0).
             raise RuntimeError(
-                f"docker exec refused ({exc.explanation or exc}); blocklist reload needs "
+                f"docker exec refused ({exc.explanation or exc}); list reload needs "
                 "EXEC at the docker socket proxy (ADR-012/ADR-014)"
             ) from exc
         text = (
             output.decode("utf-8", errors="replace") if isinstance(output, bytes) else str(output)
         )
+        return exit_code, text
+
+    def noauth_active(self, name: str) -> bool:
+        """Whether the running squid has the noauth ACL (ADR-016) in its configuration.
+
+        Not so for an image from before ADR-016 (its template has no such ACL); a reload
+        cannot change that, only a container of a newer image can. Same preconditions and
+        errors as :meth:`reload`.
+        """
+        container = self._running(name)
+        exit_code, text = self._exec(container, ["grep", "-qF", "acl noauth_domains ", _SQUID_CONF])
+        if exit_code not in (0, 1):
+            raise RuntimeError(f"cannot read {_SQUID_CONF} (exit {exit_code}): {text.strip()}")
+        return exit_code == 0
+
+    def reload(self, name: str) -> dict[str, Any]:
+        """Make the running squid re-read squid.conf and its ACL list files (both lists).
+
+        Runs ``lists-sync.sh`` (images that have it: rebuilds the lists squid reads, without
+        entries squid would refuse) and then ``squid -k reconfigure`` inside the container. If
+        squid still refuses the configuration, the running squid keeps the previous one and a
+        ``RuntimeError`` carries squid's message. squid -k reconfigure parses the config and
+        signals its running copy (SIGHUP). No restart -- the cache and open client
+        connections survive, the auth/group helpers are restarted. Deliberately NOT
+        ``container.kill(signal="SIGHUP")``: Docker records every kill(), whatever the
+        signal, as a manual stop, and an ``unless-stopped`` container is then no longer
+        started after a reboot (seen in the lab). Like ``access_logs`` this needs
+        ``docker exec`` (not available behind the socket proxy with ``EXEC: 0``).
+        Raises ``LookupError`` when there is no running container, ``RuntimeError``
+        when the exec is refused or squid does. ``notices`` are the messages of
+        ``lists-sync.sh`` (entries it ignored), also written to the container log.
+        """
+        container = self._running(name)
+        exit_code, text = self._exec(container, ["sh", "-c", _RELOAD])
         if exit_code != 0:
-            raise RuntimeError(f"squid -k reconfigure exited {exit_code}: {text.strip()}")
-        return {"name": name, "reloaded": True}
+            raise RuntimeError(f"list reload exited {exit_code}: {text.strip()}")
+        notices = [
+            line[len(_NOTICE_PREFIX) :]
+            for line in text.splitlines()
+            if line.startswith(_NOTICE_PREFIX)
+        ]
+        return {"name": name, "reloaded": True, "notices": notices}
 
     # -- introspection -----------------------------------------------------
 

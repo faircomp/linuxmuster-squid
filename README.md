@@ -38,7 +38,11 @@ the same AD/Kerberos infrastructure the school already operates.
   authentication via `negotiate_kerberos_auth`, authorization via
   `ext_kerberos_ldap_group_acl` against the instance's AD group. HTTPS is
   **not decrypted** (SNI peek/splice or CONNECT `dstdomain`). Per-instance domain
-  blocklist: HTTP → 403, HTTPS → the TLS handshake is cut (no block page without decryption).
+  blocklist: HTTP → 403, HTTPS → certificate warning in the browser (squid's 403 inside TLS
+  with an untrusted throwaway certificate; the blocked server is never contacted, allowed traffic
+  is never decrypted).
+  Optional per-instance list of domains reachable without proxy login from the school subnets
+  (e.g. Microsoft 365; the blocklist still wins).
 - **Control Plane:** hardened systemd service with **REST API** (FastAPI) and
   **CLI** (Typer, thin client) — creates instances, configures policies, and
   **updates digest-pinned with health-check auto-rollback**. Shipped as a
@@ -76,8 +80,9 @@ sudo lmnsquid create --school all --role students --ad-group role-student \
   --realm EXAMPLE.ORG --visible-hostname proxy.example.org \
   --keytab-secret proxy.keytab --http-port 3129 --school-subnets 10.0.0.0/8
 ```
-> `REALM=EXAMPLE.ORG bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh` (on the DC)
-> prints the global role groups, the internet groups per school and the two `create` commands.
+> `bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh` (on the DC) reads the realm
+> there and prints the global role groups, the internet groups per school and the `create`
+> commands.
 > `--image` defaults to the maintained, digest-pinned image.
 
 **3. Everyday commands:**
@@ -90,9 +95,11 @@ lmnsquid update all-teachers               # -> maintained default image (health
 lmnsquid update-all                        # every instance -> default image
 lmnsquid rollback all-teachers             # to the last known-good
 lmnsquid reconcile                         # re-apply stored state (restore / after a crash)
-lmnsquid blocklist all-students add example.org    # block a domain + subdomains (HTTP 403, HTTPS TLS abort)
+lmnsquid blocklist all-students add example.org    # block a domain + subdomains (HTTP 403, HTTPS cert warning)
 lmnsquid blocklist all-students reload             # apply without restart; list / remove likewise
-lmnsquid rm all-students                   # container + cache/log volumes + blocklist (--keep-logs keeps the logs)
+lmnsquid noauth all-students add sharepoint.com    # reachable WITHOUT proxy login from the school subnets
+lmnsquid noauth all-students reload                # (exam mode and Internetsperre do not apply: docs/operations.md)
+lmnsquid rm all-students                   # container + cache/log volumes + both lists (--keep-logs keeps the logs)
 lmnsquid version
 ```
 

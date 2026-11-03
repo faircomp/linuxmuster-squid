@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 from docker.errors import APIError, NotFound
 
-from lmnsquid.blocklist import Blocklist
+from lmnsquid.blocklist import Blocklist, noauth_list
 from lmnsquid.docker_service import SPEC_LABEL, DockerService
 from lmnsquid.models import Instance
 
@@ -22,6 +22,7 @@ def _service(tmp_path: Path) -> DockerService:
     ds.client = MagicMock()
     ds.secrets_dir = str(tmp_path / "secrets")
     ds.blocklist = Blocklist(str(tmp_path / "blocklists"))
+    ds.noauth = noauth_list(str(tmp_path / "blocklists"))
     ds.container_bind_ip = "0.0.0.0"
     ds.log_max_size = "20m"
     ds.log_max_file = 5
@@ -71,6 +72,89 @@ def test_fingerprint_is_stable_and_sensitive(tmp_path: Path) -> None:
     spec = ds.spec_for(_inst())
     blocklist_dir = str(tmp_path / "blocklists" / "s-teachers")
     assert spec["volumes"][blocklist_dir]["bind"] == "/etc/squid/lists"
+    # The noauth list lives in the same mounted directory: no mount of its own, so the
+    # spec (and with it every container an upgrade would otherwise replace) is unchanged.
+    assert len(spec["volumes"]) == 4
+    assert not any("noauth" in str(k) or "noauth" in str(v) for k, v in spec.items())
+
+
+def test_ensure_running_creates_both_lists_before_the_container(tmp_path: Path) -> None:
+    ds = _service(tmp_path)
+    _registry(ds, {})
+    seen: list[bool] = []
+    lists = tmp_path / "blocklists" / "s-teachers"
+
+    def create(*_a: Any, **_k: Any) -> MagicMock:
+        # The entrypoint reads noauth.domains only when it is there at container start.
+        seen.append((lists / "noauth.domains").is_file() and (lists / "blocked.domains").is_file())
+        return _container("lmnsquid-s-teachers.new")
+
+    ds.client.containers.create.side_effect = create
+    ds.ensure_running(_inst())
+    assert seen == [True]
+    assert (lists / "noauth.domains").read_text() == ""
+
+
+@pytest.mark.parametrize(("grep_exit", "expected"), [(0, True), (1, False)])
+def test_noauth_active_reads_the_rendered_config(
+    tmp_path: Path, grep_exit: int, expected: bool
+) -> None:
+    ds = _service(tmp_path)
+    c = _container("lmnsquid-s-teachers")
+    c.exec_run.return_value = (grep_exit, b"")
+    _registry(ds, {"lmnsquid-s-teachers": c})
+    assert ds.noauth_active("s-teachers") is expected
+    cmd = c.exec_run.call_args.args[0]
+    assert cmd == ["grep", "-qF", "acl noauth_domains ", "/run/lmnsquid/squid.conf"]
+
+
+def test_reload_syncs_the_lists_then_reconfigures(tmp_path: Path) -> None:
+    ds = _service(tmp_path)
+    c = _container("lmnsquid-s-teachers")
+    c.exec_run.return_value = (0, b"")
+    _registry(ds, {"lmnsquid-s-teachers": c})
+    c.exec_run.return_value = (
+        0,
+        b"linuxmuster-squid: noauth.domains: ignored, not a domain name: com\n"
+        b"squid: some other line\n",
+    )
+    assert ds.reload("s-teachers") == {
+        "name": "s-teachers",
+        "reloaded": True,
+        "notices": ["noauth.domains: ignored, not a domain name: com"],
+    }
+    cmd = c.exec_run.call_args.args[0]
+    assert cmd[:2] == ["sh", "-c"]
+    # lists-sync.sh first (only where the image has it), then squid -k reconfigure.
+    assert "[ -x /usr/local/bin/lists-sync.sh ]" in cmd[2]
+    assert cmd[2].index("lists-sync.sh 2>") < cmd[2].index("squid -k reconfigure")
+    assert ">> /run/lmnsquid/lists-sync.log" in cmd[2]
+    assert cmd[2].endswith("exec squid -k reconfigure -f /run/lmnsquid/squid.conf")
+
+    c.exec_run.return_value = (1, b"FATAL: Bungled /run/lmnsquid/squid.conf line 59")
+    with pytest.raises(RuntimeError, match="Bungled"):
+        ds.reload("s-teachers")
+
+
+def test_noauth_active_errors(tmp_path: Path) -> None:
+    ds = _service(tmp_path)
+    stopped = _container("lmnsquid-s-teachers", running=False)
+    _registry(ds, {"lmnsquid-s-teachers": stopped})
+    with pytest.raises(LookupError):
+        ds.noauth_active("s-teachers")
+    _registry(ds, {})
+    with pytest.raises(LookupError):
+        ds.noauth_active("s-teachers")
+    broken = _container("lmnsquid-s-teachers")
+    broken.exec_run.return_value = (2, b"grep: /run/lmnsquid/squid.conf: No such file")
+    _registry(ds, {"lmnsquid-s-teachers": broken})
+    with pytest.raises(RuntimeError, match="cannot read"):
+        ds.noauth_active("s-teachers")
+    refused = _container("lmnsquid-s-teachers")
+    refused.exec_run.side_effect = APIError("exec disabled")
+    _registry(ds, {"lmnsquid-s-teachers": refused})
+    with pytest.raises(RuntimeError, match="EXEC"):
+        ds.noauth_active("s-teachers")
 
 
 def test_spec_rejects_a_keytab_outside_secrets_dir(tmp_path: Path) -> None:

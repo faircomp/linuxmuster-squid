@@ -63,17 +63,36 @@ Status document. Keep it up to date with every substantive change (see
 - **School scope:** `acl school_net src ${SCHOOL_SUBNETS}` (a school is identified
   by its subnet — no marker "on the wire").
 - **HTTPS filtering without decryption:** preferably SNI **peek + splice**
-  (squid-openssl; throwaway CA only for the peek step, **never** distributed to
-  clients), fallback CONNECT `dstdomain` (no SSL needed). A blocked HTTPS name is
-  **terminated at the TLS handshake** (`ssl_bump terminate`): the client sees a
-  connection error, not a 403 page — there is no error page without decryption.
+  (squid-openssl; throwaway certificate only to enable the bump machinery, **never**
+  distributed to clients), fallback CONNECT `dstdomain` (no SSL needed). Allowed traffic is
+  spliced, never decrypted. A CONNECT that `http_access` denies (e.g. a blocked host) is
+  answered by squid itself: `200`, then TLS with the untrusted throwaway certificate and its 403
+  page inside (squid's error delivery on an ssl-bump port; the target is never contacted; the
+  browser shows a certificate warning). A blocked SNI behind an allowed CONNECT host is
+  **terminated during the handshake** (`ssl_bump terminate`), without any page (ADR-002,
+  clarification).
 - **Blocklist per instance:** `<blocklists_dir>/<name>/blocked.domains` on the host
   (`/etc/linuxmuster-squid/blocklists/…`), the directory bind-mounted read-only at
   `/etc/squid/lists` — the path the template reads for `dstdomain` and
   `ssl::server_name`. Managed via `lmnsquid blocklist <name> add|remove|list|reload`
   (the API endpoints below); `reload` = `squid -k reconfigure` inside the container
-  (docker exec), no restart. Entries are `.example.org` = domain + subdomains. UT Capitole/Toulouse
+  (docker exec), no restart. Entries are `.example.org` = domain + subdomains. Squid reads
+  copies under `/run/lmnsquid/lists/` that `lists-sync.sh` builds from the mounted files at
+  start and before every reload (its messages go to the container log and into the reload
+  answer as `notices`), without entries a listed parent domain covers (squid 6 stops
+  with `FATAL: Bungled` when such an entry precedes its parent); the control plane never writes
+  them in the first place. UT Capitole/Toulouse
   category lists via `blocklist-refresh.sh` (host cron) into the same file.
+- **Domains without proxy authentication per instance (ADR-016, optional):**
+  `<blocklists_dir>/<name>/noauth.domains` in the same mounted directory (no extra mount, the
+  container spec is unchanged), managed via `lmnsquid noauth <name> add|remove|list|reload`.
+  A listed domain is reachable from `school_net` without a ticket; the blocklist wins; a
+  CONNECT on this path must carry a listed SNI (no SNI → terminated); the list ACL is
+  `dstdomain -n` (no reverse DNS). Empty by default (= the old behaviour). A missing
+  `noauth.domains` (older control plane) is an empty list;
+  `noauth reload` refuses (409) when the running container does not read the list (an image
+  from before ADR-016). Price: no identity for these requests (exam mode, Internetsperre;
+  threat model T16).
 - **Hardening:** `cache_effective_user proxy`; Keytab as a secret (tmpfs, readable by
   `proxy`); `KRB5CCNAME=FILE:` (the kernel-keyring ccache fails when unprivileged);
   `read_only` rootfs + tmpfs; `cap_drop: ALL` (+ minimal SETUID/SETGID/DAC_OVERRIDE);
@@ -84,9 +103,10 @@ Status document. Keep it up to date with every substantive change (see
 
 - **REST-API (FastAPI/uvicorn):** CRUD over instance definitions +
   lifecycle actions (`start/stop/restart/update/rollback/status/logs`) + the
-  per-instance blocklist (`GET/POST/DELETE …/blocklist`, `POST …/blocklist/reload`).
-  `DELETE /v1/instances/{name}` removes container, cache + log volumes and the
-  blocklist (`?keep_logs=true` keeps the log volume).
+  per-instance blocklist (`GET/POST/DELETE …/blocklist`, `POST …/blocklist/reload`) and
+  noauth list (`GET/POST/DELETE …/noauth`, `POST …/noauth/reload`).
+  `DELETE /v1/instances/{name}` removes container, cache + log volumes and both
+  lists (`?keep_logs=true` keeps the log volume).
   `HTTPBearer(auto_error=False)` + `hmac.compare_digest`; app-wide dependency;
   bind **127.0.0.1 only** (in-app TLS is NOT implemented; off-host only via
   an operator-owned TLS reverse proxy — on a non-loopback bind `main.py` warns, because the
@@ -119,5 +139,10 @@ Status document. Keep it up to date with every substantive change (see
 2. Squid `407 Proxy-Authenticate: Negotiate` → client sends a Kerberos ticket (SSO).
 3. `negotiate_kerberos_auth` checks against the Keytab → username (`%LOGIN`).
 4. `ext_kerberos_ldap_group_acl` checks group membership (ticket/LDAP, SRV).
-5. `http_access` (first-match-wins): `deny !authenticated` → `deny blocked` →
-   `allow authenticated role_group school_net` → `deny all`. Result 200 / 403 / 407.
+5. `http_access` (first-match-wins): the port/CONNECT/IP-literal denies →
+   `deny noauth+blocked` → `allow noauth school_net` (no ticket asked; empty list = never) →
+   `deny !authenticated` → `deny blocked` → `allow authenticated role_group school_net` →
+   `deny all`. Result 200 / 403 / 407.
+6. HTTPS (CONNECT, no decryption): `ssl_bump` peeks at the ClientHello (step 1) and at step 2
+   terminates a blocked SNI, and for a CONNECT to a noauth domain an SNI that is not on the
+   noauth list or a missing SNI; everything else is spliced.

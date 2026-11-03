@@ -480,9 +480,25 @@ jobs:
           test -s before/sha256
           sudo sha256sum -c before/sha256
 
-          # 3. modes and ownership in the config tree unchanged
+          # 3. modes and ownership in the config tree unchanged, with one expected addition
+          #    (since 7.3.8, ADR-016): update-all/reconcile create an EMPTY noauth.domains next
+          #    to every instance's blocklists/<name>/blocked.domains, with that file's mode and
+          #    owner. It is expected only where the previous release had none; any other
+          #    difference (also next to the admin's own /etc/linuxmuster-squid/blocked.domains)
+          #    still fails.
           sudo find /etc/linuxmuster-squid -printf '%m %U:%G %p\n' | sort > after/etc-modes
-          diff -u before/etc-modes after/etc-modes
+          cp before/etc-modes before/etc-modes.expected
+          while read -r mode owner path; do
+            noauth_file="${path%/blocked.domains}/noauth.domains"
+            if awk -v p="$noauth_file" '$3 == p { found = 1 } END { exit !found }' before/etc-modes; then
+              continue
+            fi
+            echo "$mode $owner $noauth_file" >> before/etc-modes.expected
+            sudo test -f "$noauth_file" || { echo "missing: $noauth_file"; exit 1; }
+            if sudo test -s "$noauth_file"; then echo "not empty: $noauth_file"; exit 1; fi
+          done < <(awk '$3 ~ /^\/etc\/linuxmuster-squid\/blocklists\/[^\/]+\/blocked\.domains$/' before/etc-modes)
+          sort -o before/etc-modes.expected before/etc-modes.expected
+          diff -u before/etc-modes.expected after/etc-modes
 
           # 4. the instance record is written by the software, not the admin, and the
           #    postinst rewrites `image:` on purpose (update-all). Every key the admin

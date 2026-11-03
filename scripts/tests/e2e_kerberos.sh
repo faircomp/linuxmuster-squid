@@ -14,14 +14,20 @@ DOCKER="docker"; docker info >/dev/null 2>&1 || DOCKER="sudo docker"
 DC="$DOCKER compose -f $CF"
 DLC="example.internal"
 PW="Passw0rd!"
-SQUID_IP="172.28.0.10"
-ORIGIN_IP="172.28.0.20"
+SQUID_IP="10.228.0.10"
+ORIGIN_IP="10.228.0.20"
 
 log(){ printf '\n== %s ==\n' "$1"; }
 dcx(){ $DC exec -T samba-dc "$@"; }        # exec in the DC, no TTY
 
 cleanup(){ $DC down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
+
+# squid-old: the data-plane image 7.3.7 pins, the last one without ADR-016 (lists-sync.sh,
+# noauth). A constant on purpose, not DEFAULT_IMAGE: it stands for what installed instances run
+# until the upgrade replaces their containers, and DEFAULT_IMAGE moves to an image that reads
+# the noauth list before 7.3.8 is tagged (RELEASE.md).
+export LMNSQUID_OLD_IMAGE="ghcr.io/faircomp/linuxmuster-squid@sha256:d13625b51a99d62f14c37d18453092bbde651cb34df080dd49f3937f7f5f46ef"
 
 log "reset"
 $DC down -v --remove-orphans >/dev/null 2>&1 || true
@@ -54,13 +60,13 @@ dcx samba-tool domain exportkeytab /shared/squid.keytab --principal=squidsvc || 
 dcx chmod 0600 /shared/squid.keytab   # 0600: tests the production keytab path (proxy copy in the entrypoint)
 dcx samba-tool dns add 127.0.0.1 "$DLC" squid  A "$SQUID_IP"  -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" origin A "$ORIGIN_IP"   -U "Administrator%$PW" >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" secure A 172.28.0.21    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" secure A 10.228.0.21    -U "Administrator%$PW" >/dev/null 2>&1 || true
 # Multischool fixtures: 2nd school "schule2" with prefixed group + its own teacher
 dcx samba-tool user  create teacher2 "$PW"                      >/dev/null 2>&1 || true
 dcx samba-tool group add schule2-teachers                      >/dev/null 2>&1 || true
 dcx samba-tool group addmembers schule2-teachers teacher2      >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid2.$DLC" squidsvc           >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" squid2 A 172.28.0.11   -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid2 A 10.228.0.11   -U "Administrator%$PW" >/dev/null 2>&1 || true
 # Internet-gate fixtures: 'internet' + 'schule2-internet' groups + 3 teachers that differ
 # ONLY by internet membership (in internet / in schule2-internet / in none). squid-inet
 # requires teachers AND (internet OR schule2-internet). The new SPN uses the squidsvc key.
@@ -73,10 +79,19 @@ dcx samba-tool group addmembers teachers "inetok,inetor,inetno"  >/dev/null 2>&1
 dcx samba-tool group addmembers internet inetok                  >/dev/null 2>&1 || true
 dcx samba-tool group addmembers schule2-internet inetor          >/dev/null 2>&1 || true
 dcx samba-tool spn   add "HTTP/squid3.$DLC" squidsvc             >/dev/null 2>&1 || true
-dcx samba-tool dns add 127.0.0.1 "$DLC" squid3 A 172.28.0.12    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid3 A 10.228.0.12    -U "Administrator%$PW" >/dev/null 2>&1 || true
 
-log "start origin + origin-https + squid + squid2 + squid-inet"
-$DC up -d origin origin-https squid squid2 squid-inet || exit 1
+# Domains without proxy auth (ADR-016): squid4 = squid-noauth, squid5 = squid-old (image from before ADR-016);
+# more names on the HTTPS origin (a listed subdomain, an unlisted name).
+dcx samba-tool spn   add "HTTP/squid4.$DLC" squidsvc             >/dev/null 2>&1 || true
+dcx samba-tool spn   add "HTTP/squid5.$DLC" squidsvc             >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid4 A 10.228.0.13    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid5 A 10.228.0.14    -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" www.secure A 10.228.0.21 -U "Administrator%$PW" >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" secure2 A 10.228.0.21   -U "Administrator%$PW" >/dev/null 2>&1 || true
+
+log "start origin + origin-https + squid + squid2 + squid-inet + squid-noauth + squid-old"
+$DC up -d origin origin-https squid squid2 squid-inet squid-noauth squid-old || exit 1
 
 wait_healthy() {
   local svc="$1" ready=0 st=none cid
@@ -92,6 +107,8 @@ log "wait for squid + squid2 + squid-inet healthy"
 wait_healthy squid     || exit 1
 wait_healthy squid2    || exit 1
 wait_healthy squid-inet || exit 1
+wait_healthy squid-noauth || exit 1
+wait_healthy squid-old || exit 1
 
 log "run assertions (test-client)"
 $DC run --rm test-client
@@ -110,6 +127,62 @@ if [ "$tcode" = 403 ]; then
 else
   echo "  [FAIL] internetsperre: expected 403, got '$tcode'"; rc=$((rc + 1))
 fi
+
+# Outside school_net (squid-noauth admits 10.228.0.30/32 only): from the squid container
+# (10.228.0.10) a listed domain without a ticket must still get 407, plain HTTP and CONNECT.
+log "noauth: request from outside school_net, no ticket -> 407"
+for req in "http://secure.example.internal/" "-m CONNECT secure.example.internal:443"; do
+  # shellcheck disable=SC2086  # $req carries squidclient's options on purpose
+  line=$($DC exec -T squid squidclient -T 10 -h 10.228.0.13 -p 3128 $req 2>/dev/null | head -1 | tr -d '\r')
+  case "$line" in
+    *" 407 "*) echo "  [PASS] outside school_net: $req -> $line" ;;
+    *) echo "  [FAIL] outside school_net: $req: expected 407, got '$line'"; rc=$((rc + 1)) ;;
+  esac
+done
+# squid2 got a list directory without noauth.domains (older control plane): the entrypoint
+# says so and stands in an empty list.
+# (grep without -q: an early exit would SIGPIPE `compose logs`, a failure under pipefail)
+if $DC logs squid2 2>/dev/null | grep 'no /etc/squid/lists/noauth.domains' >/dev/null; then
+  echo "  [PASS] list directory without noauth.domains: empty list, notice logged"
+else
+  echo "  [FAIL] squid2: notice about the missing noauth.domains not logged"; rc=$((rc + 1))
+fi
+
+# squid-noauth's mounted lists hold entries squid 6 refuses to load next to their parent
+# (hand-edited): lists-sync.sh must have dropped them (logged), the instance must reload and
+# come back after a restart (before, such a list stopped squid: "FATAL: Bungled").
+log "lists with covered entries: logged, reload, restart"
+if $DC logs squid-noauth 2>/dev/null | grep 'entries ignored, already covered' >/dev/null; then
+  echo "  [PASS] covered entries dropped and logged"
+else
+  echo "  [FAIL] no notice about covered entries"; rc=$((rc + 1))
+fi
+if $DC logs squid-noauth 2>/dev/null | grep 'noauth.domains: ignored, not a domain name: 10.228.0.20' >/dev/null; then
+  echo "  [PASS] IP literal in noauth.domains ignored and logged"
+else
+  echo "  [FAIL] no notice about the IP literal in noauth.domains"; rc=$((rc + 1))
+fi
+if $DC exec -T squid-noauth sh -c '/usr/local/bin/lists-sync.sh 2>/dev/null && squid -k reconfigure -f /run/lmnsquid/squid.conf'; then
+  echo "  [PASS] reload (lists-sync.sh + squid -k reconfigure) with these lists"
+else
+  echo "  [FAIL] reload with these lists"; rc=$((rc + 1))
+fi
+$DC restart squid-noauth >/dev/null 2>&1
+if wait_healthy squid-noauth; then
+  echo "  [PASS] squid-noauth healthy again after a restart"
+else
+  echo "  [FAIL] squid-noauth did not come back after a restart"; rc=$((rc + 1))
+fi
+code=$($DC run --rm --entrypoint sh test-client -c \
+  'curl -s -o /dev/null -w "%{http_code}" --proxy http://squid4.example.internal:3128 http://secure.example.internal/' 2>/dev/null | tr -cd '0-9')
+if [ "$code" = 200 ]; then
+  echo "  [PASS] after the restart: listed, no ticket -> 200"
+else
+  echo "  [FAIL] after the restart: expected 200, got '$code'"; rc=$((rc + 1))
+fi
+
+log "squid-noauth access.log (excerpt)"
+$DC exec -T squid-noauth sh -c 'tail -25 /var/log/squid/access.log' 2>/dev/null || true
 
 log "squid access.log (excerpt)"
 $DC exec -T squid sh -c 'tail -20 /var/log/squid/access.log' 2>/dev/null \

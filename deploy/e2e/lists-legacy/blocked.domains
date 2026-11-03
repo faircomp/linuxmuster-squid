@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# A list directory as a control plane without ADR-016 mounts it: blocked.domains only,
+# no noauth.domains. The image must start and behave as before (no domain without auth).
+blocked.example.com

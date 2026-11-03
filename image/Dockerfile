@@ -29,7 +29,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /etc/squid/lists /etc/squid/templates /var/log/squid /var/spool/squid \
  && chown -R proxy:proxy /var/log/squid /var/spool/squid \
- && : > /etc/squid/lists/blocked.domains
+ && : > /etc/squid/lists/blocked.domains \
+ && : > /etc/squid/lists/noauth.domains
 
 # Fail the build early if a helper we rely on is missing (all verified present in
 # the noble squid-openssl / squidclient packages). NOTE: ntlm_auth (if ever needed
@@ -47,7 +48,10 @@ RUN set -eu; for b in \
 COPY templates/squid.conf.template /etc/squid/templates/squid.conf.template
 COPY entrypoint.sh   /usr/local/bin/entrypoint.sh
 COPY healthcheck.sh  /usr/local/bin/healthcheck.sh
-RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh
+COPY sni-sent.sh     /usr/local/bin/sni-sent.sh
+COPY lists-sync.sh   /usr/local/bin/lists-sync.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh /usr/local/bin/sni-sent.sh \
+      /usr/local/bin/lists-sync.sh
 
 EXPOSE 3128
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \

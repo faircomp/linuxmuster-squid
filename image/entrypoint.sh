@@ -116,8 +116,13 @@ CONF="${RUN}/squid.conf"
 envsubst '${INSTANCE} ${HTTP_PORT} ${CACHE_SIZE_MB} ${KEYTAB} ${REALM} ${AD_GROUP} ${VISIBLE_HOSTNAME} ${SCHOOL_SUBNETS} ${ACCESS_LOG_DIRECTIVE} ${INTERNET_ACL_DEF} ${INTERNET_ACL_REF}' \
     < "${TEMPLATE}" > "${CONF}"
 
-# The blocklist file is normally mounted read-only; create an empty one only if absent.
-[ -e /etc/squid/lists/blocked.domains ] || : > /etc/squid/lists/blocked.domains 2>/dev/null || true
+# The lists squid reads (/run/lmnsquid/lists/) from the mounted ones: without the entries
+# squid 6 refuses to load, a missing file as an empty list (lists-sync.sh, also run by
+# `lmnsquid ... reload`).
+/usr/local/bin/lists-sync.sh
+# What later syncs report (`lmnsquid ... reload` appends it here) goes to the container log too.
+: > "${RUN}/lists-sync.log"
+stdbuf -oL tail -n 0 -F "${RUN}/lists-sync.log" >&2 2>/dev/null &
 
 # Validate config, then initialise cache dirs on first run.
 squid -k parse -f "${CONF}"

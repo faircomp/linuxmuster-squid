@@ -11,9 +11,11 @@
 # ============================================================
 
 # --- Explicit forward proxy (NEVER intercept: Kerberos 407 requires explicit) ---
-# ssl-bump only for SNI peek/splice (NO decryption). generate-host-certificates=off,
-# because we never MITM-bump; the tls-cert CA is only needed to activate the bump machinery
-# and is NEVER delivered to clients (splice = end-to-end tunnel).
+# ssl-bump only for SNI peek/splice/terminate: traffic to a real target is NEVER decrypted.
+# generate-host-certificates=off, because we never MITM-bump. The self-signed tls-cert enables
+# the bump machinery; squid also uses it to serve its own 403 page for a CONNECT that
+# http_access denies (error delivery on an ssl-bump port; browsers reject the certificate).
+# It is never distributed or trusted (ADR-002, clarification).
 http_port ${HTTP_PORT} ssl-bump generate-host-certificates=off tls-cert=/run/lmnsquid/ssl/bump.pem
 sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/spool/squid/ssl_db -M 4MB
 visible_hostname ${VISIBLE_HOSTNAME}
@@ -49,17 +51,35 @@ acl school_net src ${SCHOOL_SUBNETS}
 
 # --- Domain filter WITHOUT decryption ---
 # dstdomain matches the plain-HTTP host AND the CONNECT target host (HTTPS),
-# so no SSL bump / no client CA needed.
-acl blocked_domains dstdomain "/etc/squid/lists/blocked.domains"
+# so no SSL bump / no client CA needed. The lists under /run/lmnsquid/lists are built by
+# lists-sync.sh from the mounted /etc/squid/lists (at start and on every reload) without
+# the entries squid 6 refuses to load (a name already covered by a listed parent domain).
+acl blocked_domains dstdomain "/run/lmnsquid/lists/blocked.domains"
 
-# --- HTTPS: SNI peek + splice (NO decryption) ---
+# --- Domains reachable WITHOUT proxy authentication (ADR-016; empty list = feature off) ---
+# For clients in school_net only, and never for a blocked domain (both enforced in the
+# access chain). -n: no reverse DNS for IP-literal URLs -- a PTR record is controlled by
+# whoever owns the address and must never put an IP on this list.
+acl noauth_domains dstdomain -n "/run/lmnsquid/lists/noauth.domains"
+
+# --- HTTPS: SNI peek + splice (NO decryption of allowed traffic) ---
 # step1 reads the TLS ClientHello (SNI); blocked SNIs are disconnected (terminate),
 # everything else is tunneled (splice, no MITM). Also catches cases where the
 # CONNECT host differs from the real SNI (domain fronting).
 acl step1 at_step SslBump1
-acl blocked_sni ssl::server_name "/etc/squid/lists/blocked.domains"
+acl blocked_sni ssl::server_name "/run/lmnsquid/lists/blocked.domains"
+# A CONNECT to a listed domain got through without a ticket (every such CONNECT that reaches
+# this point came through the noauth line of the access chain), so its tunnel must not be
+# handed to another name: the SNI must be listed too, and a ClientHello WITHOUT SNI is cut as
+# well (ssl::server_name falls back to the CONNECT host when there is no SNI, so the helper
+# looks at the SNI itself; %ssl::>sni is '-' without one).
+acl noauth_sni ssl::server_name --client-requested "/run/lmnsquid/lists/noauth.domains"
+external_acl_type sni_sent ttl=3600 negative_ttl=3600 children-max=2 %ssl::>sni /usr/local/bin/sni-sent.sh
+acl tls_sni_sent external sni_sent
 ssl_bump peek step1
 ssl_bump terminate blocked_sni
+ssl_bump terminate noauth_domains !noauth_sni
+ssl_bump terminate noauth_domains !tls_sni_sent
 ssl_bump splice all
 
 # --- Safe ports & methods ---
@@ -79,6 +99,8 @@ http_access deny CONNECT connect_ip_literal
 http_access deny CONNECT connect_ip6_literal
 http_access allow localhost manager        # cache manager from localhost (manual debug; healthcheck uses a 407 probe)
 http_access deny manager
+http_access deny noauth_domains blocked_domains   # listed AND blocked: the blocklist wins -> 403
+http_access allow noauth_domains school_net       # listed + school subnet -> no proxy auth (ADR-016)
 http_access deny !authenticated            # no ticket -> 407 (Negotiate challenge)
 http_access deny blocked_domains           # blocked domain -> 403 (also for teachers)
 http_access allow authenticated role_group ${INTERNET_ACL_REF} school_net   # in role (+internet) group + subnet -> 200

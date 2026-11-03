@@ -12,7 +12,7 @@ CF="$ROOT/deploy/e2e/docker-compose.yml"
 DOCKER="docker"; docker info >/dev/null 2>&1 || DOCKER="sudo docker"
 DC="$DOCKER compose -f $CF"
 DLC="example.internal"; REALM="EXAMPLE.INTERNAL"; PW="Passw0rd!"
-SQUID_IP="172.28.0.10"; ORIGIN_IP="172.28.0.20"
+SQUID_IP="10.228.0.10"; ORIGIN_IP="10.228.0.20"
 N="${LOAD_N:-50}"
 
 dcx(){ $DC exec -T samba-dc "$@"; }

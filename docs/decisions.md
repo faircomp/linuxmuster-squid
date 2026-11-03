@@ -30,6 +30,22 @@ requires explicit mode. **Source:** Squid wiki Features/Authentication.
 CONNECT `dstdomain`; **no** SSL-bump MITM. The peek CA is never distributed to clients.
 **Why:** privacy-friendly, no client CA rollout, no breaking of
 cert pinning; SSL-bumped traffic could no longer carry Kerberos identity.
+**Clarification (2026-11-02, measured in the E2E and the lab; Kevin: keep the behaviour):**
+traffic to a real target is never decrypted: an allowed CONNECT is spliced. Two things still
+happen at the TLS layer. (1) `ssl_bump terminate` closes the connection during the handshake,
+without a certificate or a page, for a blocked SNI behind an allowed CONNECT host and, on the
+noauth path (ADR-016), for a foreign or missing SNI. (2) A CONNECT that `http_access` denies with
+403 (blocked CONNECT host, not in the role or internet group, CONNECT to an IP literal or a port
+other than 443, outside the school subnets) is answered by squid itself: on an ssl-bump port it
+confirms the CONNECT (`200`), completes TLS with the client using the instance's self-signed
+throwaway certificate (`bump.pem`, `generate-host-certificates=off`) and sends its 403 page
+inside that session. squid.conf does not describe this; the squid 6 source does
+(`client_side_request.cc`: "we will attempt to bump the client to serve the error"). The target is
+never contacted. Browsers reject the certificate and show a certificate warning, no block page; a
+client that accepts it anyway (`curl -k`, a user clicking through the warning) sends its request
+line and headers for that denied name to the proxy, which logs the URL. A 407 is never answered
+this way (squid does not bump during authentication). The certificate is presented, never
+distributed or trusted.
 
 ### ADR-003 — One instance per (school × role)
 **Status:** Accepted (user decision). **Decision:** separate Squid containers
@@ -144,8 +160,18 @@ inode); reconfigure keeps the cache and client connections. **Not** `docker kill
 although squid is PID 1 and would reconfigure: Docker records every kill(), whatever the
 signal, as a manual stop, and an `unless-stopped` container then stays down after a reboot
 (seen in the lab). Price: like `access-logs`, `reload` needs `docker exec` (ADR-012).
-**Limit (documented):** a blocked HTTPS name is terminated at the TLS handshake, there is
-no 403 page without decryption (ADR-002).
+**Limit (documented):** HTTPS to a blocked name never shows a usable block page: a blocked
+CONNECT host gets squid's 403 inside TLS with an untrusted certificate (browser: certificate
+warning), a blocked SNI behind an allowed CONNECT host is cut during the handshake (ADR-002,
+clarification).
+**Amendment (2026-10-30, with ADR-016):** squid 6 refuses to load a `dstdomain` /
+`ssl::server_name` list in which a name covered by a listed parent domain comes first
+(`.a.example.org` before `.example.org`, or `example.org` next to it: `FATAL: Bungled`; a
+`reload` fails, the next container start fails), which category lists and hand edits produce
+easily. Squid therefore reads copies under `/run/lmnsquid/lists/` built by the image's
+`lists-sync.sh` at start and before every `reload`, without covered entries (logged); the
+control plane (`add` keeps the parent and drops what it covers) and `blocklist-refresh.sh`
+never write them.
 
 ### ADR-015 — Build inputs pinned: hashed Python locks, digests, action SHAs, draft-first releases
 **Status:** Accepted (2026-09-23, stage A "supply chain" of the linuxmusterDEV archive plan).
@@ -204,6 +230,43 @@ the host's and Renovate's pip-compile manager can re-run it from the lock header
 rejects `--python-platform`, so the lock is compiled on linux/x86_64 (CI, Renovate, dev box)
 with `--python-version=3.12`; environment markers then evaluate as on the target.
 **Price:** dependency updates need a merged PR; the lock is regenerated, never hand-edited.
+
+### ADR-016 — Domains without proxy authentication, per instance, beside the blocklist
+**Status:** Proposed (2026-10-30, Kevin's request: Microsoft 365 through the proxy, without a
+login, no client-side bypass). **Decision:** each instance may list domains in
+`<blocklists_dir>/<name>/noauth.domains`, managed like the blocklist (`lmnsquid noauth <name>
+list|add|remove|reload`, entries `.example.org` = domain + subdomains; only names below a
+top-level domain: IP literals in any form (IPv6; IPv4 in every `inet_aton` notation, i.e. a
+name whose labels are all decimal, octal or `0x` numbers) and single labels are refused, and
+ignored in the
+container when hand-written). A request to a listed
+domain from `school_net` is allowed **without** proxy authentication; the rules, in order:
+the existing denies (Safe_ports, CONNECT only to 443, no IP literals on CONNECT) stay first;
+`deny noauth_domains blocked_domains` (the blocklist wins, 403); `allow noauth_domains
+school_net`; then the unchanged chain (`deny !authenticated`, …). The list ACL is `dstdomain
+-n`: no reverse DNS for IP-literal URLs, otherwise whoever controls a PTR record could put an
+address on the list (measured: without `-n`, `http://<ip>/` with a PTR to a listed name got
+200 without a ticket). A CONNECT that came through this way may not hand its tunnel to another
+name: at `SslBump2` it is terminated when the SNI is not on the list (`ssl::server_name
+--client-requested`) or when the ClientHello carries no SNI (`external_acl_type … %ssl::>sni`
+with a four-line helper, because `ssl::server_name` falls back to the CONNECT host without
+SNI). Still no decryption (peek, splice, terminate only; ADR-002). The empty list is the
+default and there is no built-in content; a recommended Microsoft 365 list lives in
+`docs/operations.md` with its source. The file sits in the directory already mounted at
+`/etc/squid/lists` (ADR-014), so the container spec does not change: an upgrade replaces no
+container for it.
+**Why:** Microsoft lists proxy authentication among the techniques that break Microsoft 365
+connections and asks to exempt its required endpoints; a client-side bypass (proxy exceptions
++ firewall rules) was not wanted, the traffic should still pass the proxy's domain filter.
+**Price (threat model T16):** a listed domain is reachable by everyone in the school subnets
+without identity: exam accounts reach it in exam mode, the Internetsperre does not apply to it,
+and the access log shows `-` instead of a user for it. **Rollout:** the template is in the
+data-plane image; `DEFAULT_IMAGE` must point at an image built with it before the release
+that ships the control plane is tagged (RELEASE.md). Until then the list is
+ignored and `lmnsquid noauth <name> reload` answers 409 instead of reporting a reload that
+changes nothing (it checks the rendered `squid.conf` in the container). An image with the
+template next to a directory without `noauth.domains` (an older control plane) uses an empty
+list until the file appears and the next reload reads it.
 
 ---
 

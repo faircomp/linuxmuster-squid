@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Blocklist of the squid-noauth E2E instance (the directory is mounted at /etc/squid/lists,
+# as the control plane does). both.example.internal is on both lists: the blocklist wins.
+# .a.blocked.example.com and the bare apex: entries squid 6 refuses next to their parent.
+.a.blocked.example.com
+blocked.example.com
+.blocked.example.com
+.both.example.internal

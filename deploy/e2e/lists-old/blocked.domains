@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Kevin Stenzel
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Lists of the squid-old E2E instance (an image from before ADR-016, which reads the
+# mounted files directly, so no entry here may overlap another).
+.blocked.example.com

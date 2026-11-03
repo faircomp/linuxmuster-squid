@@ -25,13 +25,32 @@ groups are prefixed, e.g. `<school>-internet`). All commands as root.
 - `apt-get install -y docker.io krb5-user curl` (`krb5-user` only for the checks below).
 - **DNS:** the proxy FQDN needs an A record (and PTR). The linuxmuster DHCP does *not*
   register dynamic leases in the Samba DNS: add the proxy host as a static device in
-  `devices.csv` (import creates A/PTR), or on the DC
-  `samba-tool dns add <dc-ip> <domain> proxy A <proxy-ip> -U <domain-admin>`.
+  `devices.csv` with the **role `iponly`** (9th column) and run `linuxmuster-import-devices`,
+  or on the DC `samba-tool dns add <dc-ip> <domain> proxy A <proxy-ip> -U <domain-admin>`.
+  **Not with another role:** the default (`classroom-studentcomputer`), `server` and the other
+  roles with a computer account give the proxy a computer account `PROXY$` with
+  `host/<proxy-fqdn>`, and Samba treats `host/` as an alias of `HTTP/` (`sPNMappings`): that
+  account then holds the proxy's `HTTP/` name too, Kerberos SSO breaks, and
+  `provision-keytab.sh` (step 3) stops with a `FATAL`. sophomorix creates the A/PTR records for
+  every device with a fixed IP, a computer account only for roles with `COMPUTER_ACCOUNT =
+  TRUE` (`iponly`: `FALSE`; `sophomorix.ini`, `sophomorix-device`). Check on the DC:
+  `samba-tool computer show proxy` → `Unable to find computer "proxy$"`, and
+  `host <proxy-fqdn>` → the proxy's address. A proxy that already got an account: set the role
+  to `iponly`, import again (sophomorix removes the account), then run step 3.
 - **Time:** NTP in sync with the DC (`timedatectl`; Kerberos tolerates < 5 min).
 - **`/etc/hosts` on the proxy host:** the proxy FQDN must resolve to the host's LAN IP *on the
   host itself*. cloud-init writes `127.0.1.1 <proxy-fqdn>`; with that, requests from the host
   reach the container via Docker's userland proxy as `172.17.0.1`, outside
   `--school-subnets`, and get 403. Put `<proxy-ip> <proxy-fqdn>` there.
+  **cloud-init hosts:** check `grep -rs manage_etc_hosts /etc/cloud/ /var/lib/cloud/instance/`.
+  With `manage_etc_hosts: true` cloud-init rewrites `/etc/hosts` from a template on **every
+  boot**, so a hand edit is gone after the next reboot (seen in the lab). Change the template
+  instead: on Ubuntu 24.04 `/etc/cloud/templates/hosts.debian.tmpl`, line
+  `127.0.1.1 {{fqdn}} {{hostname}}` → `<proxy-ip> {{fqdn}} {{hostname}}`. With
+  `manage_etc_hosts: localhost` it appends `127.0.1.1 <fqdn>` on every boot; set it to `false`
+  where it is defined (the instance's user-data, or a file under `/etc/cloud/cloud.cfg.d/`) and
+  keep your line in `/etc/hosts`. (cloud-init docs, module "Update Etc Hosts"; the template name
+  checked with cloud-init 26.2 on Ubuntu 24.04.)
 - The proxy host does **not** join the domain (ADR-009); it only needs the keytab from step 3.
 
 ## 2. Install the package
@@ -87,13 +106,19 @@ and `lmnsquid restart <name>` ([`keytab-and-dns.md`](keytab-and-dns.md)).
 ## 4. Which groups? (on the DC)
 
 ```bash
-REALM=<REALM> bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh
+bash /usr/share/linuxmuster-squid/scripts/discover-ad-facts.sh
 ```
 
-prints the **global role groups** `role-teacher` / `role-student` / `role-staff` (each spans
-every school of the domain) for `--ad-group`, the **internet groups** (`internet` for the
-default school, `<school>-internet` for the others) for `--internet-group`, and two ready-made
-`create` commands. Use the global role groups: a visitor from another school is then accepted at
+reads the realm on the DC (`realm` in its `smb.conf`, the Kerberos realm; a `REALM=…` given in
+the environment is only compared with it and a mismatch is reported as `WARNING`), and prints
+the **global role groups** `role-teacher` / `role-student` / `role-staff` (each spans every
+school of the domain) for `--ad-group`, the **internet groups** (`internet` for the default
+school, `<school>-internet` for the others) for `--internet-group`, and ready-made `create`
+commands with `--realm <REALM> --visible-hostname proxy.<domain>` filled in
+(`PROXY_FQDN=<name>` for another host name): template A, a teacher and a student proxy, and
+template B, one proxy for everybody in `internet` (no teacher/student separation; per
+`sophomorix.ini` the group holds teachers, students, parents, staff, extra students/course
+members and the school admins of the default school). Use the global role groups: a visitor from another school is then accepted at
 the local proxy while teacher/student separation still holds. Do **not** use the per-school
 `teachers`/`students` groups unless schools must filter differently, and never a class group
 (`5a-students` looks like a role group but is not).
@@ -151,17 +176,45 @@ lmnsquid blocklist all-students reload              # squid re-reads the list (n
 lmnsquid blocklist all-students remove example.org && lmnsquid blocklist all-students reload
 ```
 
-HTTP to a blocked domain → **403**. HTTPS to a blocked domain is **cut at the TLS handshake**
-(the proxy peeks at the SNI and terminates, it never decrypts): the browser shows a
-connection/TLS error, not a block page. Details, the file path and UT-Capitole category
+HTTP to a blocked domain → **403**. HTTPS to a blocked domain → the browser shows a
+**certificate warning**, no block page: the proxy answers the CONNECT itself with its 403 page
+inside TLS with an untrusted throwaway certificate; the blocked server is never contacted, and
+traffic to allowed sites is never decrypted (it is spliced). Details, the file path and
+UT-Capitole category
 lists: [`operations.md`](operations.md#blocklist-per-instance).
 
-## 8. Clients
+## 8. Domains without proxy authentication (optional)
+
+Some services break behind proxy authentication; Microsoft names it among the techniques that
+cause Microsoft 365 connection problems. Instead of a bypass on the clients, an instance can let
+listed domains through **without a ticket**, still through the proxy (domain filter, no
+decryption):
+
+```bash
+lmnsquid noauth all-students add sharepoint.com      # -> [".sharepoint.com"]: domain + subdomains
+lmnsquid noauth all-students list
+lmnsquid noauth all-students reload                  # squid re-reads the lists (no restart)
+```
+
+> **Warning:** a listed domain is open to **everyone in `--school-subnets`** without identity:
+> exam accounts reach it during an **exam** (OneDrive, Teams, Outlook …), the **Internetsperre**
+> does not apply to it, and the access log shows `-` instead of a user. Keep `--school-subnets`
+> tight (the default `0.0.0.0/0` means everyone who reaches the port) and the list short.
+
+The blocklist still wins (HTTP 403; HTTPS certificate warning as in step 7). HTTPS passes only
+when the TLS SNI is on the list as well; a different SNI or none cuts the handshake. Check from a client in `<subnet>` without
+a ticket: `kdestroy; req $P:3129 https://<listed-domain>/` gives 200,
+`req $P:3129 http://example.com/` still 407. The recommended Microsoft 365 list with its source
+and the details: [`operations.md`](operations.md#domains-without-proxy-authentication-per-instance).
+`reload` answers 409 while the instance still runs a data-plane image that does not support the
+list; a package release whose pinned image supports it moves the instances onto it.
+
+## 9. Clients
 
 Assign the proxy per role by GPO (silent Kerberos SSO) and force the proxy at the firewall:
 [`deployment-gpo.md`](deployment-gpo.md). Clients must use the **FQDN**, never the IP.
 
-## 9. Updates
+## 10. Updates
 
 ```bash
 apt-get install -y ./linuxmuster-squid_<new>_amd64.deb # restarts the service, then update-all (*)
@@ -182,10 +235,10 @@ Verify with `docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' lmnsq
 `journalctl -t linuxmuster-squid` and print a `WARNING:` in the apt output naming any instance
 that could not be brought up; the apt transaction itself never fails over them.
 
-## 10. Removing
+## 11. Removing
 
 ```bash
-lmnsquid rm all-students               # container, cache + log volumes, blocklist, definition
+lmnsquid rm all-students               # container, cache + log volumes, both lists, definition
 lmnsquid rm all-students --keep-logs   # same, but keeps the access-log volume lmnsquid-logs-all-students
 ```
 

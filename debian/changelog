@@ -1,3 +1,64 @@
+linuxmuster-squid (7.3.8) lmn73; urgency=medium
+
+  * New per-instance list of domains reachable without proxy login, for
+    services that break behind proxy authentication (Microsoft 365):
+    "lmnsquid noauth <name> list|add <domain>|remove <domain>|reload"
+    (GET/POST/DELETE /v1/instances/{name}/noauth, POST .../noauth/reload),
+    stored in /etc/linuxmuster-squid/blocklists/<name>/noauth.domains next to
+    the blocklist. A listed domain and its subdomains are reachable without a
+    ticket from --school-subnets only; the blocklist still wins; HTTPS passes
+    only when the TLS SNI is on the list too (another SNI or none cuts the
+    handshake); IP addresses in any notation (also 0x7f.0x1 or 1.2.3.0x4)
+    and single labels (a whole TLD) are refused as entries, and an
+    IP-literal URL never matches. Empty by default, so
+    nothing changes until you add a domain. Warning: exam accounts reach listed
+    domains during an exam, the Internetsperre does not apply to them, and
+    the access log shows no user for them. A recommended Microsoft 365 list
+    with its source is in docs/operations.md. The list needs a data-plane
+    image that knows it: until the instances run one, "noauth reload" answers
+    409 and the list has no effect. Existing instances are not restarted for
+    it.
+  * provision-keytab.sh refuses a proxy name that a computer account already
+    answers for. Samba treats host/ as an alias of HTTP/, so a computer
+    account PROXY$ (the proxy host in devices.csv with a role that gets an
+    account) holds HTTP/<proxy-fqdn> too; samba-tool only logged the
+    collision and the script exported a keytab that could not work. On every
+    run, also when the SPN is already on the service account, it now looks
+    for HTTP/<fqdn>, host/<fqdn> and host/<short-name> on other accounts and
+    stops with FATAL and a hint (devices.csv role iponly) before it changes or
+    exports anything. It also stops when it cannot check (no ldbsearch, no
+    read access to sam.ldb, or ldbsearch failing, with its message) and
+    refuses an argument that is not a fully qualified host name.
+  * discover-ad-facts.sh reads the realm on the DC (smb.conf realm, via
+    testparm) instead of trusting REALM: a REALM given in the environment is
+    only compared, and a mismatch prints a WARNING (a short REALM such as
+    BS-WIZ for BS-WIZ.LLAN used to end up in the printed commands). The
+    commands now carry proxy.<domain> instead of the placeholder
+    proxy.<fqdn> (PROXY_FQDN overrides it), and a third template creates one
+    proxy for everybody in the group internet, which per sophomorix.ini also
+    holds parents, staff and the school admins.
+  * A blocklist with a subdomain sorted before its parent domain
+    (".a.example.org" before ".example.org", or "example.org" next to it)
+    no longer takes the proxy down. squid 6 refuses such a list ("FATAL:
+    Bungled"): "blocklist reload" failed and the next start of the container
+    failed. Category lists from blocklist-refresh.sh and hand edits produced
+    it easily. "lmnsquid blocklist|noauth add" now keeps a listed parent and
+    drops what it covers (adding a name below a listed domain changes
+    nothing), blocklist-refresh.sh drops covered entries, and the new
+    data-plane image builds the lists squid reads without them at every
+    start and reload, naming them in "lmnsquid logs <name>" and in the
+    reload output ("notices").
+  * Documentation corrected: HTTPS to a blocked domain was described as cut
+    at the TLS handshake. squid answers a CONNECT it denies itself: "200",
+    then TLS with the instance's self-signed throwaway certificate and its
+    403 page inside; the blocked server is never contacted and browsers
+    show a certificate warning. Only a name blocked in the SNI behind an
+    allowed CONNECT host is cut during the handshake. Traffic to allowed
+    sites is spliced and never decrypted, as before; the behaviour itself
+    is unchanged (README, install.md, operations.md, ADR-002).
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Fri, 30 Oct 2026 14:58:39 +0100
+
 linuxmuster-squid (7.3.7) lmn73; urgency=medium
 
   * Upgrades respect a service the admin switched off. Up to 7.3.6 every

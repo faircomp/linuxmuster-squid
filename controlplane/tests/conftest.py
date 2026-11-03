@@ -15,7 +15,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from lmnsquid.api import create_app
-from lmnsquid.blocklist import Blocklist
+from lmnsquid.blocklist import Blocklist, noauth_list
 from lmnsquid.config import Settings
 from lmnsquid.models import Instance
 from lmnsquid.reconciler import Reconciler
@@ -42,6 +42,7 @@ class FakeDockerService:
         self.docker_host = docker_host
         self.secrets_dir = secrets_dir
         self.blocklist = Blocklist(blocklists_dir)
+        self.noauth = noauth_list(blocklists_dir)
         self.containers: dict[str, dict[str, Any]] = {}
         self.volumes: set[str] = set()
         # Test-observability hooks.
@@ -70,14 +71,17 @@ class FakeDockerService:
             # Mirror the real service: the replacement is created first, so a failure
             # leaves the previous container exactly as it was and raises.
             raise RuntimeError("simulated pull failure")
-        # Mirror the real service: the blocklist is created (empty) and mounted, and the
+        # Mirror the real service: both lists are created (empty) and mounted, and the
         # cache/log volumes come into existence with the container.
         self.blocklist.ensure(inst.name)
+        self.noauth.ensure(inst.name)
         self.volumes.update({f"lmnsquid-cache-{inst.name}", f"lmnsquid-logs-{inst.name}"})
         self.containers[inst.name] = {
             "running": True,
             "image": inst.image,
             "health": "unhealthy" if "bad" in inst.image else "healthy",
+            # An image tagged "old" stands for one from before ADR-016 (ignores noauth).
+            "noauth_active": "old" not in inst.image,
             "env": self.env_for(inst),
             "logs": f"started {inst.container_name}\n",
             "access_logs": (
@@ -113,12 +117,18 @@ class FakeDockerService:
             self.volumes.discard(f"lmnsquid-logs-{name}")
         self.blocklist.delete(name)
 
+    def noauth_active(self, name: str) -> bool:
+        container = self.containers.get(name)
+        if container is None or not container["running"]:
+            raise LookupError(f"instance {name!r} is not running")
+        return bool(container["noauth_active"])
+
     def reload(self, name: str) -> dict[str, Any]:
         container = self.containers.get(name)
         if container is None or not container["running"]:
             raise LookupError(f"instance {name!r} is not running")
         self.reloaded.append(name)
-        return {"name": name, "reloaded": True}
+        return {"name": name, "reloaded": True, "notices": []}
 
     def status(self, name: str) -> dict[str, Any]:
         container = self.containers.get(name)

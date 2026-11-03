@@ -78,7 +78,9 @@ Log per client (browser, codes):
 - [ ] **Visitor** (teacher/student from **another school**) → the **local** proxy works (global role group).
 - [ ] **Internetsperre:** remove a user from their `internet` group → within ~10 s → **403**.
 - [ ] Blocked domain (`lmnsquid blocklist <name> add <domain>` + `reload`): HTTP → **403** page;
-      HTTPS → browser connection/TLS error (no block page — the proxy does not decrypt).
+      HTTPS → browser certificate warning (the proxy serves its 403 inside TLS with an
+      untrusted throwaway certificate; the blocked server is never contacted), or a connection
+      error when only the SNI is blocked. No usable block page (ADR-002, clarification).
 - [ ] `Squid access.log` shows the Kerberos username + ACL verdict.
 
 Document the result (client/browser/codes) here or in the ticket. Only then is
