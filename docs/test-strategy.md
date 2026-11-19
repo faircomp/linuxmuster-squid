@@ -170,6 +170,16 @@ acceptance list in `deployment-gpo.md`.
   rollback after a failed update, rollback, update-all, reconcile; a hand-edited definition is
   picked up by reconcile/update, an invalid one skipped; the entrypoint check itself
   (`sh image/entrypoint.sh` up to a stubbed `mkdir`).
+- **Log rotation (T13):** cp-docker-it (`test_log_rotation_*`, containers from the real
+  DockerService, so with its `cap_drop ALL` + four caps, read-only rootfs, no-new-privileges and
+  log volume): forced rotation moves the content completely into `access.log.1`, empties the
+  log, squid writes on without NULs and the tailer follows; modes `640 proxy:proxy` kept;
+  after six rotations exactly `access.log.1`, `.2.gz` (retention 2) and `cache.log.1..4.gz`;
+  a volume as 7.3.9 left it (backlog, empty `.1`/`.1.gz`/`*.backup`, state from yesterday):
+  the empty leftovers are removed and logged, a non-empty `*.backup` and an unrelated empty
+  file stay, the first unforced run rotates the backlog byte-identical, the next compresses
+  it; a rotation that fails logs exactly one `logrotate failed … first: error:` line. All three
+  are red against the 7.3.9 image (`LMNSQUID_IT_IMAGE=<old image>`).
 - **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;
   bypass/traversal; DC outage does not stall (ttl/grace).
 

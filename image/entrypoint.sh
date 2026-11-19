@@ -166,6 +166,7 @@ fi
     missingok
     notifempty
     copytruncate
+    su proxy proxy
 }
 EOF
     fi
@@ -177,11 +178,30 @@ EOF
     missingok
     notifempty
     copytruncate
+    su proxy proxy
 }
 EOF
 } > "${RUN}/logrotate.conf"
+# `su proxy proxy`: logrotate creates the copy, chowns it to the log's owner and then copies
+# the log's ACL onto it, which only the file's owner (or CAP_FOWNER, not granted) may do. As
+# root it failed there, leaving an empty 0600 copy and the log untouched, every night. As the
+# owner it needs no extra capability (seteuid via SETUID/SETGID).
+# Those empty copies, left by images up to 7.3.9, would otherwise be renamed to *.backup on
+# every run and never expire: remove them, but only empty files with logrotate's names
+# (notifempty means a real rotation is never empty).
+leftovers=$(find /var/log/squid -maxdepth 1 -type f -empty \
+    \( -name 'access.log.[0-9]*' -o -name 'cache.log.[0-9]*' \) -print -delete | wc -l)
+if [ "${leftovers}" -gt 0 ]; then
+    echo "linuxmuster-squid: removed ${leftovers} empty file(s) left by failed log rotations" >&2
+fi
+# One line per failed run in the container log (no flood): the error count and the first one.
 ( while true; do
-      logrotate -s /var/log/squid/.logrotate.state "${RUN}/logrotate.conf" 2>/dev/null || true
+      if ! lr_out=$(logrotate -s /var/log/squid/.logrotate.state "${RUN}/logrotate.conf" 2>&1); then
+          lr_errors=$(printf '%s\n' "${lr_out}" | grep -c '^error:' || true)
+          lr_first=$(printf '%s\n' "${lr_out}" | grep -m1 '^error:' \
+              || printf '%s\n' "${lr_out}" | grep -m1 . || true)
+          echo "linuxmuster-squid: logrotate failed (${lr_errors} error(s)), first: ${lr_first}" >&2
+      fi
       sleep 3600
   done ) &
 

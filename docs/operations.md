@@ -410,8 +410,46 @@ logs; all request/cache logs live in the Docker volumes above.
   → `docker/lmnsquid logs` (live view, capped docker-json log); (2) the **durable, searchable
   history** lives gzip-rotated in the **persistent log volume** `lmnsquid-logs-<name>`
   (`/var/log/squid`), surviving restarts/updates.
-- **Rotation:** `logrotate` rotates daily + gzip; retained is `--log-retention-days`
-  (default **30**, configurable up to 3650) → that *is* the retention/deletion period.
+- **Rotation:** `logrotate` in the container (checked hourly, state in the volume,
+  `/var/log/squid/.logrotate.state`) rotates the access log daily (first run on a new calendar
+  day, container time = UTC) with `copytruncate` (the content moves to `access.log.1`, the log
+  is emptied and squid writes on), gzips it a day later (`access.log.2.gz` …) and keeps
+  `--log-retention-days` rotations (default **30**, configurable up to 3650) → that *is* the
+  retention/deletion period. `cache.log` is rotated weekly, 4 kept. It rotates as the log's
+  owner `proxy` (`su proxy proxy`): the container has no `CAP_FOWNER`, and as root logrotate
+  could not set the mode/ACL of the copy (images up to 7.3.9, see below). A failed run writes
+  **one** line to the container log: `linuxmuster-squid: logrotate failed (<n> error(s)),
+  first: <first error>` (`docker logs lmnsquid-<name> 2>&1 | grep logrotate`). Known limit of
+  `copytruncate`: a line squid writes between the copy and the truncation (milliseconds) is
+  lost.
+- **Check the rotation:** `docker exec lmnsquid-<name> ls -la /var/log/squid` — a few days
+  after the start there are `access.log.1` and `access.log.<n>.gz`, all `proxy proxy` with mode
+  `-rw-r-----` like `access.log`, none of them empty, `access.log` itself not older than a day;
+  `docker exec lmnsquid-<name> cat /var/log/squid/.logrotate.state` shows the last run.
+- **After upgrading from an image up to 7.3.9 (broken rotation):** those images never rotated
+  in the hardened container: `access.log` grew without limit, and every night left an empty
+  `access.log.1` / `access.log.1.gz` / `*.backup` with mode `-rw-------`; the retention did not
+  apply. The fixed image deletes these **empty** files when the container starts (only empty
+  files with logrotate's names; it logs `removed <n> empty file(s) left by failed log
+  rotations`), nothing with content. The backlog is then rotated like any other day: at the
+  first hourly run on the next calendar day (at once, if the last attempt was on an earlier
+  day) all of it moves to `access.log.1`, one day later to `access.log.2.gz`, and it is deleted
+  `--log-retention-days` days after the upgrade. **Disk:** the copy needs free space of the
+  size of `access.log` for a moment, the compression a day later the size of the `.gz` on top. **Data
+  protection (T13):** the backlog's oldest lines (back to when the rotation stopped working)
+  are kept until then, longer than the retention promises. To keep the deletion period
+  strict, trim them once the backlog has been rotated, while it is `access.log.1` (replace 30
+  with the instance's retention):
+
+  ```bash
+  docker exec lmnsquid-<name> sh -c 'cd /var/log/squid && c=$(( $(date +%s) - 30*86400 )) &&
+    awk -v c="$c" "\$1+0 >= c" access.log.1 > trim && chmod 640 trim &&
+    chown proxy:proxy trim && mv trim access.log.1'
+  ```
+
+  or, if it is already `access.log.2.gz`, the same with
+  `zcat access.log.2.gz | awk -v c="$c" "\$1+0 >= c" | gzip > trim … mv trim access.log.2.gz`.
+  It keeps every line whose timestamp (first field) is within the retention.
 - **Query history:** `GET /v1/instances/{name}/logs/access?since=&until=&grep=` or
   `lmnsquid access-logs …` searches all rotated `.gz` daily files.
 - **Disk space:** roughly `retention-days × ~2 MB packed × instances` — at 90 days
