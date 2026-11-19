@@ -89,6 +89,11 @@ def create(
     access_log_enabled: bool = typer.Option(
         True, help="log requests (privacy: --no-access-log-enabled)"
     ),
+    krb5_clockskew_seconds: int = typer.Option(
+        300,
+        help="Kerberos clock skew the proxy accepts, 300-7200 s (krb5.conf clockskew); "
+        "raise only while client clocks are off, it widens the window for stolen tickets",
+    ),
 ) -> None:
     """Create (and reconcile) an instance."""
     body: dict[str, Any] = {
@@ -103,6 +108,7 @@ def create(
         "cache_size_mb": cache_size_mb,
         "log_retention_days": log_retention_days,
         "access_log_enabled": access_log_enabled,
+        "krb5_clockskew_seconds": krb5_clockskew_seconds,
     }
     if image is not None:
         body["image"] = image
@@ -347,6 +353,11 @@ def edit(
     cache_size_mb: Optional[int] = typer.Option(None),
     log_retention_days: Optional[int] = typer.Option(None),
     access_log_enabled: Optional[bool] = typer.Option(None),
+    krb5_clockskew_seconds: Optional[int] = typer.Option(
+        None,
+        help="Kerberos clock skew the proxy accepts, 300-7200 s; 300 = the default "
+        "(replaces the container)",
+    ),
 ) -> None:
     """Change fields of an existing instance without rm+create (re-validated + reconciled).
 
@@ -375,6 +386,8 @@ def edit(
         body["log_retention_days"] = log_retention_days
     if access_log_enabled is not None:
         body["access_log_enabled"] = access_log_enabled
+    if krb5_clockskew_seconds is not None:
+        body["krb5_clockskew_seconds"] = krb5_clockskew_seconds
     if not body:
         typer.secho(
             "nothing to change — pass at least one option", fg=typer.colors.YELLOW, err=True

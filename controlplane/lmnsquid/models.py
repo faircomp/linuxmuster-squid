@@ -41,6 +41,12 @@ DEFAULT_IMAGE = (
     "@sha256:0f59a1d47b090de4c2e89b14b929751e5c422126a7d507fa6ac955d25a0b0fd7"
 )
 
+# Kerberos clock skew the proxy accepts (krb5.conf [libdefaults] clockskew, seconds; ADR-017).
+# 300 is MIT's own default: an instance at it gets no KRB5_CLOCKSKEW_SECONDS in its env, so
+# its container spec stays as before and an upgrade replaces no container for it.
+KRB5_CLOCKSKEW_DEFAULT = 300
+KRB5_CLOCKSKEW_MAX = 7200
+
 
 def _normalize_cidr_list(value: str) -> str:
     """Split on commas/whitespace, validate each part as a CIDR, and return the
@@ -72,6 +78,7 @@ class Instance(BaseModel):
     image: str = DEFAULT_IMAGE
     log_retention_days: int = 30
     access_log_enabled: bool = True
+    krb5_clockskew_seconds: int = KRB5_CLOCKSKEW_DEFAULT
 
     @field_validator("school", "role")
     @classmethod
@@ -152,6 +159,16 @@ class Instance(BaseModel):
             raise ValueError("log_retention_days must be between 1 and 3650")
         return v
 
+    @field_validator("krb5_clockskew_seconds")
+    @classmethod
+    def _v_clockskew(cls, v: int) -> int:
+        if not KRB5_CLOCKSKEW_DEFAULT <= v <= KRB5_CLOCKSKEW_MAX:
+            raise ValueError(
+                f"krb5_clockskew_seconds must be between {KRB5_CLOCKSKEW_DEFAULT} "
+                f"and {KRB5_CLOCKSKEW_MAX}"
+            )
+        return v
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def name(self) -> str:
@@ -184,6 +201,7 @@ class InstancePatch(BaseModel):
     image: str | None = None
     log_retention_days: int | None = None
     access_log_enabled: bool | None = None
+    krb5_clockskew_seconds: int | None = None
 
 
 class UpdateRequest(BaseModel):

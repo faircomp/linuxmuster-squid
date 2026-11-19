@@ -268,6 +268,40 @@ changes nothing (it checks the rendered `squid.conf` in the container). An image
 template next to a directory without `noauth.domains` (an older control plane) uses an empty
 list until the file appears and the next reload reads it.
 
+### ADR-017 — Kerberos clock skew per instance
+**Status:** Proposed (2026-11-19, Kevin's request: a school whose Windows clients run 1 h ahead
+after a LINBO sync until W32Time corrects them; the proxy is to tolerate 90 min until the
+clients are fixed). **Decision:** each instance carries `krb5_clockskew_seconds` (default 300,
+MIT's own; range 300–7200), set with `lmnsquid create|edit --krb5-clockskew-seconds`, the API
+or by hand in the instance definition, and kept by `update`, `update-all`, `rollback` and
+`reconcile` like every other field. The control plane passes it as `KRB5_CLOCKSKEW_SECONDS`;
+the entrypoint validates it again (plain decimal 300–7200, else `FATAL`, exit 1) and writes
+`clockskew = <n>` into the `[libdefaults]` of the `krb5.conf` it renders. **Names:** the
+field and the CLI option follow the existing unit-suffixed fields (`cache_size_mb`,
+`log_retention_days`) and MIT's own relation name (`clockskew`), `krb5_` says which
+configuration it lands in; the env var is the field in upper case like the others
+(libkrb5 reads no variable of that name). **Per instance, no global default in
+`config.yml`:** that file configures the control plane (token, paths, Docker), it has no
+instance defaults; an inherited default would need an "unset" state in the model and a
+resolution step for one setting. **Validation twice:** libkrb5 reads the relation with
+`profile_get_integer` and ignores a parse error (`init_ctx.c`), so an invalid value would
+silently become 300; the entrypoint check covers containers started without the control
+plane. **Default stays out of the env:** at 300 the container env is the one of 7.3.8, so the
+spec fingerprint does not move and the upgrade replaces no container for it.
+**Why:** MIT applies `clockskew` on the acceptor side — the authenticator time
+(`krb5_check_clockskew` from `rd_req_decoded_opt`) and the ticket's start/end time
+(`krb5int_validate_times`) — so it is the one knob for "Clock skew too great" from
+`negotiate_kerberos_auth` (`gss_accept_sec_context`). Fixing the clients is the root-cause fix
+and happens separately; this bridges the time until then. Verified for a client clock **ahead**
+only: a client clock behind fails on the client itself (MIT: "Ticket not yet valid" in
+`gss_init_sec_context`, nothing reaches the proxy; the KDC refuses new ticket requests), and
+Windows (SSPI) behaviour for that case is not verified.
+**Price (threat model T17):** a captured authenticator stays usable for the whole window where
+the replay cache (in the container's tmpfs, entries kept for the same skew) does not see it.
+**Rollout:** the entrypoint change is in the data-plane image; until `DEFAULT_IMAGE` points at
+the CI image built after the merge, the setting is accepted and stored but has no effect on
+instances running the pinned image.
+
 ---
 
 ## Site facts to be verified (P0, enter with source/date)

@@ -1,3 +1,28 @@
+linuxmuster-squid (7.3.9) lmn73; urgency=medium
+
+  * New per-instance setting for the Kerberos clock skew the proxy accepts,
+    for clients whose clock jumped ahead after they got their tickets
+    (login popups with "Clock skew too great" in the container log; a
+    client clock behind the proxy is not helped by it):
+    "lmnsquid edit <name> --krb5-clockskew-seconds 5400" (also on create,
+    in the API as krb5_clockskew_seconds, or by hand in
+    /var/lib/linuxmuster-squid/instances/<name>.yaml followed by
+    "lmnsquid reconcile"). 300 to 7200 seconds, default 300 (the Kerberos
+    default, so nothing changes until you set it; instances at the default
+    are not restarted by the upgrade). The value goes to the container as
+    KRB5_CLOCKSKEW_SECONDS and into its krb5.conf as "clockskew"; an
+    invalid value is refused by the API and by the container. A higher
+    value lets a captured login token be accepted for longer: use it as a
+    stopgap and fix the client clocks (docs/operations.md). It takes
+    effect only with a data-plane image that contains the new entrypoint
+    (DEFAULT_IMAGE pinned to the image built after the merge); with an
+    older image the value is accepted but has no effect.
+  * "lmnsquid edit" with a value the instance does not accept now answers
+    422 with the field and the reason instead of "500 Internal Server
+    Error"; nothing is changed, as before.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Thu, 19 Nov 2026 10:20:12 +0100
+
 linuxmuster-squid (7.3.8) lmn73; urgency=medium
 
   * New per-instance list of domains reachable without proxy login, for

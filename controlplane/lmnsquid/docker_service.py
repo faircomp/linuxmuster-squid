@@ -17,7 +17,7 @@ from docker.models.containers import Container
 from docker.types import LogConfig
 
 from .blocklist import CONTAINER_DIR, Blocklist, noauth_list
-from .models import Instance
+from .models import KRB5_CLOCKSKEW_DEFAULT, Instance
 
 logger = logging.getLogger("lmnsquid.docker")
 
@@ -118,7 +118,7 @@ class DockerService:
 
     def env_for(self, inst: Instance) -> dict[str, str]:
         """Build the environment variables consumed by entrypoint.sh."""
-        return {
+        env = {
             "INSTANCE": inst.name,
             "VISIBLE_HOSTNAME": inst.visible_hostname,
             "REALM": inst.realm,
@@ -131,6 +131,11 @@ class DockerService:
             "LOG_RETENTION_DAYS": str(inst.log_retention_days),
             "ACCESS_LOG_ENABLED": "1" if inst.access_log_enabled else "0",
         }
+        # Only when it differs from the default (the entrypoint's too): an unchanged env keeps
+        # the spec fingerprint, so instances at the default are not replaced on upgrade.
+        if inst.krb5_clockskew_seconds != KRB5_CLOCKSKEW_DEFAULT:
+            env["KRB5_CLOCKSKEW_SECONDS"] = str(inst.krb5_clockskew_seconds)
+        return env
 
     def spec_for(self, inst: Instance) -> dict[str, Any]:
         """Everything the container is created from (JSON-able), except its name.

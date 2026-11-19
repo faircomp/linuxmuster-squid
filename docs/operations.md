@@ -59,6 +59,68 @@ The keytab must already be present as secret `<keytab-secret>` in `secrets_dir`
   the log volume, e.g. for a retention obligation; delete it later with
   `docker volume rm lmnsquid-logs-<name>`. The keytab in `secrets/` stays (operator-managed).
 
+## Kerberos clock skew (per instance)
+
+The proxy accepts a Kerberos authenticator only if the client's clock is within the
+**clock skew** of its own (MIT `krb5.conf` `[libdefaults] clockskew`, default **300 s**).
+A client whose clock is further off gets a login popup (407) until it logs off; the container
+log shows `gss_accept_sec_context() failed ... Clock skew too great`. The setting applies to
+the proxy (the acceptor) only; the KDC keeps its own limit, so a client that is off by more
+than that cannot get new tickets anyway — the raised value helps clients whose clock jumped
+**ahead after** they got their tickets (e.g. a Windows image that boots with the wrong time zone
+and corrects itself minutes later). Verified only for a client clock **ahead** of the proxy
+(authenticators in the future, E2E); a client clock **behind** is not helped by it: an MIT client
+fails itself ("Ticket not yet valid" in `gss_init_sec_context`, nothing reaches the proxy) and
+the KDC refuses its new ticket requests; how Windows (SSPI) behaves there is not verified.
+
+Per instance, in seconds, **300–7200** (default 300 = the old behaviour):
+
+| Where | Name |
+|---|---|
+| instance definition (`/var/lib/linuxmuster-squid/instances/<name>.yaml`) | `krb5_clockskew_seconds` |
+| CLI | `lmnsquid create` / `lmnsquid edit <name>` with `--krb5-clockskew-seconds <n>` |
+| API | `krb5_clockskew_seconds` in `POST /v1/instances` and `PATCH /v1/instances/{name}` |
+| container env (read by the entrypoint) | `KRB5_CLOCKSKEW_SECONDS` |
+
+Example, 90 minutes on a running instance (replaces its container, health-gated):
+
+```
+lmnsquid edit default-school-teachers --krb5-clockskew-seconds 5400
+docker exec lmnsquid-default-school-teachers grep clockskew /run/lmnsquid/krb5.conf
+#     clockskew = 5400
+lmnsquid edit default-school-teachers --krb5-clockskew-seconds 300   # back to the default
+```
+
+Or by hand in the definition, then apply it with `lmnsquid reconcile` (or `lmnsquid update
+<name>`; `update-all` leaves instances alone that already run the pinned image):
+
+```
+# /var/lib/linuxmuster-squid/instances/default-school-teachers.yaml
+krb5_clockskew_seconds: 5400
+```
+
+The value stays in the definition across `update`, `update-all`, `rollback` and `reconcile`.
+A value outside 300–7200 or not a whole number is refused: the API/CLI answer 422 and change
+nothing; a hand-edited definition with such a value is skipped by `reconcile`/`update-all`
+(`invalid instance record in <name>.yaml` in `journalctl -u linuxmuster-squid`) and the running
+container stays as it was; a container started with such a `KRB5_CLOCKSKEW_SECONDS` stops
+with `FATAL` before it renders its config. At 300 the container gets no
+`KRB5_CLOCKSKEW_SECONDS` at all, so instances that never set it are not replaced by the
+upgrade that brings the setting. **It takes effect only with a data-plane image that contains
+the new entrypoint:** `DEFAULT_IMAGE` must be pinned to the CI image built after the merge (or
+`--image` set to such an image). With an older image the value is accepted and stored but has no
+effect (its `krb5.conf` has no `clockskew` line, and its startup line in the container log lacks
+`krb5_clockskew=`).
+
+**When:** only as a stopgap while client clocks are known to be off, and back to 300 once they
+are fixed — the clocks are the root cause (Windows: `RealTimeIsUniversal`, W32Time against the
+DC). **Price:** a captured authenticator (proxy authentication travels in clear HTTP on the
+LAN) stays acceptable for the whole window instead of 5 minutes. The replay cache still
+refuses the same authenticator twice at the same instance — MIT keeps its entries for the same
+clock skew — but it lives in the container's tmpfs: after a container restart, or at another
+instance that accepts the same key, a captured token could be replayed within the window
+(threat model T17).
+
 ## Blocklist (per instance)
 
 Each instance has its own domain list, `/etc/linuxmuster-squid/blocklists/<name>/blocked.domains`
