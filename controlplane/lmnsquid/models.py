@@ -38,7 +38,7 @@ _IMAGE_RE = re.compile(
 # their pinned digest until `update`).
 DEFAULT_IMAGE = (
     "ghcr.io/faircomp/linuxmuster-squid"
-    "@sha256:0f59a1d47b090de4c2e89b14b929751e5c422126a7d507fa6ac955d25a0b0fd7"
+    "@sha256:d2fbcf572554bc5620d0efbdda84e0b9d278ad22575863744a819bc24f0ed6ec"
 )
 
 # Kerberos clock skew the proxy accepts (krb5.conf [libdefaults] clockskew, seconds; ADR-017).
