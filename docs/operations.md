@@ -67,8 +67,11 @@ A client whose clock is further off gets a login popup (407) until it logs off; 
 log shows `gss_accept_sec_context() failed ... Clock skew too great`. The setting applies to
 the proxy (the acceptor) only; the KDC keeps its own limit, so a client that is off by more
 than that cannot get new tickets anyway — the raised value helps clients whose clock jumped
-**after** they got their tickets (e.g. a Windows image that boots with the wrong time zone and
-corrects itself minutes later).
+**ahead after** they got their tickets (e.g. a Windows image that boots with the wrong time zone
+and corrects itself minutes later). Verified only for a client clock **ahead** of the proxy
+(authenticators in the future, E2E); a client clock **behind** is not helped by it: an MIT client
+fails itself ("Ticket not yet valid" in `gss_init_sec_context`, nothing reaches the proxy) and
+the KDC refuses its new ticket requests; how Windows (SSPI) behaves there is not verified.
 
 Per instance, in seconds, **300–7200** (default 300 = the old behaviour):
 
@@ -103,9 +106,11 @@ nothing; a hand-edited definition with such a value is skipped by `reconcile`/`u
 container stays as it was; a container started with such a `KRB5_CLOCKSKEW_SECONDS` stops
 with `FATAL` before it renders its config. At 300 the container gets no
 `KRB5_CLOCKSKEW_SECONDS` at all, so instances that never set it are not replaced by the
-upgrade that brings the setting. The setting needs a data-plane image that knows it; an older
-image ignores it (its `krb5.conf` has no `clockskew` line, and its startup line in the container
-log lacks `krb5_clockskew=`).
+upgrade that brings the setting. **It takes effect only with a data-plane image that contains
+the new entrypoint:** `DEFAULT_IMAGE` must be pinned to the CI image built after the merge (or
+`--image` set to such an image). With an older image the value is accepted and stored but has no
+effect (its `krb5.conf` has no `clockskew` line, and its startup line in the container log lacks
+`krb5_clockskew=`).
 
 **When:** only as a stopgap while client clocks are known to be off, and back to 300 once they
 are fixed — the clocks are the root cause (Windows: `RealTimeIsUniversal`, W32Time against the

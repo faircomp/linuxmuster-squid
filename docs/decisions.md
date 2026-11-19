@@ -292,11 +292,15 @@ spec fingerprint does not move and the upgrade replaces no container for it.
 (`krb5_check_clockskew` from `rd_req_decoded_opt`) and the ticket's start/end time
 (`krb5int_validate_times`) — so it is the one knob for "Clock skew too great" from
 `negotiate_kerberos_auth` (`gss_accept_sec_context`). Fixing the clients is the root-cause fix
-and happens separately; this bridges the time until then.
+and happens separately; this bridges the time until then. Verified for a client clock **ahead**
+only: a client clock behind fails on the client itself (MIT: "Ticket not yet valid" in
+`gss_init_sec_context`, nothing reaches the proxy; the KDC refuses new ticket requests), and
+Windows (SSPI) behaviour for that case is not verified.
 **Price (threat model T17):** a captured authenticator stays usable for the whole window where
 the replay cache (in the container's tmpfs, entries kept for the same skew) does not see it.
 **Rollout:** the entrypoint change is in the data-plane image; until `DEFAULT_IMAGE` points at
-an image built with it, the setting has no effect on instances running the pinned image.
+the CI image built after the merge, the setting is accepted and stored but has no effect on
+instances running the pinned image.
 
 ---
 
