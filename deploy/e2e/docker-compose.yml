@@ -3,8 +3,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Kerberos E2E stack for linuxmuster-squid (heavy tier / crabbox).
-# Proves: teacher->200, student->403, blocked domain->403, no ticket->407, and the
-# domains without proxy auth (ADR-016) incl. their negative cases.
+# Proves: teacher->200, student->403, blocked domain->403, no ticket->407, the
+# domains without proxy auth (ADR-016) incl. their negative cases, and the Kerberos clock
+# skew per instance (ADR-017).
 # Orchestrated by scripts/tests/e2e_kerberos.sh (brings services up in order,
 # creates fixtures and runs the assertions). Realm/domain: EXAMPLE.INTERNAL.
 name: lmnsquid-e2e
@@ -175,6 +176,34 @@ services:
     volumes:
       - shared:/shared:ro
       - ./lists-old:/etc/squid/lists:ro
+    read_only: true
+    tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID", "DAC_OVERRIDE", "CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+
+  # Kerberos clock skew raised to 90 min (ADR-017; `squid` stays at the default 300 s): a
+  # client whose clock runs 60 min ahead gets 200 here and 407 there, 100 min ahead 407 here.
+  squid-skew:
+    image: linuxmuster-squid:dev
+    hostname: squid6.example.internal
+    depends_on: [samba-dc, squid]
+    environment:
+      INSTANCE: "e2e-skew"
+      VISIBLE_HOSTNAME: "squid6.example.internal"
+      REALM: "EXAMPLE.INTERNAL"
+      AD_GROUP: "teachers"
+      SCHOOL_SUBNETS: "0.0.0.0/0"
+      KEYTAB: "/shared/squid.keytab"
+      CACHE_SIZE_MB: "200"
+      KRB5_CLOCKSKEW_SECONDS: "5400"
+    dns: ["10.228.0.2"]
+    networks:
+      e2e:
+        ipv4_address: 10.228.0.15
+    volumes:
+      - shared:/shared:ro
+      - ./blocked.domains:/etc/squid/lists/blocked.domains:ro
     read_only: true
     tmpfs: ["/run", "/tmp", "/var/log/squid", "/var/spool/squid"]
     cap_drop: ["ALL"]

@@ -160,6 +160,16 @@ acceptance list in `deployment-gpo.md`.
   restart, blocked subdomain → 403), cp-docker-it (real DockerService: such lists written after
   the start → reload ok → restart → healthy; counter-check with an image whose `lists-sync.sh`
   only copies: the reload fails with `Bungled`).
+- **Kerberos clock skew (ADR-017):** E2E with the tickets fetched at the true time and curl
+  under libfaketime: client +0 → 200 at 300 s (`squid`) and at 5400 s (`squid-skew`); +60 min →
+  407 at 300 s, 200 at 5400 s; +100 min → 407 at 5400 s (a client clock behind is not covered); the rendered
+  `krb5.conf` carries `clockskew = 300` resp. `5400`; a container with 299, 7201 or `abc` stops
+  with `FATAL` (exit 1). Unit (`test_clockskew.py`): 299/7201/non-numbers refused (model, POST,
+  PATCH → 422 without touching the container, CLI exit 1), 300/5400/7200 accepted; env only off
+  the default (the 7.3.8 env keys and the spec fingerprint unchanged at 300); kept by update,
+  rollback after a failed update, rollback, update-all, reconcile; a hand-edited definition is
+  picked up by reconcile/update, an invalid one skipped; the entrypoint check itself
+  (`sh image/entrypoint.sh` up to a stubbed `mkdir`).
 - **P10:** keytab perms; manager ACL not reachable externally; API bind ≠ 0.0.0.0;
   bypass/traversal; DC outage does not stall (ttl/grace).
 

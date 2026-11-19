@@ -147,6 +147,28 @@ check_via    "old image + noauth.domains: no ticket -> 407"       "" "$PROXY5" "
 check_via    "old image + noauth.domains: teacher -> 200"         teacher1 "$PROXY5" "http://secure.example.internal/" 200
 check_via    "old image + noauth.domains: student -> 403"         student1 "$PROXY5" "$ALLOWED" 403
 
+# Kerberos clock skew (ADR-017): the tickets are fetched with the true time (as a Windows
+# client holds them when its clock jumps), then curl runs with the client clock <offset>
+# ahead, so every authenticator it builds carries that time. The proxy's own clock is true.
+# check_skew <description> <proxy host> <offset, faketime syntax> <expected code>
+check_skew() {
+  local desc="$1" host="$2" offset="$3" exp="$4" code
+  kdestroy -q 2>/dev/null || true
+  printf '%s' "$PW" | kinit "teacher1@$REALM" >/dev/null 2>&1 || { echo "  [FAIL] $desc: kinit"; fail=1; return; }
+  kvno -q "HTTP/$host@$REALM" >/dev/null 2>&1 || { echo "  [FAIL] $desc: kvno HTTP/$host"; fail=1; return; }
+  code=$(faketime -f "$offset" curl -s -o /dev/null -w '%{http_code}' \
+              --proxy "http://$host:3128" --proxy-negotiate -U : "$ALLOWED" 2>/dev/null || true)
+  if [ "$code" = "$exp" ]; then echo "  [PASS] $desc ($code)"; else echo "  [FAIL] $desc: expected $exp, got $code"; fail=1; fi
+}
+echo "-- Kerberos clock skew (squid: default 300 s, squid6: 5400 s) --"
+SKEW_DEFAULT="squid.example.internal"
+SKEW_5400="squid6.example.internal"
+check_skew "clock skew: client +0 min, default 300 s -> 200"         "$SKEW_DEFAULT" "+0"    200
+check_skew "clock skew: client +0 min, 5400 s -> 200"                "$SKEW_5400"    "+0"    200
+check_skew "clock skew: client +60 min, default 300 s -> 407"        "$SKEW_DEFAULT" "+60m"  407
+check_skew "clock skew: client +60 min, 5400 s -> 200"               "$SKEW_5400"    "+60m"  200
+check_skew "clock skew: client +100 min, 5400 s -> 407"              "$SKEW_5400"    "+100m" 407
+
 echo
 if [ "$fail" -eq 0 ]; then echo "E2E: ALL ASSERTIONS OK"; else echo "E2E: FAILED"; fi
 exit "$fail"

@@ -90,8 +90,12 @@ dcx samba-tool dns add 127.0.0.1 "$DLC" squid5 A 10.228.0.14    -U "Administrato
 dcx samba-tool dns add 127.0.0.1 "$DLC" www.secure A 10.228.0.21 -U "Administrator%$PW" >/dev/null 2>&1 || true
 dcx samba-tool dns add 127.0.0.1 "$DLC" secure2 A 10.228.0.21   -U "Administrator%$PW" >/dev/null 2>&1 || true
 
-log "start origin + origin-https + squid + squid2 + squid-inet + squid-noauth + squid-old"
-$DC up -d origin origin-https squid squid2 squid-inet squid-noauth squid-old || exit 1
+# Kerberos clock skew (ADR-017): squid6 = squid-skew (KRB5_CLOCKSKEW_SECONDS=5400).
+dcx samba-tool spn   add "HTTP/squid6.$DLC" squidsvc             >/dev/null 2>&1 || true
+dcx samba-tool dns add 127.0.0.1 "$DLC" squid6 A 10.228.0.15    -U "Administrator%$PW" >/dev/null 2>&1 || true
+
+log "start origin + origin-https + squid + squid2 + squid-inet + squid-noauth + squid-old + squid-skew"
+$DC up -d origin origin-https squid squid2 squid-inet squid-noauth squid-old squid-skew || exit 1
 
 wait_healthy() {
   local svc="$1" ready=0 st=none cid
@@ -109,6 +113,7 @@ wait_healthy squid2    || exit 1
 wait_healthy squid-inet || exit 1
 wait_healthy squid-noauth || exit 1
 wait_healthy squid-old || exit 1
+wait_healthy squid-skew || exit 1
 
 log "run assertions (test-client)"
 $DC run --rm test-client
@@ -180,6 +185,29 @@ if [ "$code" = 200 ]; then
 else
   echo "  [FAIL] after the restart: expected 200, got '$code'"; rc=$((rc + 1))
 fi
+
+# Kerberos clock skew (ADR-017): the rendered krb5.conf carries the value, and the entrypoint
+# refuses a value outside 300..7200 before it renders anything (exit 1, FATAL).
+log "clock skew: krb5.conf of squid (default) and squid-skew, invalid values refused"
+for pair in "squid:300" "squid-skew:5400"; do
+  svc="${pair%%:*}"; want="${pair#*:}"
+  if $DC exec -T "$svc" grep -qx "    clockskew = $want" /run/lmnsquid/krb5.conf; then
+    echo "  [PASS] $svc: krb5.conf has clockskew = $want"
+  else
+    echo "  [FAIL] $svc: krb5.conf lacks 'clockskew = $want'"; rc=$((rc + 1))
+  fi
+done
+for bad in 299 7201 abc; do
+  # the image alone, without a network: the checks run before anything needs the DC or a keytab
+  out=$($DOCKER run --rm --network none -e VISIBLE_HOSTNAME=squid6.$DLC -e REALM=EXAMPLE.INTERNAL \
+          -e AD_GROUP=teachers -e "KRB5_CLOCKSKEW_SECONDS=$bad" linuxmuster-squid:dev 2>&1); erc=$?
+  if [ "$erc" = 1 ] && printf '%s' "$out" | grep -q "FATAL: KRB5_CLOCKSKEW_SECONDS='$bad'"; then
+    echo "  [PASS] KRB5_CLOCKSKEW_SECONDS=$bad: container refuses to start (exit 1, FATAL)"
+  else
+    echo "  [FAIL] KRB5_CLOCKSKEW_SECONDS=$bad: expected exit 1 + FATAL, got exit $erc: $(printf '%s' "$out" | tail -2)"
+    rc=$((rc + 1))
+  fi
+done
 
 log "squid-noauth access.log (excerpt)"
 $DC exec -T squid-noauth sh -c 'tail -25 /var/log/squid/access.log' 2>/dev/null || true
