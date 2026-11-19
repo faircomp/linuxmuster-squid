@@ -24,6 +24,7 @@ reconciles the actual against the desired state. File name convention:
 | `keytab_secret` | Name of the mounted keytab secret. |
 | `cache_size_mb` | Cache size. |
 | `image` | **Digest-pinned** image (`…@sha256:…`, P5). |
+| `krb5_clockskew_seconds` | Kerberos clock skew the proxy accepts, 300–7200 s (default 300; env `KRB5_CLOCKSKEW_SECONDS`, `krb5.conf` `clockskew`). ADR-017, [operations.md](../../docs/operations.md#kerberos-clock-skew-per-instance). |
 
 **Verified (P3, crabbox E2E):** two instances with different `ad_group`
 (default `teachers` vs. `schule2-teachers`) isolate cleanly — the teacher of one

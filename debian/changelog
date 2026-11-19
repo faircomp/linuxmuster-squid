@@ -1,5 +1,19 @@
 linuxmuster-squid (7.3.9) lmn73; urgency=medium
 
+  * New per-instance setting for the Kerberos clock skew the proxy accepts,
+    for clients whose clock is off after they got their tickets (login
+    popups with "Clock skew too great" in the container log):
+    "lmnsquid edit <name> --krb5-clockskew-seconds 5400" (also on create,
+    in the API as krb5_clockskew_seconds, or by hand in
+    /var/lib/linuxmuster-squid/instances/<name>.yaml followed by
+    "lmnsquid reconcile"). 300 to 7200 seconds, default 300 (the Kerberos
+    default, so nothing changes until you set it; instances at the default
+    are not restarted by the upgrade). The value goes to the container as
+    KRB5_CLOCKSKEW_SECONDS and into its krb5.conf as "clockskew"; an
+    invalid value is refused by the API and by the container. A higher
+    value lets a captured login token be accepted for longer: use it as a
+    stopgap and fix the client clocks (docs/operations.md). Needs a
+    data-plane image that knows the setting; an older one ignores it.
   * "lmnsquid edit" with a value the instance does not accept now answers
     422 with the field and the reason instead of "500 Internal Server
     Error"; nothing is changed, as before.

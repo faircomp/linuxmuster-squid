@@ -93,6 +93,9 @@ Status document. Keep it up to date with every substantive change (see
   `noauth reload` refuses (409) when the running container does not read the list (an image
   from before ADR-016). Price: no identity for these requests (exam mode, Internetsperre;
   threat model T16).
+- **Kerberos clock skew per instance (ADR-017):** `KRB5_CLOCKSKEW_SECONDS` (300–7200, default
+  300) → `clockskew` in the rendered `krb5.conf`; validated in the API model and again in the
+  entrypoint (`FATAL` before anything is rendered).
 - **Hardening:** `cache_effective_user proxy`; Keytab as a secret (tmpfs, readable by
   `proxy`); `KRB5CCNAME=FILE:` (the kernel-keyring ccache fails when unprivileged);
   `read_only` rootfs + tmpfs; `cap_drop: ALL` (+ minimal SETUID/SETGID/DAC_OVERRIDE);

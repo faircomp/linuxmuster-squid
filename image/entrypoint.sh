@@ -22,6 +22,20 @@ set -eu
 : "${LOG_RETENTION_DAYS:=30}"             # access-log retention in days (logrotate)
 : "${ACCESS_LOG_ENABLED:=1}"              # 1=access log on, 0=off (data privacy)
 : "${INTERNET_GROUP:=}"                   # optional 2nd gate: linuxmuster Internetsperre (empty=off)
+: "${KRB5_CLOCKSKEW_SECONDS:=300}"        # Kerberos clock skew accepted (krb5.conf clockskew)
+
+# Validated here because libkrb5 would not complain: a value it cannot parse silently becomes
+# its default 300. Plain decimal only (no sign, no leading zero), 300..7200 (ADR-017).
+case "${KRB5_CLOCKSKEW_SECONDS}" in
+    [1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]) skew_digits=1 ;;
+    *) skew_digits=0 ;;
+esac
+if [ "${skew_digits}" = 0 ] || [ "${KRB5_CLOCKSKEW_SECONDS}" -lt 300 ] \
+   || [ "${KRB5_CLOCKSKEW_SECONDS}" -gt 7200 ]; then
+    echo "FATAL: KRB5_CLOCKSKEW_SECONDS='${KRB5_CLOCKSKEW_SECONDS}' is not a whole number of" \
+         "seconds from 300 to 7200." >&2
+    exit 1
+fi
 
 # Access log on/off (data privacy): with 0, Squid logs no requests.
 if [ "${ACCESS_LOG_ENABLED}" = "0" ]; then
@@ -91,6 +105,7 @@ cat > "${KRB5_CONFIG}" <<EOF
     rdns = false
     dns_canonicalize_hostname = false
     forwardable = true
+    clockskew = ${KRB5_CLOCKSKEW_SECONDS}
 EOF
 # OpenLDAP client: do NOT canonicalize the SASL host via reverse DNS.
 printf 'SASL_NOCANON on\n' > "${LDAPCONF}"
@@ -170,5 +185,5 @@ EOF
       sleep 3600
   done ) &
 
-echo "linuxmuster-squid: instance='${INSTANCE}' fqdn='${VISIBLE_HOSTNAME}' group='${AD_GROUP}@${REALM}' port=${HTTP_PORT}" >&2
+echo "linuxmuster-squid: instance='${INSTANCE}' fqdn='${VISIBLE_HOSTNAME}' group='${AD_GROUP}@${REALM}' port=${HTTP_PORT} krb5_clockskew=${KRB5_CLOCKSKEW_SECONDS}s" >&2
 exec squid -N -d1 -f "${CONF}"

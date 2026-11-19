@@ -17,6 +17,7 @@ from starlette.testclient import TestClient
 from lmnsquid.api import create_app
 from lmnsquid.blocklist import Blocklist, noauth_list
 from lmnsquid.config import Settings
+from lmnsquid.docker_service import DockerService
 from lmnsquid.models import Instance
 from lmnsquid.reconciler import Reconciler
 from lmnsquid.store import Store
@@ -51,19 +52,8 @@ class FakeDockerService:
         self.reloaded: list[str] = []
 
     def env_for(self, inst: Instance) -> dict[str, str]:
-        return {
-            "INSTANCE": inst.name,
-            "VISIBLE_HOSTNAME": inst.visible_hostname,
-            "REALM": inst.realm,
-            "AD_GROUP": inst.ad_group,
-            "INTERNET_GROUP": inst.internet_group or "",
-            "SCHOOL_SUBNETS": inst.school_subnets,
-            "KEYTAB": f"/run/secrets/{inst.keytab_secret}",
-            "CACHE_SIZE_MB": str(inst.cache_size_mb),
-            "HTTP_PORT": str(inst.http_port),
-            "LOG_RETENTION_DAYS": str(inst.log_retention_days),
-            "ACCESS_LOG_ENABLED": "1" if inst.access_log_enabled else "0",
-        }
+        # The real one (it touches no Docker), so API tests see the env a container gets.
+        return DockerService.env_for(self, inst)  # type: ignore[arg-type]
 
     def ensure_running(self, inst: Instance) -> dict[str, Any]:
         self.ensure_calls.append(inst.name)

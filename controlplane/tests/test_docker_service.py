@@ -69,6 +69,9 @@ def test_fingerprint_is_stable_and_sensitive(tmp_path: Path) -> None:
     assert base != ds.fingerprint(ds.spec_for(_inst(image="ghcr.io/x/y:2")))
     assert base != ds.fingerprint(ds.spec_for(_inst(http_port=3129)))
     assert base != ds.fingerprint(ds.spec_for(_inst(keytab_secret="other.keytab")))
+    # The clock skew at its default adds nothing to the spec (no container replaced on upgrade).
+    assert base == ds.fingerprint(ds.spec_for(_inst(krb5_clockskew_seconds=300)))
+    assert base != ds.fingerprint(ds.spec_for(_inst(krb5_clockskew_seconds=5400)))
     spec = ds.spec_for(_inst())
     blocklist_dir = str(tmp_path / "blocklists" / "s-teachers")
     assert spec["volumes"][blocklist_dir]["bind"] == "/etc/squid/lists"

@@ -145,3 +145,30 @@ research workflows on **2026-07-02** (confidence in parentheses).
   template), `localhost` appends a `127.0.1.1` entry every boot, `false` (default) leaves the file
   alone. Ubuntu 24.04 (cloud-init 26.2) uses `/etc/cloud/templates/hosts.debian.tmpl` with
   `127.0.1.1 {{fqdn}} {{hostname}}`. (high) — https://docs.cloud-init.io/en/latest/reference/modules.html
+
+## Kerberos clock skew (ADR-017, checked 2026-11-19)
+
+- `krb5.conf` `[libdefaults] clockskew`: "maximum allowable amount of clockskew in seconds that
+  the library will tolerate before assuming that a Kerberos message is invalid. The default
+  value is 300 seconds". (high) — https://web.mit.edu/kerberos/krb5-latest/doc/admin/conf_files/krb5_conf.html
+- It applies to the acceptor: `rd_req_decoded_opt()` calls `krb5_check_clockskew(context,
+  authenticator ctime)` (→ `KRB5KRB_AP_ERR_SKEW`, "Clock skew too great" when outside
+  `context->clockskew`); `krb5int_validate_times()` allows `starttime - clockskew` and
+  `endtime + clockskew` for the ticket. (high, MIT source) —
+  https://github.com/krb5/krb5/blob/master/src/lib/krb5/krb/rd_req_dec.c ·
+  https://github.com/krb5/krb5/blob/master/src/lib/krb5/os/timeofday.c ·
+  https://github.com/krb5/krb5/blob/master/src/lib/krb5/krb/valid_times.c
+- Parsing: `init_ctx.c` reads it with `get_integer(ctx, KRB5_CONF_CLOCKSKEW,
+  DEFAULT_CLOCKSKEW /* 300 */, …)` and does not check the result; `profile_get_integer` parses
+  base 10 and fails on trailing garbage, so a malformed value leaves the default. (high, MIT
+  source) — https://github.com/krb5/krb5/blob/master/src/lib/krb5/krb/init_ctx.c ·
+  https://github.com/krb5/krb5/blob/master/src/util/profile/prof_get.c
+- Replay cache: entries count as live until `timestamp + context->clockskew` (`rc_file2.c`
+  `expired()`), so a larger skew keeps them longer; directory from `KRB5RCACHEDIR`. (high) —
+  https://github.com/krb5/krb5/blob/master/src/lib/krb5/rcache/rc_file2.c ·
+  https://web.mit.edu/kerberos/krb5-latest/doc/basic/rcache_def.html
+- `negotiate_kerberos_auth` keeps the replay cache on by default (`-t` type, default `dfl`;
+  `none` disables it) and does not mention clock skew. (high) —
+  https://www.squid-cache.org/Versions/v6/manuals/negotiate_kerberos_auth.html
+- libfaketime (Ubuntu 24.04 `faketime` 0.9.10) shifts the client clock in the E2E
+  (`faketime -f '+60m' curl …`). (measured)
