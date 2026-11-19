@@ -1,3 +1,11 @@
+linuxmuster-squid (7.3.9) lmn73; urgency=medium
+
+  * "lmnsquid edit" with a value the instance does not accept now answers
+    422 with the field and the reason instead of "500 Internal Server
+    Error"; nothing is changed, as before.
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Thu, 19 Nov 2026 10:20:12 +0100
+
 linuxmuster-squid (7.3.8) lmn73; urgency=medium
 
   * New per-instance list of domains reachable without proxy login, for

@@ -122,6 +122,21 @@ def test_patch_cannot_change_identity(
     assert resp.json()["instance"]["name"] == "default-school-teachers"
 
 
+@pytest.mark.parametrize(("field", "bad"), [("http_port", 0), ("realm", "lower.case")])
+def test_patch_with_an_invalid_value_is_422(
+    client: Any, auth_headers: dict[str, str], instance_data: dict[str, Any], field: str, bad: Any
+) -> None:
+    client.post("/v1/instances", json=instance_data, headers=auth_headers)
+    resp = client.patch(
+        "/v1/instances/default-school-teachers", json={field: bad}, headers=auth_headers
+    )
+    # The merged instance fails validation: a 422 naming the field (it was a bare 500).
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["loc"] == [field]
+    shown = client.get("/v1/instances/default-school-teachers", headers=auth_headers).json()
+    assert shown[field] == instance_data[field]
+
+
 def test_dockerd_down_returns_503(
     client: Any,
     auth_headers: dict[str, str],

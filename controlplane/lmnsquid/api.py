@@ -11,7 +11,9 @@ from typing import Any
 
 from docker.errors import DockerException
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from .blocklist import Blocklist, noauth_list
 from .config import Settings
@@ -156,9 +158,15 @@ def create_app(
         updates = patch.model_dump(exclude_unset=True)
         # Re-validate the merged instance through Instance validators; school/role
         # are not in InstancePatch, so the identity/name stays immutable.
-        merged = Instance.model_validate(
-            {**existing.model_dump(exclude={"name", "container_name"}), **updates}
-        )
+        try:
+            merged = Instance.model_validate(
+                {**existing.model_dump(exclude={"name", "container_name"}), **updates}
+            )
+        except ValidationError as exc:
+            # A 422 naming the field, like a bad POST body (it was a bare 500 before).
+            raise RequestValidationError(
+                exc.errors(include_url=False, include_context=False)
+            ) from exc
         result = _apply(merged)
         audit.info(
             "patch instance name=%s fields=%s",
