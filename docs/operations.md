@@ -420,8 +420,9 @@ logs; all request/cache logs live in the Docker volumes above.
   could not set the mode/ACL of the copy (images up to 7.3.9, see below). A failed run writes
   **one** line to the container log: `linuxmuster-squid: logrotate failed (<n> error(s)),
   first: <first error>` (`docker logs lmnsquid-<name> 2>&1 | grep logrotate`). Known limit of
-  `copytruncate`: a line squid writes between the copy and the truncation (milliseconds) is
-  lost.
+  `copytruncate`: lines squid writes between the copy and the truncation are lost. The window
+  grows with the size of the log: for a day's log it is short, but the first rotation of a
+  large backlog (GB, see below) can lose a few lines.
 - **Check the rotation:** `docker exec lmnsquid-<name> ls -la /var/log/squid` — a few days
   after the start there are `access.log.1` and `access.log.<n>.gz`, all `proxy proxy` with mode
   `-rw-r-----` like `access.log`, none of them empty, `access.log` itself not older than a day;
@@ -434,7 +435,8 @@ logs; all request/cache logs live in the Docker volumes above.
   rotations`), nothing with content. The backlog is then rotated like any other day: at the
   first hourly run on the next calendar day (at once, if the last attempt was on an earlier
   day) all of it moves to `access.log.1`, one day later to `access.log.2.gz`, and it is deleted
-  `--log-retention-days` days after the upgrade. **Disk:** the copy needs free space of the
+  when it would become rotation `--log-retention-days` + 1, i.e. `--log-retention-days` days
+  after it became `access.log.1`: about `--log-retention-days` + 1 to 2 days after the upgrade. **Disk:** the copy needs free space of the
   size of `access.log` for a moment, the compression a day later the size of the `.gz` on top. **Data
   protection (T13):** the backlog's oldest lines (back to when the rotation stopped working)
   are kept until then, longer than the retention promises. To keep the deletion period
@@ -447,9 +449,15 @@ logs; all request/cache logs live in the Docker volumes above.
     chown proxy:proxy trim && mv trim access.log.1'
   ```
 
-  or, if it is already `access.log.2.gz`, the same with
-  `zcat access.log.2.gz | awk -v c="$c" "\$1+0 >= c" | gzip > trim … mv trim access.log.2.gz`.
-  It keeps every line whose timestamp (first field) is within the retention.
+  or, if it is already `access.log.2.gz`:
+
+  ```bash
+  docker exec lmnsquid-<name> sh -c 'cd /var/log/squid && c=$(( $(date +%s) - 30*86400 )) &&
+    zcat access.log.2.gz | awk -v c="$c" "\$1+0 >= c" | gzip > trim && chmod 640 trim &&
+    chown proxy:proxy trim && mv trim access.log.2.gz'
+  ```
+
+  Both keep every line whose timestamp (first field) is within the retention.
 - **Query history:** `GET /v1/instances/{name}/logs/access?since=&until=&grep=` or
   `lmnsquid access-logs …` searches all rotated `.gz` daily files.
 - **Disk space:** roughly `retention-days × ~2 MB packed × instances` — at 90 days
