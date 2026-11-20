@@ -1,3 +1,22 @@
+linuxmuster-squid (7.3.10) lmn73; urgency=medium
+
+  * Fix the rotation of the access and cache log, which never worked in the
+    hardened container: access.log grew without limit, every night left an
+    empty access.log.1 / access.log.1.gz / *.backup with mode 0600 and the
+    retention (log_retention_days) deleted nothing. logrotate now rotates
+    as the log's owner (no new capability). On its first start the fixed
+    image deletes those empty files (only empty files with logrotate's
+    names, nothing with content); the grown access.log is rotated in full
+    on the next calendar day (it needs that much free space for a moment)
+    and deleted log_retention_days days later, so its oldest lines outlive
+    the retention unless you trim them (docs/operations.md, "After
+    upgrading"). A failed rotation now writes one line to the container
+    log ("logrotate failed"). Takes effect with a data-plane image built
+    from this release (DEFAULT_IMAGE pinned to it); instances on an older
+    image keep the old behaviour until "lmnsquid update".
+
+ -- Kevin Stenzel <mail@kevin-stenzel.de>  Thu, 19 Nov 2026 16:25:06 +0100
+
 linuxmuster-squid (7.3.9) lmn73; urgency=medium
 
   * New per-instance setting for the Kerberos clock skew the proxy accepts,
